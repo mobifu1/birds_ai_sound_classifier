@@ -86,6 +86,12 @@
             stroke-width: 3px;
             stroke-dasharray: 0;
         }
+        .radar-line.latest-line {
+            stroke: #03a9f4;
+            stroke-width: 3px;
+            stroke-dasharray: 0;
+            filter: drop-shadow(0 0 5px rgba(3, 169, 244, 0.8));
+        }
     </style>
 </head>
 <body>
@@ -171,6 +177,8 @@
             return '/static/bird_icons/Unbekannt.png';
         }
 
+        let previousLatestSpecies = null;
+
         function updateRadar(topDetections, latestSpecies) {
             const container = document.getElementById('radar-container');
             const nodesContainer = document.getElementById('radar-nodes');
@@ -196,6 +204,12 @@
             const minRadius = 80 * zoom; 
             
             const numNodes = topDetections.length;
+
+            let isNewLatest = false;
+            if (latestSpecies !== previousLatestSpecies) {
+                isNewLatest = true;
+                previousLatestSpecies = latestSpecies;
+            }
             
             topDetections.forEach((det, i) => {
                 const angle = (i * 2 * Math.PI) / numNodes - Math.PI / 2;
@@ -245,6 +259,15 @@
                 line.setAttribute('y2', y);
                 line.setAttribute('class', 'radar-line');
                 line.id = `line-${i}`;
+                
+                if (det.species === latestSpecies && isNewLatest) {
+                    line.classList.add('latest-line');
+                    setTimeout(() => {
+                        if (line.parentNode) {
+                            line.classList.remove('latest-line');
+                        }
+                    }, 1000);
+                }
                 
                 node.addEventListener('mouseenter', () => {
                     line.classList.add('active');

@@ -1,10 +1,9 @@
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-*.db
-*.sqlite3
+# Ignoriere-Ordner
+model/
 backup_db/
-.env
-venv/
-env/
+
+# Ignoriere Modell-Files/Database-Files
+*.tflite
+*.db
+debug_log.txt
+

@@ -798,7 +798,16 @@ def api_top_species():
     
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
-    c.execute(f"SELECT species, COUNT(*) as count, MAX(confidence) as max_conf FROM detections WHERE date(timestamp) = date('now', 'localtime') GROUP BY species ORDER BY count DESC LIMIT {max_birds}")
+    query = f"""
+        SELECT d1.species, COUNT(*) as count,
+               (SELECT confidence FROM detections d2 WHERE d2.species = d1.species ORDER BY timestamp DESC LIMIT 1) as max_conf
+        FROM detections d1
+        WHERE date(timestamp) = date('now', 'localtime')
+        GROUP BY species
+        ORDER BY count DESC
+        LIMIT {max_birds}
+    """
+    c.execute(query)
     top_data = [{"species": r[0], "count": r[1], "max_conf": r[2]} for r in c.fetchall()]
     
     c.execute("SELECT species FROM detections ORDER BY timestamp DESC LIMIT 1")

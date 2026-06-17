@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Birds AI Sound Classifier</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        /* Audio Meter Styles */
+        .meter-container { width: 100%; background: #111; height: 20px; border-radius: 10px; overflow: hidden; margin-top: 15px; border: 1px solid #444; }
+        .meter-bar { height: 100%; width: 0%; background-color: #4CAF50; transition: width 0.2s ease, background-color 0.2s ease; }
+        .button-link { display: inline-block; padding: 10px 15px; margin-right: 10px; color: #fff; text-decoration: none; background: #555; border-radius: 5px; font-size: 0.9rem; }
+        .header-container { margin-bottom: 30px; border-bottom: 2px solid #333; padding-bottom: 20px; }
+
+        /* Radar Styles */
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.7); }
+            70% { box-shadow: 0 0 0 20px rgba(76, 175, 80, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(76, 175, 80, 0); }
+        }
+        .radar-center-glow {
+            animation: pulse 2s infinite;
+        }
+        .bird-node {
+            position: absolute;
+            width: 64px;
+            height: 64px;
+            transform: translate(-50%, -50%);
+            background: #666666;
+            border: 2px solid #4CAF50;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+            z-index: 5;
+        }
+        .bird-node:hover {
+            transform: translate(-50%, -50%) scale(1.2);
+            border-color: #81c784;
+            box-shadow: 0 0 15px rgba(129, 199, 132, 0.6);
+            z-index: 12;
+        }
+        .latest-node {
+            border-color: #03a9f4 !important;
+            box-shadow: 0 0 15px rgba(3, 169, 244, 0.6) !important;
+            z-index: 10 !important;
+        }
+        .latest-node:hover {
+            border-color: #29b6f6 !important;
+            box-shadow: 0 0 20px rgba(41, 182, 246, 0.8) !important;
+        }
+        .bird-img {
+            width: 52px;
+            height: 52px;
+            border-radius: 50%;
+            object-fit: cover;
+            background-color: #666666;
+        }
+        .bird-label {
+            position: absolute;
+            bottom: -32px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.85);
+            color: #fff;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            white-space: nowrap;
+            border: 1px solid #444;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.5);
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+        }
+        .radar-line {
+            stroke: rgba(76, 175, 80, 0.25);
+            stroke-width: 2px;
+            stroke-dasharray: 4, 4;
+            transition: stroke 0.3s ease, stroke-width 0.3s ease;
+        }
+        .radar-line.active {
+            stroke: rgba(129, 199, 132, 0.8);
+            stroke-width: 3px;
+            stroke-dasharray: 0;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container" style="max-width: 1000px; margin: 20px auto; padding: 0 15px;">
+        <div class="header-container">
+            <h1>🎶 Birds AI Sound Classifier V{{ version }}</h1>
+            <div style="margin-top:10px;">
+                <a href="/daily" class="button-link" style="background:#00838f;">📈 Tages-Ansicht</a>
+                <a href="/weekly" class="button-link">📅 Wochen-Ansicht</a>
+                <a href="/yearly" class="button-link" style="background:#e65100;">📆 Jahres-Ansicht</a>
+                <a href="/settings" class="button-link" style="background:#c2185b;">⚙️ Einstellungen</a>
+            </div>
+        </div>
+        
+        <div style="display: flex; flex-wrap: wrap; gap: 20px;">
+
+
+            <!-- Vogel-Aktivitätsradar -->
+            <div class="card" style="background: #2c2c2c; padding: 20px; border-radius: 10px; flex: 1 1 100%; box-shadow: 0 4px 6px rgba(0,0,0,0.3); min-height: 610px; position: relative;">
+                <h2 style="margin-top: 0; font-size: 1.2rem; border-bottom: 1px solid #4CAF50; padding-bottom: 10px;">Vogel-Aktivitätsradar (Heute)</h2>
+                
+                <div id="radar-container" style="position: relative; width: 100%; height: 530px; margin-top: 20px; overflow: visible;">
+                    <svg id="radar-lines" style="position: absolute; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none;"></svg>
+                    
+                    <div id="radar-center" class="radar-center-glow" style="position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 70px; height: 70px; background: #1b5e20; border: 3px solid #4CAF50; border-radius: 50%; display: flex; align-items: center; justify-content: center; z-index: 10; box-shadow: 0 0 20px rgba(76, 175, 80, 0.6);">
+                        <svg viewBox="0 0 24 24" width="32" height="32" fill="#fff">
+                            <path d="M12 2c1.66 0 3 1.34 3 3v7c0 1.66-1.34 3-3 3s-3-1.34-3-3V5c0-1.66 1.34-3 3-3zm6 10c0 3.07-2.24 5.62-5 5.91V20h-2v-2.09c-2.76-.29-5-2.84-5-5.91H6c0 3.42 2.72 6.23 6 6.72V22h2v-3.28c3.28-.48 6-3.3 6-6.72h-2z"/>
+                        </svg>
+                    </div>
+                    
+                    <div id="radar-nodes" style="width: 100%; height: 100%; position: absolute; left: 0; top: 0;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function getBirdIcon(species) {
+            if (!species) return '/static/bird_icons/Unbekannt.png';
+            
+            // Umlaut-Ersetzung und Säuberung
+            let clean = species.replace(/ä/g, 'ae')
+                               .replace(/ö/g, 'oe')
+                               .replace(/ü/g, 'ue')
+                               .replace(/ß/g, 'ss')
+                               .replace(/Ä/g, 'Ae')
+                               .replace(/Ö/g, 'Oe')
+                               .replace(/Ü/g, 'Ue');
+            
+            // Klammern entfernen z.B. "Gimpel (Dompfaff)" -> "Gimpel"
+            clean = clean.split(' (')[0];
+            
+            // Sonderfälle
+            const specialCases = {
+                "Mönchsgrasmücke": "Moenchsgrasmuecke.jpg",
+                "Rabenkrähe": "Rabe.png",
+                "Kolkrabe": "Rabe.png",
+                "Nebelkrähe": "Rabe.png",
+                "Aaskrähe": "Rabe.png",
+                "Dohle": "Rabe.png",
+                "Turmfalke": "Falke.png",
+                "Mäusebussard": "Falke.png",
+                "Rotmilan": "Milan.png",
+                "Graugans": "Gans.png",
+                "Kanadagans": "Gans.png",
+                "Stockente": "Ente.png",
+                "Waldkauz": "Uhu.png",
+                "Schleiereule": "Uhu.png",
+                "Rauchschwalbe": "Schwalbe.png",
+                "Mehlschwalbe": "Schwalbe.png",
+                "Mauersegler": "Schwalbe.png"
+            };
+            
+            if (specialCases[species]) {
+                return `/static/bird_icons/${specialCases[species]}`;
+            }
+            
+            const knownIcons = {{ available_icons | tojson }};
+            
+            const match = knownIcons.find(icon => icon.toLowerCase() === (clean + '.png').toLowerCase());
+            if (match) {
+                return `/static/bird_icons/${match}`;
+            }
+            
+            return '/static/bird_icons/Unbekannt.png';
+        }
+
+        function updateRadar(topDetections, latestSpecies) {
+            const container = document.getElementById('radar-container');
+            const nodesContainer = document.getElementById('radar-nodes');
+            const svg = document.getElementById('radar-lines');
+            
+            nodesContainer.innerHTML = '';
+            svg.innerHTML = '';
+            
+            if (!topDetections || topDetections.length === 0) {
+                nodesContainer.innerHTML = '<div style="position: absolute; left: 50%; top: 60%; transform: translate(-50%, -50%); text-align: center; color: #888;">Heute wurden noch keine Vögel klassifiziert. Sobald ein Vogel erkannt wird, erscheint er hier im Radar!</div>';
+                return;
+            }
+            
+            const width = container.clientWidth;
+            const height = container.clientHeight;
+            const centerX = width / 2;
+            const centerY = height / 2;
+            
+            const maxRadius = (Math.min(centerX, centerY) - 70) * 1.2;
+            
+            // Lade Multiplikator aus den Einstellungen (Standard 1.0)
+            const zoom = {{ s.get('radar_zoom', 1.0) }};
+            const minRadius = 80 * zoom; 
+            
+            const numNodes = topDetections.length;
+            
+            topDetections.forEach((det, i) => {
+                const angle = (i * 2 * Math.PI) / numNodes - Math.PI / 2;
+                
+                const conf = det.max_conf !== undefined ? det.max_conf : 0.5;
+                // Hohe Konfidenz (1.0) -> kleiner Radius (minRadius)
+                // Niedrige Konfidenz (0.0) -> großer Radius (maxRadius)
+                let nodeRadius = maxRadius - (conf * (maxRadius - minRadius));
+                
+                // Verhindere dass der Radius negativ wird, falls zoom sehr hoch ist
+                if(nodeRadius < 20) nodeRadius = 20;
+                
+                const x = centerX + nodeRadius * Math.cos(angle);
+                const y = centerY + nodeRadius * Math.sin(angle);
+                
+                const iconSrc = getBirdIcon(det.species);
+                
+                const node = document.createElement('div');
+                node.className = 'bird-node';
+                if (det.species === latestSpecies) {
+                    node.classList.add('latest-node');
+                }
+                node.style.left = `${x}px`;
+                node.style.top = `${y}px`;
+                
+                const isUnknown = iconSrc.includes('Unbekannt.png');
+                
+                node.innerHTML = `
+                    ${isUnknown 
+                        ? `<div style="width: 52px; height: 52px; border-radius: 50%; background: #333; display: flex; align-items: center; justify-content: center; font-size: 1.8rem; font-weight: bold; color: #ffb74d;">?</div>`
+                        : `<img src="${iconSrc}" class="bird-img" alt="${det.species}">`
+                    }
+                    <div class="bird-label">${det.species} (${det.count})</div>
+                `;
+                
+                const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                line.setAttribute('x1', centerX);
+                line.setAttribute('y1', centerY);
+                line.setAttribute('x2', x);
+                line.setAttribute('y2', y);
+                line.setAttribute('class', 'radar-line');
+                line.id = `line-${i}`;
+                
+                node.addEventListener('mouseenter', () => {
+                    line.classList.add('active');
+                });
+                node.addEventListener('mouseleave', () => {
+                    line.classList.remove('active');
+                });
+                
+                svg.appendChild(line);
+                nodesContainer.appendChild(node);
+            });
+        }
+
+        function updateData() {
+            // Radar
+            fetch('/api/top_species')
+                .then(r => r.json())
+                .then(data => {
+                    updateRadar(data.top, data.latest);
+                });
+                
+            // Mikrofon Status für Center Icon
+            fetch('/api/status')
+                .then(r => r.json())
+                .then(data => {
+                    const center = document.getElementById('radar-center');
+                    if (data.status.includes('Online')) {
+                        center.style.background = '#1b5e20';
+                        center.style.borderColor = '#4CAF50';
+                        center.style.boxShadow = '0 0 20px rgba(76, 175, 80, 0.6)';
+                    } else {
+                        center.style.background = '#e65100';
+                        center.style.borderColor = '#ff9800';
+                        center.style.boxShadow = '0 0 20px rgba(255, 152, 0, 0.6)';
+                    }
+                });
+        }
+
+        // UI Daten alle 3 Sekunden aktualisieren
+        setInterval(updateData, 3000);
+        updateData();
+    </script>
+</body>
+</html>

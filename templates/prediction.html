@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Vogel-Verhaltens-Vorhersage (AI)</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="refresh" content="300">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+
+<body>
+    <div class="container">
+        <div class="header-container">
+            <h1>🔮 Vogel-Verhaltens-Vorhersage (AI)</h1>
+            <div style="margin-top:10px;">
+                <a href="/" class="button-link" style="background:#546e7a;">&laquo; Zurück zum Dashboard</a>
+            </div>
+        </div>
+
+        <form method="GET" action="/prediction" class="dashboard-controls">
+            <label for="days">Analyse-Zeitraum:</label>
+            <select name="days" id="days" onchange="this.form.submit()">
+                <option value="1" {% if days==1 %}selected{% endif %}>Letzte 24 Stunden</option>
+                <option value="3" {% if days==3 %}selected{% endif %}>Letzte 3 Tage</option>
+                <option value="7" {% if days==7 %}selected{% endif %}>Letzte 7 Tage</option>
+                <option value="14" {% if days==14 %}selected{% endif %}>Letzte 14 Tage</option>
+                <option value="30" {% if days==30 %}selected{% endif %}>Letzte 30 Tage</option>
+            </select>
+        </form>
+
+        <div class="metrics-grid">
+            <!-- 1. Rush Hour -->
+            <div class="metric-card">
+                <h3>1. Rush-Hour Vorhersage</h3>
+                <p>Wann ist der größte Andrang am Futterhaus zu erwarten?</p>
+                {% if rush_hour_chart %}
+                <div style="font-size: 1.2em; color: #81d4fa; margin-bottom: 15px;">
+                    Beste Zeit für Nachschub: <strong>Vor {{ busiest_hour }}:00 Uhr</strong>
+                </div>
+                <div class="chart-container">
+                    <img src="data:image/png;base64,{{ rush_hour_chart }}" alt="Rush Hour Chart">
+                </div>
+                {% else %}
+                <p>Nicht genug Daten für eine Vorhersage.</p>
+                {% endif %}
+            </div>
+
+            <!-- 2. Species Probability -->
+            <div class="metric-card">
+                <h3>2. Arten-Wahrscheinlichkeit</h3>
+                <p>Wer kommt voraussichtlich bis um <strong>{{ next_hour }}:00 Uhr</strong> vorbei?</p>
+                {% if prob_chart %}
+                <ul>
+                    {% for sp, prob in probs.items() %}
+                    {% if prob > 5 %}
+                    <li>{{ sp }}: <strong>{{ "%.1f"|format(prob) }}%</strong></li>
+                    {% endif %}
+                    {% endfor %}
+                </ul>
+                <div class="chart-container">
+                    <img src="data:image/png;base64,{{ prob_chart }}" alt="Probability Chart">
+                </div>
+                {% else %}
+                <p>Zu dieser Uhrzeit gab es noch keine Sichtungen in den letzten {{ days }} Tagen.</p>
+                {% endif %}
+            </div>
+
+            <!-- 3. Weather Integration -->
+            <div class="metric-card">
+                <h3>3. Wetter-Verknüpfung</h3>
+                <p>Korrelation von Futterverhalten und Wetter ({{ weather_config.get('Service-Name', 'Service') }} API).
+                </p>
+                <div style="background: #1e1e1e; padding: 10px; border-radius: 5px; border-left: 4px solid #4fc3f7;">
+                    {{ weather_data_html|safe }}
+                    {{ weather_text|safe }}
+                </div>
+            </div>
+
+            <!-- 4. Disturbance Analysis -->
+            <div class="metric-card">
+                <h3>4. Störereignisse</h3>
+                <p>Verhaltensänderung nach Auftauchen von z.B. Elstern, Raubtieren oder Katzen.</p>
+                <div style="background: #1e1e1e; padding: 10px; border-radius: 5px; border-left: 4px solid #ff5252;">
+                    {{ disturbance_text|safe }}
+                </div>
+            </div>
+
+            <!-- 5. Arten-Diversifikation -->
+            <div class="metric-card">
+                <h3>5. Arten-Diversifikation</h3>
+                <p>Messung und Trend der Vielfalt an Vogelarten am Futterhaus.</p>
+                <div
+                    style="background: #1e1e1e; padding: 10px; border-radius: 5px; border-left: 4px solid #69f0ae; margin-bottom: 10px;">
+                    {{ diversification_text|safe }}
+                </div>
+                <div style="font-size: 1.1em; color: #e0e0e0;">
+                    Trend (im Zeitverlauf): <strong>{{ diversification_trend|safe }}</strong>
+                </div>
+            </div>
+
+            <!-- 6. Absolute Besucher -->
+            <div class="metric-card">
+                <h3>6. Absolute Besucher</h3>
+                <p>Messung und Trend der absoluten Futterhaus-Besuche (alle Vögel).</p>
+                <div
+                    style="background: #1e1e1e; padding: 10px; border-radius: 5px; border-left: 4px solid #b388ff; margin-bottom: 10px;">
+                    {{ absolute_visitors_text|safe }}
+                </div>
+                <div style="font-size: 1.1em; color: #e0e0e0;">
+                    Trend (im Zeitverlauf): <strong>{{ absolute_visitors_trend|safe }}</strong>
+                </div>
+            </div>
+
+            <!-- 7. Anomalien und Auffälligkeiten -->
+            <div class="metric-card">
+                <h3>7. Anomalien &amp; Auffälligkeiten</h3>
+                <p>Erkennung von starken Abweichungen im Verhalten im Vergleich zu vergangenen Besuchen.</p>
+                <div
+                    style="background: #1e1e1e; padding: 10px; border-radius: 5px; border-left: 4px solid #ff9100; margin-bottom: 10px;">
+                    {{ anomaly_text|safe }}
+                </div>
+            </div>
+
+            <!-- 8. Wochenvorhersage Besucher -->
+            <div class="metric-card">
+                <h3>8. Wochenvorhersage Besucher</h3>
+                <p>Erwartete Besucher am Futterhaus für die aktuelle Woche auf Basis des eingestellten Analysezeitraums.</p>
+                <div style="font-size: 0.9em; color: #aaa; margin-bottom: 10px;">
+                    📅 <strong>{{ weekly_kw_label }}</strong>
+                </div>
+                {% if weekly_chart %}
+                <div style="background: #1e1e1e; padding: 10px; border-radius: 5px; border-left: 4px solid #ce93d8; margin-bottom: 12px; font-size: 0.95em;">
+                    {{ weekly_summary|safe }}
+                </div>
+                <div class="chart-container">
+                    <img src="data:image/png;base64,{{ weekly_chart }}" alt="Wochenvorhersage Chart">
+                </div>
+                <div style="font-size: 0.8em; color: #777; margin-top: 8px;">
+                    🔵 Ist-Werte &nbsp;|&nbsp; 🟣 Prognose (Ø Wochentag aus {{ days }}-Tage-Zeitraum) &nbsp;|&nbsp; <span style="color:#ff9800;">▸</span> Heute
+                </div>
+                {% else %}
+                <div style="background: #1e1e1e; padding: 10px; border-radius: 5px; border-left: 4px solid #ce93d8;">
+                    {{ weekly_summary|safe }}
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- 9. Beste Beobachtungszeit pro Art -->
+            <div class="metric-card">
+                <h3>9. Beste Beobachtungszeit pro Art</h3>
+                <p>Wann ist die ideale Zeit, um eine bestimmte Vogelart am Futterhaus zu beobachten? (Basis: letzte {{ days }} Tage)</p>
+                <div style="background: #1e1e1e; padding: 10px; border-radius: 5px; border-left: 4px solid #fff176;">
+                    {{ best_observation_time_table|safe }}
+                </div>
+                <div style="font-size: 0.8em; color: #777; margin-top: 8px;">
+                    🟡 Hauptpeak &nbsp;|&nbsp; Bei zwei Zeiten: beide Stunden liegen nahe beieinander &nbsp;|&nbsp; Ges. = Gesamtsichtungen im Zeitraum
+                </div>
+            </div>
+        </div>
+
+
+
+        <div class="footer">
+            {{ version }}
+        </div>
+    </div>
+</body>
+
+</html>

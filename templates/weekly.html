@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Wochen-Statistik (Heatmap)</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        .weekly-table {
+            width: 100%;
+            border-collapse: collapse;
+            table-layout: fixed;
+            background-color: #1e1e1e;
+        }
+        .weekly-table th, .weekly-table td {
+            text-align: center;
+            padding: 2px 1px; 
+            border: 1px solid #333;
+            font-size: 0.8em;
+        }
+        .weekly-table th { 
+            background-color: #37474f; 
+            min-width: 25px;
+            padding: 2px 0;
+            vertical-align: bottom;
+        }
+        .weekly-table th:first-child,
+        .weekly-table td:first-child {
+            position: sticky;
+            left: 0;
+            z-index: 2; 
+            background-color: #263238; 
+            border-right: 2px solid #555;
+            white-space: nowrap; 
+            text-align: left;
+            padding-left: 5px;
+            width: 250px;
+            min-width: 250px; 
+            max-width: 250px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .weekly-table th:first-child {
+             background-color: #37474f;
+             z-index: 3; 
+        }
+        .species-wrapper {
+            display: flex;
+            align-items: center;
+            height: 100%;
+            overflow: hidden;
+        }
+        .species-wrapper span {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .bird-icon-small {
+            width: 36px;
+            height: 36px;
+            object-fit: contain; 
+            margin-right: 8px;
+            border-radius: 4px;
+            background-color: #ffffff; 
+        }
+        .bird-icon-placeholder {
+            width: 36px;
+            height: 36px;
+            margin-right: 8px;
+            background-color: #444;
+            border-radius: 4px;
+            display: inline-block;
+            text-align: center;
+            line-height: 36px;
+            font-size: 14px;
+        }
+        .legend-container {
+            display: flex;
+            align-items: center;
+            margin-top: 15px;
+            flex-wrap: wrap;
+            font-size: 0.85em;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin-right: 15px;
+            margin-bottom: 5px;
+        }
+        .legend-box {
+            width: 16px;
+            height: 16px;
+            margin-right: 5px;
+            border: 1px solid #555;
+            border-radius: 2px;
+        }
+        .table-responsive {
+            overflow-x: auto;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container" style="max-width: 95%;">
+        <div class="header-container">
+            <h1>📅 Wochen-Statistik (Heatmap)</h1>
+            <div style="margin-top:10px;">
+                <a href="/" class="button-link" style="background:#546e7a;">&laquo; Zurück zur Übersicht</a>
+            </div>
+        </div>
+
+        {{ table_content|safe }}
+
+        <br>
+        <div class="footer">
+            {{ version }}
+        </div>
+    </div>
+</body>
+
+</html>

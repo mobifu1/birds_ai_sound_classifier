@@ -1,0 +1,7 @@
+Flask
+waitress
+pandas
+pyaudio
+birdnetlib
+resampy
+librosa

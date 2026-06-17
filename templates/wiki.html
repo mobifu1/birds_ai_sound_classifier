@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Wiki – Vogel-KI Classifier</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Wiki-Seite des Birds AI Classifiers mit Referenzbildern und Informationen zum System.">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        /* Wiki-specific styles */
+        .wiki-hero {
+            background: linear-gradient(135deg, #1a3a4a 0%, #0d2233 100%);
+            border: 1px solid #37474f;
+            border-radius: 12px;
+            padding: 30px 20px 20px;
+            margin-bottom: 30px;
+            text-align: center;
+        }
+
+        .wiki-hero p {
+            color: #90caf9;
+            font-size: 1.05em;
+            margin: 10px 0 0;
+            max-width: 700px;
+            margin-left: auto;
+            margin-right: auto;
+            line-height: 1.6;
+        }
+
+        .wiki-gallery {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 24px;
+            margin-bottom: 40px;
+        }
+
+        .wiki-card {
+            width: 100%;
+            max-width: 900px;
+            background: #263238;
+            border: 1px solid #37474f;
+            border-radius: 12px;
+            overflow: hidden;
+            transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+            cursor: pointer;
+        }
+
+        .wiki-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+            border-color: #4fc3f7;
+        }
+
+        .wiki-card-img-wrap {
+            width: 100%;
+            overflow: hidden;
+            background: #121212;
+            display: flex;
+            align-items: flex-start;
+            justify-content: center;
+        }
+
+        .wiki-card-img-wrap img {
+            width: 100%;
+            height: auto;
+            display: block;
+            object-fit: contain;
+            transition: transform 0.3s ease, filter 0.3s ease;
+            border-radius: 0;
+        }
+
+        .wiki-card:hover .wiki-card-img-wrap img {
+            transform: scale(1.04);
+            filter: brightness(1.08);
+        }
+
+        .wiki-card-body {
+            padding: 16px 18px;
+        }
+
+        .wiki-card-body h3 {
+            margin: 0 0 6px;
+            color: #4fc3f7;
+            font-size: 1.05em;
+            border: none;
+            padding: 0;
+        }
+
+        .wiki-card-body p {
+            margin: 0;
+            color: #b0bec5;
+            font-size: 0.9em;
+            line-height: 1.5;
+        }
+
+        /* Lightbox */
+        .lightbox-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.92);
+            z-index: 9999;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            gap: 16px;
+            padding: 20px;
+        }
+
+        .lightbox-overlay.active {
+            display: flex;
+        }
+
+        .lightbox-overlay img {
+            max-width: 92vw;
+            max-height: 82vh;
+            border-radius: 10px;
+            border: 2px solid #4fc3f7;
+            box-shadow: 0 0 40px rgba(79, 195, 247, 0.25);
+            object-fit: contain;
+        }
+
+        .lightbox-caption {
+            color: #81d4fa;
+            font-size: 1em;
+            font-weight: bold;
+            text-align: center;
+        }
+
+        .lightbox-close {
+            position: fixed;
+            top: 18px;
+            right: 24px;
+            color: #fff;
+            font-size: 2em;
+            cursor: pointer;
+            line-height: 1;
+            opacity: 0.7;
+            transition: opacity 0.2s;
+            background: none;
+            border: none;
+        }
+
+        .lightbox-close:hover {
+            opacity: 1;
+        }
+
+        .wiki-info-box {
+            background: #1a2a35;
+            border-left: 4px solid #4fc3f7;
+            border-radius: 6px;
+            padding: 14px 18px;
+            margin-bottom: 20px;
+            color: #b0bec5;
+            font-size: 0.92em;
+            line-height: 1.6;
+            text-align: left;
+        }
+
+        .wiki-info-box strong {
+            color: #81d4fa;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+
+        <!-- Navigation -->
+        <a href="/" class="btn btn-gray btn-nav">« Zurück zum Dashboard</a>
+
+        <!-- Hero Section -->
+        <div class="wiki-hero">
+            <h1>📖 Wiki – Vogel-KI Classifier</h1>
+            <p>Hier findest du Referenzbilder und weiterführende Informationen zu den am Futterplatz erkannten
+                Vogelarten sowie zum KI-System.</p>
+        </div>
+
+        <!-- Info-Box -->
+        <div class="wiki-info-box">
+            💡 <strong>Tipp:</strong> Klicke auf ein Bild, um es in der Vollansicht zu öffnen.
+        </div>
+
+        <!-- Image Gallery -->
+        <h2 style="text-align:center; margin-bottom: 20px;">📸 Referenzbilder</h2>
+        <div class="wiki-gallery">
+        {% if wiki_images %}
+        {% for img in wiki_images %}
+            <div class="wiki-card" data-src="/wiki/images/{{ img }}" data-caption="{{ img }}">
+                <div class="wiki-card-img-wrap">
+                    <img src="/wiki/images/{{ img }}" alt="{{ img }}" loading="lazy">
+                </div>
+            </div>
+        {% endfor %}
+        {% else %}
+            <p style="color:#90caf9; text-align:center; grid-column: 1/-1;">
+                Keine Bilder im Wiki-Ordner gefunden.
+            </p>
+        {% endif %}
+
+        </div>
+
+        <!-- Footer -->
+        <div class="footer">
+            {{ version }}
+        </div>
+
+    </div>
+
+    <!-- Lightbox -->
+    <div class="lightbox-overlay" id="lightbox" onclick="closeLightbox(event)">
+        <button class="lightbox-close" onclick="closeLightbox(null, true)">✕</button>
+        <img src="" id="lightbox-img" alt="Vollansicht">
+        <div class="lightbox-caption" id="lightbox-caption"></div>
+    </div>
+
+    <script>
+        // Attach click events via JS to avoid Jinja2/quote conflicts
+        document.querySelectorAll('.wiki-card[data-src]').forEach(function(card) {
+            card.addEventListener('click', function() {
+                openLightbox(this.dataset.src, this.dataset.caption);
+            });
+        });
+
+        function openLightbox(src, caption) {
+            document.getElementById('lightbox-img').src = src;
+            document.getElementById('lightbox-caption').textContent = caption;
+            document.getElementById('lightbox').classList.add('active');
+        }
+
+        function closeLightbox(event, force) {
+            if (force || (event && event.target === document.getElementById('lightbox'))) {
+                document.getElementById('lightbox').classList.remove('active');
+                document.getElementById('lightbox-img').src = '';
+            }
+        }
+
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape') closeLightbox(null, true);
+        });
+    </script>
+</body>
+
+</html>

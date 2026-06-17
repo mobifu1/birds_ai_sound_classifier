@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Eintrag Bearbeiten / Löschen</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #121212; color: #e0e0e0; margin: 0; padding: 0; }
+        .container { max-width: 800px; margin: 20px auto; background: #1e1e1e; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
+        h1 { color: #f57c00; margin-top: 0; padding-bottom: 10px; border-bottom: 2px solid #333; }
+        .section { background: #263238; border-radius: 8px; padding: 20px; margin-bottom: 20px; border: 1px solid #37474f; }
+        .row { display: flex; flex-direction: column; margin-bottom: 15px; }
+        label { font-weight: bold; margin-bottom: 5px; }
+        input[type=date] { padding: 10px; border-radius: 6px; border: 1px solid #444; background: #121212; color: #fff; width: 100%; box-sizing: border-box; font-size: 1em; }
+        button, .btn { padding: 10px 20px; border-radius: 6px; border: none; font-weight: bold; cursor: pointer; color: white; display: inline-block; text-decoration: none; text-align: center; }
+        .btn-red { background: #d32f2f; } .btn-red:hover { background: #b71c1c; }
+        .btn-gray { background: #546e7a; } .btn-gray:hover { background: #607d8b; }
+        .btn-orange { background: #f57c00; } .btn-orange:hover { background: #e65100; }
+        .btn-green { background: #2e7d32; } .btn-green:hover { background: #1b5e20; }
+        .btn-nav { margin-bottom: 20px; }
+        select.edit-select { padding: 5px; border-radius: 4px; border: 1px solid #444; background: #121212; color: #fff; width: 100%; box-sizing: border-box; font-size: 0.9em; }
+        
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #444; }
+        th { background-color: #37474f; color: #fff; }
+        tr:hover { background-color: #333; }
+        .empty-msg { text-align: center; font-style: italic; color: #999; margin-top: 20px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="/settings" class="btn btn-gray btn-nav">&laquo; Zurück zu Einstellungen</a>
+        <h1>✏️ Falscherkennung bearbeiten / löschen</h1>
+
+        <div class="section">
+            <p>Wähle ein Datum aus, um die erkannten Vögel anzuzeigen. Du kannst dann KI-Fehler berichtigen oder ganz löschen.</p>
+            
+            <div class="row">
+                <label>Datum (Tag):</label>
+                <input type="date" id="date" required onchange="loadEntries()">
+            </div>
+            
+            <div id="statusMessage" style="margin-top: 15px; text-align: center; font-weight: bold; padding: 10px; border-radius: 5px; display: none;"></div>
+            
+            <div id="entries-container">
+                <p class="empty-msg" id="empty-msg">Bitte wähle ein Datum aus.</p>
+                <table id="entries-table" style="display: none;">
+                    <thead>
+                        <tr>
+                            <th>Uhrzeit</th>
+                            <th>Vogelart</th>
+                            <th>Konfidenz</th>
+                            <th style="min-width: 180px;">Aktion</th>
+                        </tr>
+                    </thead>
+                    <tbody id="entries-body">
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const speciesList = {{ species_list | tojson }}.sort((a, b) => a.localeCompare(b, 'de'));
+        
+        // Set default date to today and load
+        const now = new Date();
+        document.getElementById('date').value = now.toISOString().split('T')[0];
+        
+        // Auto-load today's entries on startup
+        loadEntries();
+
+        function showMessage(text, isError=false) {
+            const msg = document.getElementById('statusMessage');
+            msg.style.display = 'block';
+            msg.style.backgroundColor = isError ? 'rgba(198, 40, 40, 0.2)' : 'rgba(46, 125, 50, 0.2)';
+            msg.style.color = isError ? '#e57373' : '#81c784';
+            msg.innerText = text;
+            setTimeout(() => msg.style.display = 'none', 3000);
+        }
+
+        function loadEntries() {
+            const dateStr = document.getElementById('date').value;
+            if(!dateStr) return;
+            
+            const tbody = document.getElementById('entries-body');
+            const table = document.getElementById('entries-table');
+            const emptyMsg = document.getElementById('empty-msg');
+            
+            tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;">Lade Einträge...</td></tr>';
+            table.style.display = 'table';
+            emptyMsg.style.display = 'none';
+
+            fetch(`/api/detections/by_date?date=${dateStr}`)
+            .then(res => res.json())
+            .then(data => {
+                tbody.innerHTML = '';
+                if(data.success) {
+                    if(data.entries.length === 0) {
+                        table.style.display = 'none';
+                        emptyMsg.style.display = 'block';
+                        emptyMsg.innerText = "Keine Einträge für dieses Datum gefunden.";
+                    } else {
+                        data.entries.forEach(entry => {
+                            let tr = document.createElement('tr');
+                            const timeStr = entry.timestamp ? entry.timestamp.split(' ')[1] : '';
+                            
+                            // Falls die Art nicht in der Liste ist (z.B. alter englischer Name), temporär hinzufügen
+                            let currentOptions = [...speciesList];
+                            if (entry.species && !currentOptions.includes(entry.species)) {
+                                currentOptions.unshift(entry.species);
+                            }
+                            
+                            tr.innerHTML = `
+                                <td>${timeStr}</td>
+                                <td>
+                                    <select class="edit-select" id="species-${entry.id}">
+                                        ${currentOptions.map(s => `<option value="${s}" ${s === entry.species ? 'selected' : ''}>${s}</option>`).join('')}
+                                    </select>
+                                </td>
+                                <td>${Number(entry.confidence * 100).toFixed(0)}%</td>
+                                <td>
+                                    <button class="btn btn-orange" style="padding: 5px 10px;" onclick="updateEntry(${entry.id})">💾 Save</button>
+                                    <button class="btn btn-red" style="padding: 5px 10px; margin-left: 5px;" onclick="deleteEntry(${entry.id}, this)">🗑️ Del</button>
+                                </td>
+                            `;
+                            tbody.appendChild(tr);
+                        });
+                    }
+                } else {
+                    showMessage("Fehler beim Laden: " + data.error, true);
+                }
+            })
+            .catch(err => {
+                showMessage("Netzwerkfehler beim Laden!", true);
+            });
+        }
+        
+        function updateEntry(id) {
+            const species = document.getElementById(`species-${id}`).value;
+            
+            fetch('/api/detections/update', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: id, species: species })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if(data.success) {
+                    showMessage("Eintrag erfolgreich aktualisiert!");
+                    loadEntries();
+                } else {
+                    showMessage("Fehler: " + data.error, true);
+                    loadEntries();
+                }
+            })
+            .catch(err => {
+                showMessage("Netzwerkfehler beim Speichern!", true);
+                loadEntries();
+            });
+        }
+        
+        function deleteEntry(id, btnElement) {
+            if(!confirm("Diesen Eintrag wirklich endgültig löschen?")) return;
+            
+            const tr = btnElement.closest('tr');
+            btnElement.disabled = true;
+            btnElement.innerText = "...";
+            
+            fetch('/api/detections/delete', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: id })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if(data.success) {
+                    tr.remove();
+                    showMessage("Eintrag erfolgreich gelöscht.");
+                    
+                    // IF table is empty now -> hide
+                    if(document.getElementById('entries-body').children.length === 0) {
+                        document.getElementById('entries-table').style.display = 'none';
+                        document.getElementById('empty-msg').style.display = 'block';
+                        document.getElementById('empty-msg').innerText = "Alle Einträge für dieses Datum wurden gelöscht.";
+                    }
+                } else {
+                    showMessage("Fehler beim Löschen: " + data.error, true);
+                    btnElement.disabled = false;
+                    btnElement.innerText = "Löschen";
+                }
+            })
+            .catch(err => {
+                showMessage("Netzwerkfehler beim Löschen!", true);
+                btnElement.disabled = false;
+                btnElement.innerText = "Löschen";
+            });
+        }
+    </script>
+</body>
+</html>

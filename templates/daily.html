@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Tages-Statistik (Daily)</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    {% if is_today %}
+    <meta http-equiv="refresh" content="30"> <!-- Autorefresh alle 30s nur für den heutigen Tag -->
+    {% endif %}
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        .date-controls {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 15px;
+            margin: 20px 0;
+            flex-wrap: wrap;
+            background: #263238;
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #37474f;
+        }
+
+        .date-input {
+            padding: 8px 12px;
+            background: #1e1e1e;
+            color: #fff;
+            border: 1px solid #555;
+            border-radius: 4px;
+            font-size: 1em;
+            font-family: inherit;
+        }
+
+        .date-input::-webkit-calendar-picker-indicator {
+            filter: invert(1);
+            cursor: pointer;
+        }
+
+        a.jumper-btn {
+            display: inline-block;
+            padding: 8px 15px;
+            background: #37474f;
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
+            font-weight: bold;
+            font-size: 0.9em;
+            transition: background 0.2s;
+        }
+
+        a.jumper-btn:hover {
+            background: #455a64;
+        }
+
+        .weekly-table {
+            width: 100%;
+            border-collapse: collapse;
+            table-layout: fixed;
+            background-color: #1e1e1e;
+        }
+        .weekly-table th, .weekly-table td {
+            text-align: center;
+            padding: 2px 1px; 
+            border: 1px solid #333;
+            font-size: 0.8em;
+        }
+        .weekly-table th { 
+            background-color: #37474f; 
+            min-width: 25px;
+            padding: 2px 0;
+            vertical-align: bottom;
+        }
+        .weekly-table th:first-child,
+        .weekly-table td:first-child {
+            position: sticky;
+            left: 0;
+            z-index: 2; 
+            background-color: #263238; 
+            border-right: 2px solid #555;
+            white-space: nowrap; 
+            text-align: left;
+            padding-left: 5px;
+            width: 250px;
+            min-width: 250px; 
+            max-width: 250px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .weekly-table th:first-child {
+             background-color: #37474f;
+             z-index: 3; 
+        }
+        .species-wrapper {
+            display: flex;
+            align-items: center;
+            height: 100%;
+            overflow: hidden;
+        }
+        .species-wrapper span {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .bird-icon-small {
+            width: 36px;
+            height: 36px;
+            object-fit: contain; 
+            margin-right: 8px;
+            border-radius: 4px;
+            background-color: #ffffff; 
+        }
+        .bird-icon-placeholder {
+            width: 36px;
+            height: 36px;
+            margin-right: 8px;
+            background-color: #444;
+            border-radius: 4px;
+            display: inline-block;
+            text-align: center;
+            line-height: 36px;
+            font-size: 14px;
+        }
+        .legend-container {
+            display: flex;
+            align-items: center;
+            margin-top: 15px;
+            flex-wrap: wrap;
+            font-size: 0.85em;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin-right: 15px;
+            margin-bottom: 5px;
+        }
+        .legend-box {
+            width: 16px;
+            height: 16px;
+            margin-right: 5px;
+            border: 1px solid #555;
+            border-radius: 2px;
+        }
+        .table-responsive {
+            overflow-x: auto;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container" style="max-width: 95%;">
+        <div class="header-container">
+            <h1>📈 Tagesübersicht (Verlauf)</h1>
+            <div style="margin-top:10px;">
+                <a href="/" class="button-link" style="background:#546e7a;">&laquo; Zurück zur Übersicht</a>
+            </div>
+        </div>
+
+        <div class="date-controls">
+            <a href="/daily?date={{ prev_date }}" class="jumper-btn">&laquo; {% if not is_today %}Vorheriger Tag{% else
+                %}Gestern{% endif %}</a>
+
+            <input type="date" class="date-input" value="{{ selected_date_str }}" max="{{ today_str }}" id="datePicker">
+
+            {% if not is_today %}
+            <a href="/daily?date={{ next_date }}" class="jumper-btn">Nächster Tag &raquo;</a>
+            <a href="/daily?date={{ today_str }}" class="jumper-btn" style="background: #00838f;">Heute</a>
+            {% endif %}
+        </div>
+
+        <script>
+            document.getElementById('datePicker').addEventListener('change', function () {
+                window.location.href = '/daily?date=' + this.value;
+            });
+        </script>
+
+        <p>Sichtungen der Vogelarten im Verlauf des Tages ({% if is_today %}Heute, {% endif %}{{ selected_date_str }}).
+        </p>
+
+        <div style="font-size: 1.5em; font-weight: bold; margin: 15px 0; color: #81d4fa;">
+            &sum; Gesamtsumme: {{ total_birds_day }}
+        </div>
+
+        {% if first_bird %}
+        <div style="font-size: 1.2em; margin: 15px 0; padding: 15px; background: #263238; border-radius: 8px; border: 1px solid #37474f;">
+            🌅 <strong style="color: #ff9800;">Erster Besucher des Tages:</strong> {{ first_bird }} 
+            <span style="font-size: 0.9em; color: #aaa;">(um {{ first_bird_time }} Uhr)</span>
+        </div>
+        {% endif %}
+
+        {{ table_content|safe }}
+
+        <br>
+        <div class="footer">
+            {{ version }}
+        </div>
+    </div>
+</body>
+
+</html>

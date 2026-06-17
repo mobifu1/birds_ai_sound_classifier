@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Manueller Vogel-Eintrag</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #121212; color: #e0e0e0; margin: 0; padding: 0; }
+        .container { max-width: 600px; margin: 20px auto; background: #1e1e1e; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
+        h1 { color: #4fc3f7; margin-top: 0; padding-bottom: 10px; border-bottom: 2px solid #333; }
+        .section { background: #263238; border-radius: 8px; padding: 20px; margin-bottom: 20px; border: 1px solid #37474f; }
+        .row { display: flex; flex-direction: column; margin-bottom: 15px; }
+        label { font-weight: bold; margin-bottom: 5px; }
+        select, input[type=date], input[type=time], input[type=number] { padding: 10px; border-radius: 6px; border: 1px solid #444; background: #121212; color: #fff; width: 100%; box-sizing: border-box; font-size: 1em; }
+        button, .btn { padding: 10px 20px; border-radius: 6px; border: none; font-weight: bold; cursor: pointer; color: white; display: inline-block; text-decoration: none; text-align: center; }
+        .btn-green { background: #2e7d32; } .btn-green:hover { background: #388e3c; }
+        .btn-gray { background: #546e7a; } .btn-gray:hover { background: #607d8b; }
+        .btn-nav { margin-bottom: 20px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="/settings" class="btn btn-gray btn-nav">&laquo; Zurück zu Einstellungen</a>
+        <h1>➕ Manueller Eintrag</h1>
+
+        <div class="section">
+            <p>Füge einen Vogel hinzu, der von der KI nicht erkannt wurde.</p>
+            <form id="manualEntryForm">
+                <div class="row">
+                    <label>Vogelart:</label>
+                    <select id="species" required>
+                        <option value="" disabled selected>Bitte wählen...</option>
+                        {% for sp in species_list %}
+                        <option value="{{ sp }}">{{ sp }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                
+                <div class="row">
+                    <label>Datum:</label>
+                    <input type="date" id="date" required>
+                </div>
+                
+                <div class="row">
+                    <label>Uhrzeit:</label>
+                    <input type="time" id="time" required>
+                </div>
+
+                <div style="margin-top: 25px;">
+                    <button type="submit" class="btn btn-green" id="submitBtn" style="width: 100%; font-size: 1.1em; padding: 12px;">Speichern</button>
+                </div>
+            </form>
+            <div id="statusMessage" style="margin-top: 15px; text-align: center; font-weight: bold; padding: 10px; border-radius: 5px; display: none;"></div>
+        </div>
+    </div>
+
+    <script>
+        // Set default date and time
+        const now = new Date();
+        document.getElementById('date').value = now.toISOString().split('T')[0];
+        document.getElementById('time').value = now.toTimeString().substring(0, 5);
+
+        document.getElementById('manualEntryForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const btn = document.getElementById('submitBtn');
+            const msg = document.getElementById('statusMessage');
+            
+            btn.disabled = true;
+            btn.innerText = "Speichere...";
+            
+            const dateStr = document.getElementById('date').value;
+            const timeStr = document.getElementById('time').value;
+            const data = {
+                species: document.getElementById('species').value,
+                timestamp: `${dateStr} ${timeStr}:00`
+            };
+
+            fetch('/api/detections/add', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            })
+            .then(res => res.json())
+            .then(data => {
+                msg.style.display = 'block';
+                if(data.success) {
+                    msg.style.backgroundColor = 'rgba(46, 125, 50, 0.2)';
+                    msg.style.color = '#81c784';
+                    msg.innerText = "✅ Erfolgreich gespeichert!";
+                } else {
+                    msg.style.backgroundColor = 'rgba(198, 40, 40, 0.2)';
+                    msg.style.color = '#e57373';
+                    msg.innerText = "❌ Fehler: " + data.error;
+                }
+                
+                btn.disabled = false;
+                btn.innerText = "Speichern";
+            })
+            .catch(err => {
+                msg.style.display = 'block';
+                msg.style.backgroundColor = 'rgba(198, 40, 40, 0.2)';
+                msg.style.color = '#e57373';
+                msg.innerText = "❌ Netzwerkfehler!";
+                
+                btn.disabled = false;
+                btn.innerText = "Speichern";
+            });
+        });
+    </script>
+</body>
+</html>

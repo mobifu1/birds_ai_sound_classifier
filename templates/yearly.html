@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Jahres-Statistik</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        .year-controls {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 15px;
+            margin: 20px 0;
+            flex-wrap: wrap;
+            background: #263238;
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #37474f;
+        }
+
+        a.jumper-btn {
+            display: inline-block;
+            padding: 8px 15px;
+            background: #37474f;
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
+            font-weight: bold;
+            font-size: 0.9em;
+            transition: background 0.2s;
+        }
+
+        a.jumper-btn:hover {
+            background: #455a64;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container" style="max-width: 95%;">
+        <div class="header-container">
+            <h1>📆 Jahres-Statistik</h1>
+            <div style="margin-top:10px;">
+                <a href="/" class="button-link" style="background:#546e7a;">&laquo; Zurück zur Übersicht</a>
+            </div>
+        </div>
+
+        <div class="year-controls">
+            {% if prev_year %}
+            <a href="/yearly?year={{ prev_year }}" class="jumper-btn">&laquo; {{ prev_year }}</a>
+            {% endif %}
+
+            <span style="font-size: 1.3em; font-weight: bold; color: #81d4fa;">{{ selected_year }}</span>
+
+            {% if next_year %}
+            <a href="/yearly?year={{ next_year }}" class="jumper-btn">{{ next_year }} &raquo;</a>
+            {% endif %}
+
+            {% if selected_year != current_year %}
+            <a href="/yearly?year={{ current_year }}" class="jumper-btn" style="background: #e65100;">Aktuelles Jahr</a>
+            {% endif %}
+        </div>
+
+        <p>Absolute Anzahl der Vogelbesucher pro Monat im Jahr <strong>{{ selected_year }}</strong> (alle Arten
+            zusammen).</p>
+
+        <div style="font-size: 1.5em; font-weight: bold; margin: 15px 0; color: #81d4fa;">
+            &sum; Gesamtsumme {{ selected_year }}: {{ total_birds_year }}
+        </div>
+
+        {% if chart_url %}
+        <div style="text-align:center; margin-top: 20px;">
+            <img src="{{ chart_url }}" alt="Jahres-Chart"
+                style="max-width:100%; height:auto; border-radius:8px; border: 1px solid #333;">
+        </div>
+        {% else %}
+        <p style="color: #ff9800; font-weight:bold;">Für das Jahr {{ selected_year }} sind keine Daten vorhanden.</p>
+        {% endif %}
+
+        <br>
+        <div class="footer">
+            {{ version }}
+        </div>
+    </div>
+</body>
+
+</html>

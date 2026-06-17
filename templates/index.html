@@ -106,9 +106,8 @@
 
             <!-- Vogel-Aktivitätsradar -->
             <div class="card" style="background: #2c2c2c; padding: 20px; border-radius: 10px; flex: 1 1 100%; box-shadow: 0 4px 6px rgba(0,0,0,0.3); min-height: 610px; position: relative;">
-                <h2 style="margin-top: 0; font-size: 1.2rem; border-bottom: 1px solid #4CAF50; padding-bottom: 10px;">Vogel-Aktivitätsradar (Heute)</h2>
-                
-                <div id="radar-container" style="position: relative; width: 100%; height: 530px; margin-top: 20px; overflow: visible;">
+
+                <div id="radar-container" style="position: relative; width: 100%; height: 570px; margin-top: 0px; overflow: visible;">
                     <svg id="radar-lines" style="position: absolute; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none;"></svg>
                     
                     <div id="radar-center" class="radar-center-glow" style="position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 70px; height: 70px; background: #1b5e20; border: 3px solid #4CAF50; border-radius: 50%; display: flex; align-items: center; justify-content: center; z-index: 10; box-shadow: 0 0 20px rgba(76, 175, 80, 0.6);">
@@ -141,9 +140,7 @@
             
             // Sonderfälle
             const specialCases = {
-                "Mönchsgrasmücke": "Moenchsgrasmuecke.jpg",
                 "Rabenkrähe": "Rabe.png",
-                "Kolkrabe": "Rabe.png",
                 "Nebelkrähe": "Rabe.png",
                 "Aaskrähe": "Rabe.png",
                 "Dohle": "Rabe.png",
@@ -203,10 +200,17 @@
             topDetections.forEach((det, i) => {
                 const angle = (i * 2 * Math.PI) / numNodes - Math.PI / 2;
                 
-                const conf = det.max_conf !== undefined ? det.max_conf : 0.5;
-                // Hohe Konfidenz (1.0) -> kleiner Radius (minRadius)
-                // Niedrige Konfidenz (0.0) -> großer Radius (maxRadius)
-                let nodeRadius = maxRadius - (conf * (maxRadius - minRadius));
+                const snr = det.snr !== undefined ? det.snr : 10.0;
+                const snrMin = {{ s.get('radar_snr_min', 5.0) }};
+                const snrMax = {{ s.get('radar_snr_max', 20.0) }};
+                
+                let normalizedSnr = (snr - snrMin) / (snrMax - snrMin);
+                if (normalizedSnr < 0) normalizedSnr = 0;
+                if (normalizedSnr > 1) normalizedSnr = 1;
+
+                // Hoher SNR -> kleiner Radius (minRadius)
+                // Niedriger SNR -> großer Radius (maxRadius)
+                let nodeRadius = maxRadius - (normalizedSnr * (maxRadius - minRadius));
                 
                 // Verhindere dass der Radius negativ wird, falls zoom sehr hoch ist
                 if(nodeRadius < 20) nodeRadius = 20;

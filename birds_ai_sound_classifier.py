@@ -92,7 +92,7 @@ BIRD_TRANSLATIONS = {
     
     # Tauben, Kuckuck & Fasan
     "Common Wood-Pigeon": "Ringeltaube", "Eurasian Collared-Dove": "Türkentaube", 
-    "Feral Pigeon": "Straßentaube", "Stock Dove": "Hohltaube", "European Turtle-Dove": "Turteltaube",
+    "Feral Pigeon": "Straßentaube", "Rock Pigeon": "Felsentaube", "Stock Dove": "Hohltaube", "European Turtle-Dove": "Turteltaube",
     "Common Cuckoo": "Kuckuck", "Ring-necked Pheasant": "Jagdfasan",
     
     # Greifvögel & Eulen
@@ -103,16 +103,22 @@ BIRD_TRANSLATIONS = {
     # Wasservögel & Reiher
     "Gray Heron": "Graureiher", "Grey Heron": "Graureiher", "Great Egret": "Silberreiher",
     "White Stork": "Weißstorch", "Black Stork": "Schwarzstorch",
-    "Mute Swan": "Höckerschwan", "Greylag Goose": "Graugans", "Canada Goose": "Kanadagans",
+    "Mute Swan": "Höckerschwan", "Greylag Goose": "Graugans", "Graylag Goose": "Graugans", "Canada Goose": "Kanadagans",
     "Mallard": "Stockente", "Eurasian Teal": "Krickente", "Tufted Duck": "Reiherente",
     "Great Crested Grebe": "Haubentaucher", "Little Grebe": "Zwergtaucher", "Great Cormorant": "Kormoran",
     "Water Rail": "Wasserralle", "Common Moorhen": "Teichhuhn", "Eurasian Coot": "Blässhuhn",
     "Black-headed Gull": "Lachmöwe", "Common Kingfisher": "Eisvogel",
     
     # Stelzen & Pieper
-    "White Wagtail": "Bachstelze", "Grey Wagtail": "Gebirgsstelze", "Western Yellow Wagtail": "Schafstelze",
+    "White Wagtail": "Bachstelze", "Grey Wagtail": "Gebirgsstelze", "Gray Wagtail": "Gebirgsstelze", "Western Yellow Wagtail": "Schafstelze",
     "Tree Pipit": "Baumpieper", "Meadow Pipit": "Wiesenpieper", "Water Pipit": "Bergpieper",
-    "Eurasian Hoopoe": "Wiedehopf"
+    "Eurasian Hoopoe": "Wiedehopf", "Common Crane": "Kranich", "Eurasian Golden Oriole": "Pirol", "Common Raven": "Kolkrabe",
+    
+    # Lerchen
+    "Eurasian Skylark": "Feldlerche",
+    
+    # Würger
+    "Red-backed Shrike": "Neuntöter"
 }
 
 # Analyzer laden (lädt Modelle beim ersten Start herunter falls nicht vorhanden)
@@ -150,16 +156,20 @@ def init_db():
     c.execute('PRAGMA journal_mode=WAL;')
     c.execute('''CREATE TABLE IF NOT EXISTS detections 
                  (id INTEGER PRIMARY KEY, species TEXT, timestamp TEXT, confidence REAL)''')
+    try:
+        c.execute('ALTER TABLE detections ADD COLUMN snr REAL DEFAULT 0.0')
+    except sqlite3.OperationalError:
+        pass # Spalte existiert bereits
     conn.commit()
     conn.close()
 
-def save_detection(species, confidence):
+def save_detection(species, confidence, snr=0.0):
     try:
         conn = sqlite3.connect(DB_FILE)
         c = conn.cursor()
         ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        c.execute("INSERT INTO detections (species, timestamp, confidence) VALUES (?, ?, ?)",
-                  (species, ts, confidence))
+        c.execute("INSERT INTO detections (species, timestamp, confidence, snr) VALUES (?, ?, ?, ?)",
+                  (species, ts, confidence, snr))
         conn.commit()
         conn.close()
     except Exception as e:
@@ -242,6 +252,23 @@ class AudioMonitor:
                 wf.writeframes(raw_data)
                 wf.close()
 
+                # SNR berechnen
+                try:
+                    audio_data = np.frombuffer(raw_data, dtype=np.int16)
+                    if np.max(np.abs(audio_data)) > 0:
+                        rms_signal = np.sqrt(np.mean(np.square(audio_data.astype(np.float32))))
+                        window_size = RATE // 10
+                        windows = [audio_data[i:i+window_size] for i in range(0, len(audio_data), window_size)]
+                        rms_windows = [np.sqrt(np.mean(np.square(w.astype(np.float32)))) for w in windows if len(w) > 0]
+                        noise_floor = np.percentile(rms_windows, 10) if rms_windows else 1.0
+                        noise_floor = max(noise_floor, 1.0)
+                        calculated_snr = float(20 * np.log10(rms_signal / noise_floor))
+                    else:
+                        calculated_snr = 0.0
+                except Exception as e:
+                    calculated_snr = 0.0
+                    print(f"Fehler bei SNR Berechnung: {e}")
+
                 # BirdNET Klassifizierung
                 settings = load_settings()
                 lat = float(settings.get("gps_lat", 51.165691))
@@ -273,8 +300,8 @@ class AudioMonitor:
                     min_conf = float(settings.get("threshold", MIN_CONFIDENCE * 100)) / 100.0
                     
                     if confidence >= min_conf:
-                        update_log(f"Erkannt: {species} ({confidence:.0%})")
-                        save_detection(species, confidence)
+                        update_log(f"Erkannt: {species} ({confidence:.0%}) | SNR: {calculated_snr:.1f}dB")
+                        save_detection(species, confidence, calculated_snr)
                 else:
                     print("[KI] Nichts erkannt.")
                 
@@ -436,9 +463,7 @@ def generate_daily_heatmap_html(date_str):
         if not sp: return 'bird_icons/Unbekannt.png'
         
         special_cases = {
-            "Mönchsgrasmücke": "Moenchsgrasmuecke.jpg",
             "Rabenkrähe": "Rabe.png",
-            "Kolkrabe": "Rabe.png",
             "Nebelkrähe": "Rabe.png",
             "Aaskrähe": "Rabe.png",
             "Dohle": "Rabe.png",
@@ -562,9 +587,7 @@ def generate_weekly_heatmap_html():
         if not sp: return 'bird_icons/Unbekannt.png'
         
         special_cases = {
-            "Mönchsgrasmücke": "Moenchsgrasmuecke.jpg",
             "Rabenkrähe": "Rabe.png",
-            "Kolkrabe": "Rabe.png",
             "Nebelkrähe": "Rabe.png",
             "Aaskrähe": "Rabe.png",
             "Dohle": "Rabe.png",
@@ -706,6 +729,8 @@ def api_save_settings():
     save_setting("gps_lon", data.get("gps_lon", 10.451526))
     save_setting("radar_zoom", data.get("radar_zoom", 1.0))
     save_setting("radar_max_birds", data.get("radar_max_birds", 10))
+    save_setting("radar_snr_max", data.get("radar_snr_max", 20.0))
+    save_setting("radar_snr_min", data.get("radar_snr_min", 5.0))
     return jsonify({"msg": "Einstellungen gespeichert!"})
 
 @app.route('/api/status')
@@ -800,7 +825,7 @@ def api_top_species():
     c = conn.cursor()
     query = f"""
         SELECT d1.species, COUNT(*) as count,
-               (SELECT confidence FROM detections d2 WHERE d2.species = d1.species ORDER BY timestamp DESC LIMIT 1) as max_conf
+               (SELECT snr FROM detections d2 WHERE d2.species = d1.species ORDER BY timestamp DESC LIMIT 1) as snr
         FROM detections d1
         WHERE date(timestamp) = date('now', 'localtime')
         GROUP BY species
@@ -808,7 +833,26 @@ def api_top_species():
         LIMIT {max_birds}
     """
     c.execute(query)
-    top_data = [{"species": r[0], "count": r[1], "max_conf": r[2]} for r in c.fetchall()]
+    raw_data = c.fetchall()
+    top_data = []
+    for r in raw_data:
+        snr_val = r[2]
+        if isinstance(snr_val, bytes):
+            import struct
+            try:
+                if len(snr_val) == 8:
+                    snr_val = struct.unpack('d', snr_val)[0]
+                elif len(snr_val) == 4:
+                    snr_val = struct.unpack('f', snr_val)[0]
+                else:
+                    snr_val = 0.0
+            except:
+                snr_val = 0.0
+        elif snr_val is None:
+            snr_val = 0.0
+            
+        top_data.append({"species": r[0], "count": r[1], "snr": float(snr_val)})
+
     
     c.execute("SELECT species FROM detections ORDER BY timestamp DESC LIMIT 1")
     last = c.fetchone()

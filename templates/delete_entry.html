@@ -39,6 +39,11 @@
                 <input type="date" id="date" required onchange="loadEntries()">
             </div>
             
+            <div class="row" style="margin-top: 5px;">
+                <label>Nach Vogelart filtern:</label>
+                <input type="text" id="search-filter" placeholder="z. B. Amsel..." onkeyup="filterEntries()" style="padding: 10px; border-radius: 6px; border: 1px solid #444; background: #121212; color: #fff; width: 100%; box-sizing: border-box; font-size: 1em;">
+            </div>
+            
             <div id="statusMessage" style="margin-top: 15px; text-align: center; font-weight: bold; padding: 10px; border-radius: 5px; display: none;"></div>
             
             <div id="entries-container">
@@ -125,6 +130,9 @@
                             `;
                             tbody.appendChild(tr);
                         });
+                        
+                        // Filter direkt anwenden, falls Text im Suchfeld steht
+                        filterEntries();
                     }
                 } else {
                     showMessage("Fehler beim Laden: " + data.error, true);
@@ -194,6 +202,24 @@
                 btnElement.disabled = false;
                 btnElement.innerText = "Löschen";
             });
+        }
+
+        function filterEntries() {
+            const query = document.getElementById('search-filter').value.toLowerCase();
+            const tbody = document.getElementById('entries-body');
+            const rows = tbody.getElementsByTagName('tr');
+            
+            for (let i = 0; i < rows.length; i++) {
+                const selectEl = rows[i].querySelector('.edit-select');
+                if (selectEl) {
+                    const selectedSpecies = selectEl.value.toLowerCase();
+                    if (selectedSpecies.includes(query)) {
+                        rows[i].style.display = '';
+                    } else {
+                        rows[i].style.display = 'none';
+                    }
+                }
+            }
         }
     </script>
 </body>

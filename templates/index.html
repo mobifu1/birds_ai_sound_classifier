@@ -123,6 +123,7 @@
                     </div>
                     
                     <div id="radar-nodes" style="width: 100%; height: 100%; position: absolute; left: 0; top: 0;"></div>
+                    <div id="radar-unique-species" style="position: absolute; bottom: 10px; left: 10px; color: #4CAF50; font-family: 'Inter', sans-serif; font-size: 14px; background: rgba(20, 20, 20, 0.8); padding: 5px 12px; border-radius: 6px; border: 1px solid #1b5e20; z-index: 20; box-shadow: 0 2px 10px rgba(0,0,0,0.5); backdrop-filter: blur(4px);">Arten heute: 0</div>
                 </div>
             </div>
         </div>
@@ -160,7 +161,7 @@
                 "Schleiereule": "Uhu.png",
                 "Rauchschwalbe": "Schwalbe.png",
                 "Mehlschwalbe": "Schwalbe.png",
-                "Mauersegler": "Schwalbe.png"
+                "Mauersegler": "Mauersegler.png"
             };
             
             if (specialCases[species]) {
@@ -201,7 +202,7 @@
             
             // Lade Multiplikator aus den Einstellungen (Standard 1.0)
             const zoom = {{ s.get('radar_zoom', 1.0) }};
-            const minRadius = 80 * zoom; 
+            const minRadius = 80; 
             
             const numNodes = topDetections.length;
 
@@ -226,7 +227,10 @@
                 // Niedriger SNR -> großer Radius (maxRadius)
                 let nodeRadius = maxRadius - (normalizedSnr * (maxRadius - minRadius));
                 
-                // Verhindere dass der Radius negativ wird, falls zoom sehr hoch ist
+                // Multiplikator anwenden, um alle Vögel proportional nach außen zu verschieben
+                nodeRadius = nodeRadius * zoom;
+                
+                // Verhindere dass der Radius negativ wird
                 if(nodeRadius < 20) nodeRadius = 20;
                 
                 const x = centerX + nodeRadius * Math.cos(angle);
@@ -287,6 +291,9 @@
                 .then(r => r.json())
                 .then(data => {
                     updateRadar(data.top, data.latest);
+                    if (data.unique_species_count !== undefined) {
+                        document.getElementById('radar-unique-species').textContent = `Arten heute: ${data.unique_species_count}`;
+                    }
                 });
                 
             // Mikrofon Status für Center Icon

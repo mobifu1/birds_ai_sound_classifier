@@ -504,7 +504,7 @@ def generate_daily_heatmap_html(date_str):
             "Schleiereule": "Uhu.png",
             "Rauchschwalbe": "Schwalbe.png",
             "Mehlschwalbe": "Schwalbe.png",
-            "Mauersegler": "Schwalbe.png"
+            "Mauersegler": "Mauersegler.png"
         }
         if sp in special_cases and special_cases[sp].lower() in icon_map:
             return icon_map[special_cases[sp].lower()]
@@ -628,7 +628,7 @@ def generate_weekly_heatmap_html():
             "Schleiereule": "Uhu.png",
             "Rauchschwalbe": "Schwalbe.png",
             "Mehlschwalbe": "Schwalbe.png",
-            "Mauersegler": "Schwalbe.png"
+            "Mauersegler": "Mauersegler.png"
         }
         if sp in special_cases and special_cases[sp].lower() in icon_map:
             return icon_map[special_cases[sp].lower()]
@@ -887,8 +887,11 @@ def api_top_species():
     last = c.fetchone()
     latest_species = last[0] if last else None
     
+    c.execute("SELECT COUNT(DISTINCT species) FROM detections WHERE date(timestamp) = date('now', 'localtime')")
+    unique_count = c.fetchone()[0]
+    
     conn.close()
-    return jsonify({"top": top_data, "latest": latest_species})
+    return jsonify({"top": top_data, "latest": latest_species, "unique_species_count": unique_count})
 
 # --- DATENBANK MANAGEMENT ROUTEN ---
 @app.route('/api/detections/by_date')

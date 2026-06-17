@@ -1,1 +1,1 @@
-{"threshold": 55, "gps_lat": 51.165691, "gps_lon": 10.451526, "radar_zoom": 1, "radar_max_birds": 25, "radar_snr_max": 15, "radar_snr_min": 2}
+{"threshold": 55, "gps_lat": 51.165691, "gps_lon": 10.451526, "radar_zoom": 1, "radar_max_birds": 30, "radar_snr_max": 15, "radar_snr_min": 2, "mic_index": -1}

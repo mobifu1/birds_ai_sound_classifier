@@ -197,11 +197,20 @@ class AudioMonitor:
 
     def loop_record(self):
         try:
-            stream = self.pa.open(format=FORMAT,
-                                  channels=CHANNELS,
-                                  rate=RATE,
-                                  input=True,
-                                  frames_per_buffer=CHUNK)
+            settings = load_settings()
+            mic_index = int(settings.get("mic_index", -1))
+            
+            stream_kwargs = {
+                'format': FORMAT,
+                'channels': CHANNELS,
+                'rate': RATE,
+                'input': True,
+                'frames_per_buffer': CHUNK
+            }
+            if mic_index >= 0:
+                stream_kwargs['input_device_index'] = mic_index
+
+            stream = self.pa.open(**stream_kwargs)
             
             while self.running:
                 frames = []
@@ -323,7 +332,25 @@ def index():
 @app.route('/settings')
 def settings_page():
     s = load_settings()
-    return render_template('settings.html', s=s)
+    
+    pa = pyaudio.PyAudio()
+    mics = []
+    for i in range(pa.get_device_count()):
+        try:
+            info = pa.get_device_info_by_index(i)
+            if info.get("maxInputChannels", 0) > 0:
+                try:
+                    name = info.get("name", f"Device {i}")
+                    if isinstance(name, bytes):
+                        name = name.decode('utf-8', errors='ignore')
+                except Exception:
+                    name = f"Unknown Device {i}"
+                mics.append({"index": i, "name": name})
+        except Exception:
+            pass
+    pa.terminate()
+
+    return render_template('settings.html', s=s, mics=mics)
 
 def create_chart(title, labels, values):
     plt.figure(figsize=(10, 6), facecolor='#1e1e1e')
@@ -731,6 +758,8 @@ def api_save_settings():
     save_setting("radar_max_birds", data.get("radar_max_birds", 10))
     save_setting("radar_snr_max", data.get("radar_snr_max", 20.0))
     save_setting("radar_snr_min", data.get("radar_snr_min", 5.0))
+    if "mic_index" in data:
+        save_setting("mic_index", data.get("mic_index", -1))
     return jsonify({"msg": "Einstellungen gespeichert!"})
 
 @app.route('/api/status')

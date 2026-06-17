@@ -60,6 +60,19 @@
         </div>
 
         <div class="section">
+            <h2>Hardware</h2>
+            <div class="row">
+                <label>Mikrofon Auswahl:<br><small>Wird beim nächsten Start der Überwachung angewendet.</small></label>
+                <select id="mic_index" style="width: 100%; padding: 10px; border: 1px solid #444; border-radius: 5px; background: #1a1a1a; color: #fff; box-sizing: border-box;">
+                    <option value="-1" {% if s.get('mic_index', -1)|int == -1 %}selected{% endif %}>Standard-Mikrofon</option>
+                    {% for mic in mics %}
+                    <option value="{{ mic.index }}" {% if s.get('mic_index', -1)|int == mic.index %}selected{% endif %}>{{ mic.name }} (Index {{ mic.index }})</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+
+        <div class="section">
             <h2>Steuerung & Datenbank</h2>
             <div class="control-row">
                 <button class="btn btn-green" onclick="startMonitor()">Mikrofon Starten</button>
@@ -199,7 +212,8 @@
                 radar_zoom: parseFloat(document.getElementById('radar_zoom').value),
                 radar_max_birds: parseInt(document.getElementById('radar_max_birds').value),
                 radar_snr_max: parseFloat(document.getElementById('radar_snr_max').value),
-                radar_snr_min: parseFloat(document.getElementById('radar_snr_min').value)
+                radar_snr_min: parseFloat(document.getElementById('radar_snr_min').value),
+                mic_index: parseInt(document.getElementById('mic_index').value)
             };
 
             fetch('/api/settings/save', {

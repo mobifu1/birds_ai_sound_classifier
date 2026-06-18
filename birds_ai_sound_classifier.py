@@ -117,7 +117,7 @@ BIRD_TRANSLATIONS = {
     "Eurasian Hoopoe": "Wiedehopf", "Common Crane": "Kranich", "Eurasian Golden Oriole": "Pirol", "Common Raven": "Kolkrabe",
     
     # Lerchen
-    "Eurasian Skylark": "Feldlerche",
+    "Eurasian Skylark": "Feldlerche", "Wood Lark": "Heckenlerche",
     
     # Würger
     "Red-backed Shrike": "Neuntöter"

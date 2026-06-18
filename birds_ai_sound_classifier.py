@@ -73,6 +73,7 @@ BIRD_TRANSLATIONS = {
     "Eurasian Blackcap": "Mönchsgrasmücke", "Garden Warbler": "Gartengrasmücke", 
     "Common Whitethroat": "Dorngrasmücke", "Lesser Whitethroat": "Klappergrasmücke",
     "Common Chiffchaff": "Zilpzalp", "Willow Warbler": "Fitis", "Wood Warbler": "Waldlaubsänger",
+    "Icterine Warbler": "Gelbspötter",
     "Goldcrest": "Wintergoldhähnchen", "Firecrest": "Sommergoldhähnchen",
     "Spotted Flycatcher": "Grauschnäpper", "European Pied Flycatcher": "Trauerschnäpper",
     "European Stonechat": "Schwarzkehlchen", "Whinchat": "Braunkehlchen", "Northern Wheatear": "Steinschmätzer",

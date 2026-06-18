@@ -63,7 +63,7 @@ BIRD_TRANSLATIONS = {
     "House Sparrow": "Haussperling", "Eurasian Tree Sparrow": "Feldsperling",
     "Common Chaffinch": "Buchfink", "European Greenfinch": "Grünfink", "European Goldfinch": "Stieglitz",
     "Eurasian Siskin": "Erlenzeisig", "Common Linnet": "Bluthänfling", "Eurasian Linnet": "Bluthänfling", "Eurasian Bullfinch": "Gimpel (Dompfaff)",
-    "Hawfinch": "Kernbeißer", "Yellowhammer": "Goldammer", "Common Reed Bunting": "Rohrammer",
+    "Hawfinch": "Kernbeißer", "Yellowhammer": "Goldammer", "Common Reed Bunting": "Rohrammer", "Reed Bunting": "Rohrammer", "Common Reed-Bunting": "Rohrammer",
     
     # Drosseln, Grasmücken & Fliegenschnäpper
     "Eurasian Blackbird": "Amsel", "Song Thrush": "Singdrossel", "Mistle Thrush": "Misteldrossel",
@@ -889,7 +889,7 @@ def api_top_species():
         top_data.append({"species": r[0], "count": r[1], "snr": float(snr_val)})
 
     
-    c.execute("SELECT species, id FROM detections ORDER BY timestamp DESC LIMIT 1")
+    c.execute("SELECT species, rowid FROM detections ORDER BY timestamp DESC LIMIT 1")
     last = c.fetchone()
     latest_species = last[0] if last else None
     latest_id = last[1] if last else None
@@ -908,7 +908,7 @@ def api_detections_by_date():
     try:
         conn = sqlite3.connect(DB_FILE)
         c = conn.cursor()
-        c.execute("SELECT id, timestamp, species, confidence FROM detections WHERE timestamp LIKE ? ORDER BY timestamp DESC", (f"{date_str}%",))
+        c.execute("SELECT rowid, timestamp, species, confidence FROM detections WHERE timestamp LIKE ? ORDER BY timestamp DESC", (f"{date_str}%",))
         rows = c.fetchall()
         conn.close()
         entries = [{"id": r[0], "timestamp": r[1], "species": r[2], "confidence": r[3]} for r in rows]
@@ -922,7 +922,7 @@ def api_detections_delete():
     try:
         conn = sqlite3.connect(DB_FILE)
         c = conn.cursor()
-        c.execute("DELETE FROM detections WHERE id = ?", (data['id'],))
+        c.execute("DELETE FROM detections WHERE rowid = ?", (data['id'],))
         conn.commit()
         conn.close()
         return jsonify({"success": True, "msg": "Eintrag gelöscht."})

@@ -179,8 +179,9 @@
         }
 
         let previousLatestSpecies = null;
+        let previousLatestId = null;
 
-        function updateRadar(topDetections, latestSpecies) {
+        function updateRadar(topDetections, latestSpecies, latestId) {
             const container = document.getElementById('radar-container');
             const nodesContainer = document.getElementById('radar-nodes');
             const svg = document.getElementById('radar-lines');
@@ -207,8 +208,9 @@
             const numNodes = topDetections.length;
 
             let isNewLatest = false;
-            if (latestSpecies !== previousLatestSpecies) {
+            if (latestId !== previousLatestId) {
                 isNewLatest = true;
+                previousLatestId = latestId;
                 previousLatestSpecies = latestSpecies;
             }
             
@@ -290,7 +292,7 @@
             fetch('/api/top_species')
                 .then(r => r.json())
                 .then(data => {
-                    updateRadar(data.top, data.latest);
+                    updateRadar(data.top, data.latest, data.latest_id);
                     if (data.unique_species_count !== undefined) {
                         document.getElementById('radar-unique-species').textContent = `Arten heute: ${data.unique_species_count}`;
                     }

@@ -104,7 +104,7 @@ BIRD_TRANSLATIONS = {
     "Gray Heron": "Graureiher", "Grey Heron": "Graureiher", "Great Egret": "Silberreiher",
     "White Stork": "Weißstorch", "Black Stork": "Schwarzstorch",
     "Mute Swan": "Höckerschwan", "Greylag Goose": "Graugans", "Graylag Goose": "Graugans", "Canada Goose": "Kanadagans",
-    "Mallard": "Stockente", "Eurasian Teal": "Krickente", "Tufted Duck": "Reiherente",
+    "Mallard": "Stockente", "Eurasian Teal": "Krickente", "Tufted Duck": "Reiherente", "Gadwall": "Schnatterente",
     "Great Crested Grebe": "Haubentaucher", "Little Grebe": "Zwergtaucher", "Great Cormorant": "Kormoran",
     "Water Rail": "Wasserralle", "Common Moorhen": "Teichhuhn", "Eurasian Coot": "Blässhuhn",
     "Black-headed Gull": "Lachmöwe", "Common Kingfisher": "Eisvogel",
@@ -737,7 +737,8 @@ def yearly_page():
     return render_template('yearly.html', 
         chart_url=chart_url, selected_year=year, total_birds_year=total,
         prev_year=year-1, next_year=year+1,
-        is_current_year=(year == today.year), current_year=today.year
+        is_current_year=(year == today.year), current_year=today.year,
+        unique_species_year=len(rows)
     )
 
 @app.route('/manual_entry')
@@ -883,15 +884,16 @@ def api_top_species():
         top_data.append({"species": r[0], "count": r[1], "snr": float(snr_val)})
 
     
-    c.execute("SELECT species FROM detections ORDER BY timestamp DESC LIMIT 1")
+    c.execute("SELECT species, id FROM detections ORDER BY timestamp DESC LIMIT 1")
     last = c.fetchone()
     latest_species = last[0] if last else None
+    latest_id = last[1] if last else None
     
     c.execute("SELECT COUNT(DISTINCT species) FROM detections WHERE date(timestamp) = date('now', 'localtime')")
     unique_count = c.fetchone()[0]
     
     conn.close()
-    return jsonify({"top": top_data, "latest": latest_species, "unique_species_count": unique_count})
+    return jsonify({"top": top_data, "latest": latest_species, "latest_id": latest_id, "unique_species_count": unique_count})
 
 # --- DATENBANK MANAGEMENT ROUTEN ---
 @app.route('/api/detections/by_date')

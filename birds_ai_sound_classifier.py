@@ -129,7 +129,7 @@ print("OK: BirdNET Analyzer bereit.")
 def update_log(msg):
     ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     formatted = f"[{ts}] {msg}"
-    print(formatted)
+    # print(formatted) # Terminal-Ausgabe deaktiviert für Dauerbetrieb
     log_messages.appendleft(formatted)
 
 def load_settings():
@@ -299,7 +299,7 @@ class AudioMonitor:
                         eng_spec = det['common_name']
                         conf = float(det['confidence'])
                         spec_de = BIRD_TRANSLATIONS.get(eng_spec, eng_spec)
-                        print(f"[KI] {spec_de}: {conf:.0%}")
+                        # print(f"[KI] {spec_de}: {conf:.0%}") # Terminal-Ausgabe deaktiviert
                     
                     best = recording.detections[0] # höchste Konfidenz
                     eng_species = best['common_name']
@@ -312,7 +312,7 @@ class AudioMonitor:
                         update_log(f"Erkannt: {species} ({confidence:.0%}) | SNR: {calculated_snr:.1f}dB")
                         save_detection(species, confidence, calculated_snr)
                 else:
-                    print("[KI] Nichts erkannt.")
+                    pass # print("[KI] Nichts erkannt.") # Terminal-Ausgabe deaktiviert
                 
                 self.audio_queue.task_done()
 
@@ -757,6 +757,7 @@ def api_save_settings():
     save_setting("gps_lon", data.get("gps_lon", 10.451526))
     save_setting("radar_zoom", data.get("radar_zoom", 1.0))
     save_setting("radar_max_birds", data.get("radar_max_birds", 10))
+    save_setting("radar_time_range", data.get("radar_time_range", 24))
     save_setting("radar_snr_max", data.get("radar_snr_max", 20.0))
     save_setting("radar_snr_min", data.get("radar_snr_min", 5.0))
     if "mic_index" in data:
@@ -850,6 +851,7 @@ def api_control_dbbackup():
 def api_top_species():
     s = load_settings()
     max_birds = int(s.get("radar_max_birds", 10))
+    radar_time_range = int(s.get("radar_time_range", 24))
     
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
@@ -858,6 +860,7 @@ def api_top_species():
                (SELECT snr FROM detections d2 WHERE d2.species = d1.species ORDER BY timestamp DESC LIMIT 1) as snr
         FROM detections d1
         WHERE date(timestamp) = date('now', 'localtime')
+          AND timestamp >= datetime('now', '-{radar_time_range} hours', 'localtime')
         GROUP BY species
         ORDER BY count DESC
         LIMIT {max_birds}
@@ -889,7 +892,7 @@ def api_top_species():
     latest_species = last[0] if last else None
     latest_id = last[1] if last else None
     
-    c.execute("SELECT COUNT(DISTINCT species) FROM detections WHERE date(timestamp) = date('now', 'localtime')")
+    c.execute(f"SELECT COUNT(DISTINCT species) FROM detections WHERE date(timestamp) = date('now', 'localtime') AND timestamp >= datetime('now', '-{radar_time_range} hours', 'localtime')")
     unique_count = c.fetchone()[0]
     
     conn.close()

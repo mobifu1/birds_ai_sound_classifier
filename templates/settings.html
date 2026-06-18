@@ -112,6 +112,11 @@
         </div>
 
         <div class="row">
+            <label>Radar Zeitrahmen (Stunden):<br><small>Zeige Vögel der letzten X Stunden auf dem Radar (1-24h).</small></label>
+            <input type="number" id="radar_time_range" value="{{ s.get('radar_time_range', 24) }}" step="1" min="1" max="24">
+        </div>
+
+        <div class="row">
             <label>Radar Max SNR (dB):<br><small>Ab welchem SNR soll ein Vogel am nächsten zur Mitte angezeigt werden?</small></label>
             <input type="number" id="radar_snr_max" value="{{ s.get('radar_snr_max', 20.0) }}" step="0.5" min="0">
         </div>
@@ -211,6 +216,7 @@
                 gps_lon: parseFloat(document.getElementById('gps_lon').value),
                 radar_zoom: parseFloat(document.getElementById('radar_zoom').value),
                 radar_max_birds: parseInt(document.getElementById('radar_max_birds').value),
+                radar_time_range: parseInt(document.getElementById('radar_time_range').value),
                 radar_snr_max: parseFloat(document.getElementById('radar_snr_max').value),
                 radar_snr_min: parseFloat(document.getElementById('radar_snr_min').value),
                 mic_index: parseInt(document.getElementById('mic_index').value)

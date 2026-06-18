@@ -1,5 +1,6 @@
 import os
 import time
+import contextlib
 import threading
 import sqlite3
 import datetime
@@ -291,7 +292,8 @@ class AudioMonitor:
                     date=datetime.datetime.now(),
                     min_conf=MIN_CONFIDENCE
                 )
-                recording.analyze()
+                with open(os.devnull, 'w') as f, contextlib.redirect_stdout(f):
+                    recording.analyze()
                 
                 # Ergebnisse verarbeiten
                 if recording.detections:

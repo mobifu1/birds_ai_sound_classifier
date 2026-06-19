@@ -674,6 +674,84 @@ def weekly_page():
         table_content=generate_weekly_heatmap_html()
     )
 
+def create_species_polar_chart(species, hourly_counts):
+    plt.figure(figsize=(8, 8), facecolor='#1e1e1e')
+    ax = plt.subplot(111, polar=True)
+    ax.set_facecolor('#1e1e1e')
+    
+    # 24 hours
+    theta = np.linspace(0.0, 2 * np.pi, 24, endpoint=False)
+    
+    # 0 degrees at top (midnight), going clockwise
+    ax.set_theta_zero_location("N")
+    ax.set_theta_direction(-1)
+    
+    ax.set_xticks(theta)
+    ax.set_xticklabels([f"{i:02d}:00" for i in range(24)], color='white')
+    ax.tick_params(colors='white')
+    for spine in ax.spines.values():
+        spine.set_color('#444')
+    
+    bars = ax.bar(theta, hourly_counts, width=2*np.pi/24, bottom=0.0, color='#4CAF50', alpha=0.7, edgecolor='white')
+    
+    plt.title(f"Aktivität über 24h: {species}", color='white', y=1.08)
+    plt.grid(color='#444', linestyle='--', linewidth=0.5, alpha=0.5)
+    plt.tight_layout()
+    
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png', bbox_inches='tight')
+    buf.seek(0)
+    img_base64 = base64.b64encode(buf.read()).decode('utf-8')
+    plt.close()
+    return f"data:image/png;base64,{img_base64}"
+
+@app.route('/species')
+def species_page():
+    species_set = set(get_bird_dictionary().values())
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    try:
+        c.execute("SELECT DISTINCT species FROM detections")
+        for row in c.fetchall():
+            if row[0] != 'IGNORED_LOW_CONFIDENCE':
+                species_set.add(row[0])
+    except:
+        pass
+        
+    all_species = sorted(list(species_set))
+    selected_species = request.args.get('species', '')
+    
+    chart_url = None
+    total_count = 0
+    if selected_species:
+        c.execute("SELECT strftime('%H', timestamp) as hour, COUNT(*) FROM detections WHERE species = ? GROUP BY hour", (selected_species,))
+        rows = c.fetchall()
+        
+        c.execute("SELECT COUNT(*) FROM detections WHERE species = ?", (selected_species,))
+        total_row = c.fetchone()
+        total_count = total_row[0] if total_row else 0
+        
+        if total_count > 0:
+            hourly_counts = [0] * 24
+            for r in rows:
+                if r[0] is not None:
+                    try:
+                        h = int(r[0])
+                        if 0 <= h < 24:
+                            hourly_counts[h] = r[1]
+                    except:
+                        pass
+            chart_url = create_species_polar_chart(selected_species, hourly_counts)
+            
+    conn.close()
+    
+    return render_template('species.html', 
+        all_species=all_species, 
+        selected_species=selected_species,
+        chart_url=chart_url,
+        total_count=total_count
+    )
+
 @app.route('/yearly')
 def yearly_page():
     today = datetime.date.today()

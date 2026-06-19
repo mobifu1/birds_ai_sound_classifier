@@ -87,9 +87,10 @@
 
         <div class="section">
             <h2>Erkennungs-Einstellungen</h2>
-            <label>Mindest-Konfidenz (Threshold %):<br><small>Ab wie viel Prozent Sicherheit soll ein Vogel gespeichert werden?</small></label>
-            <input type="number" id="threshold" value="{{ s.get('threshold', 30) }}" min="0" max="100">
-        </div>
+            <div class="row">
+                <label>Mindest-Konfidenz (Threshold %):<br><small>Ab wie viel Prozent Sicherheit soll ein Vogel gespeichert werden?</small></label>
+                <input type="number" id="threshold" value="{{ s.get('threshold', 30) }}" min="0" max="100">
+            </div>
 
         <div class="row">
             <label>GPS Breitengrad (Latitude):<br><small>Relevant für lokale Vogelarten-Filterung durch BirdNET</small></label>
@@ -125,6 +126,16 @@
             <label>Radar Min SNR (dB):<br><small>Ab welchem SNR soll ein Vogel ganz am Rand angezeigt werden?</small></label>
             <input type="number" id="radar_snr_min" value="{{ s.get('radar_snr_min', 5.0) }}" step="0.5" min="0">
         </div>
+        </div>
+
+        <div class="section">
+            <h2>Vogelarten Wörterbuch (Dictionary)</h2>
+            <p style="font-size: 0.9rem; color: #ccc;">Ordnet englischen Begriffen einen Namen für die Anzeige und für die Icon-Suche zu. Das gesuchte Icon muss exakt wie die Übersetzung heißen (z.B. <code>Amsel.png</code>). Groß-/Kleinschreibung wird ignoriert.</p>
+            <div id="dictionary-container" style="display: flex; flex-direction: column; gap: 10px;">
+                <!-- Rows will be injected here via Javascript -->
+            </div>
+            <button type="button" class="btn btn-blue" onclick="addDictionaryRow('', '')" style="margin-top: 15px; width: auto;">+ Neuer Eintrag</button>
+            <button type="button" class="btn btn-orange" onclick="applyDictionary()" style="margin-top: 15px; margin-left: 10px; width: auto;">Wörterbuch auf DB anwenden</button>
         </div>
 
         <button type="button" class="btn" style="width: 200px; display: block; margin: 30px auto;" onclick="saveSettings()">Speichern</button>
@@ -209,7 +220,70 @@
             }
         }
 
+        const initialBirdDictionary = {{ s.get('bird_dictionary', {}) | tojson }};
+        const dictContainer = document.getElementById('dictionary-container');
+
+        function addDictionaryRow(engKey, transValue) {
+            const row = document.createElement('div');
+            row.className = 'dict-row';
+            row.style.display = 'flex';
+            row.style.gap = '10px';
+            
+            const inputEng = document.createElement('input');
+            inputEng.type = 'text';
+            inputEng.placeholder = 'Englischer Begriff (z.B. Eurasian Blackbird)';
+            inputEng.value = engKey;
+            inputEng.className = 'dict-key';
+            inputEng.style.flex = '1';
+
+            const inputTrans = document.createElement('input');
+            inputTrans.type = 'text';
+            inputTrans.placeholder = 'Übersetzung (z.B. Amsel)';
+            inputTrans.value = transValue;
+            inputTrans.className = 'dict-val';
+            inputTrans.style.flex = '1';
+
+            const delBtn = document.createElement('button');
+            delBtn.innerText = 'X';
+            delBtn.className = 'btn btn-red';
+            delBtn.style.width = '40px';
+            delBtn.style.padding = '10px 0';
+            delBtn.style.margin = '0';
+            delBtn.onclick = () => row.remove();
+
+            row.appendChild(inputEng);
+            row.appendChild(inputTrans);
+            row.appendChild(delBtn);
+            dictContainer.appendChild(row);
+        }
+
+        // Initialize rows
+        for (const [key, val] of Object.entries(initialBirdDictionary)) {
+            addDictionaryRow(key, val);
+        }
+
+        function applyDictionary() {
+            if (confirm("Möchtest du das aktuelle Wörterbuch wirklich auf alle vorhandenen englischen Begriffe in der Datenbank anwenden?")) {
+                fetch('/api/control/apply_dictionary', { method: 'POST' })
+                    .then(r => r.json())
+                    .then(d => {
+                        if (d.error) alert("Fehler: " + d.error);
+                        else alert(d.msg);
+                    })
+                    .catch(e => alert("Fehler bei der Anfrage: " + e));
+            }
+        }
+
         function saveSettings() {
+            const birdDict = {};
+            document.querySelectorAll('.dict-row').forEach(row => {
+                const key = row.querySelector('.dict-key').value.trim();
+                const val = row.querySelector('.dict-val').value.trim();
+                if (key) {
+                    birdDict[key] = val;
+                }
+            });
+
             const data = {
                 threshold: parseInt(document.getElementById('threshold').value),
                 gps_lat: parseFloat(document.getElementById('gps_lat').value),
@@ -219,7 +293,8 @@
                 radar_time_range: parseInt(document.getElementById('radar_time_range').value),
                 radar_snr_max: parseFloat(document.getElementById('radar_snr_max').value),
                 radar_snr_min: parseFloat(document.getElementById('radar_snr_min').value),
-                mic_index: parseInt(document.getElementById('mic_index').value)
+                mic_index: parseInt(document.getElementById('mic_index').value),
+                bird_dictionary: birdDict
             };
 
             fetch('/api/settings/save', {

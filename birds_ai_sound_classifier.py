@@ -52,7 +52,7 @@ log_messages = deque(maxlen=100)
 latest_audio_level = 0
 
 
-BIRD_TRANSLATIONS = {
+DEFAULT_BIRD_TRANSLATIONS = {
     # Meisen & Baumläufer
     "Great Tit": "Kohlmeise", "Eurasian Blue Tit": "Blaumeise", "Coal Tit": "Tannenmeise", 
     "Crested Tit": "Haubenmeise", "Marsh Tit": "Sumpfmeise", "Willow Tit": "Weidenmeise", 
@@ -122,6 +122,12 @@ BIRD_TRANSLATIONS = {
     # Würger
     "Red-backed Shrike": "Neuntöter"
 }
+
+def get_bird_dictionary():
+    settings = load_settings()
+    if "bird_dictionary" in settings:
+        return settings["bird_dictionary"]
+    return DEFAULT_BIRD_TRANSLATIONS
 
 # Analyzer laden (lädt Modelle beim ersten Start herunter falls nicht vorhanden)
 print("Initialisiere BirdNET Analyzer...")
@@ -282,6 +288,7 @@ class AudioMonitor:
 
                 # BirdNET Klassifizierung
                 settings = load_settings()
+                bird_dict = get_bird_dictionary()
                 lat = float(settings.get("gps_lat", 51.165691))
                 lon = float(settings.get("gps_lon", 10.451526))
                 
@@ -301,12 +308,12 @@ class AudioMonitor:
                     for det in recording.detections:
                         eng_spec = det['common_name']
                         conf = float(det['confidence'])
-                        spec_de = BIRD_TRANSLATIONS.get(eng_spec, eng_spec)
+                        spec_de = bird_dict.get(eng_spec, eng_spec)
                         # print(f"[KI] {spec_de}: {conf:.0%}") # Terminal-Ausgabe deaktiviert
                     
                     best = recording.detections[0] # höchste Konfidenz
                     eng_species = best['common_name']
-                    species = BIRD_TRANSLATIONS.get(eng_species, eng_species)
+                    species = bird_dict.get(eng_species, eng_species)
                     confidence = float(best['confidence'])
                     
                     min_conf = float(settings.get("threshold", MIN_CONFIDENCE * 100)) / 100.0
@@ -335,6 +342,7 @@ def index():
 @app.route('/settings')
 def settings_page():
     s = load_settings()
+    s["bird_dictionary"] = get_bird_dictionary()
     
     pa = pyaudio.PyAudio()
     mics = []
@@ -368,9 +376,11 @@ def create_chart(title, labels, values):
     bars = plt.bar(labels, values, color=bar_colors)
     plt.title(title, color='white')
     plt.xticks(rotation=45, ha='right')
-    plt.yscale('symlog')
+    plt.yscale('symlog', subs=[3, 6])
     plt.ylim(bottom=0)
     plt.yticks(color='white')
+    plt.grid(True, which='major', axis='y', color='#666', linestyle='-', alpha=0.5)
+    plt.grid(True, which='minor', axis='y', color='#444', linestyle='--', alpha=0.5)
     plt.tight_layout()
     
     buf = io.BytesIO()
@@ -491,36 +501,11 @@ def generate_daily_heatmap_html(date_str):
 
     def get_bird_icon(sp):
         if not sp: return 'bird_icons/Unbekannt.png'
-        
-        special_cases = {
-            "Rabenkrähe": "Rabe.png",
-            "Nebelkrähe": "Rabe.png",
-            "Aaskrähe": "Rabe.png",
-            "Dohle": "Rabe.png",
-            "Turmfalke": "Falke.png",
-            "Mäusebussard": "Falke.png",
-            "Rotmilan": "Milan.png",
-            "Graugans": "Gans.png",
-            "Kanadagans": "Gans.png",
-            "Stockente": "Ente.png",
-            "Waldkauz": "Uhu.png",
-            "Schleiereule": "Uhu.png",
-            "Rauchschwalbe": "Schwalbe.png",
-            "Mehlschwalbe": "Schwalbe.png",
-            "Mauersegler": "Mauersegler.png"
-        }
-        if sp in special_cases and special_cases[sp].lower() in icon_map:
-            return icon_map[special_cases[sp].lower()]
-            
-        clean = sp.replace('ä', 'ae').replace('ö', 'oe').replace('ü', 'ue')\
-                  .replace('ß', 'ss').replace('Ä', 'Ae').replace('Ö', 'Oe').replace('Ü', 'Ue')
-        clean = clean.split(' (')[0].lower()
-        
+        clean = sp.strip().lower()
         if clean in icon_map:
             return icon_map[clean]
         if clean + '.png' in icon_map:
             return icon_map[clean + '.png']
-            
         return 'bird_icons/Unbekannt.png'
 
     if not grouped.empty:
@@ -615,36 +600,11 @@ def generate_weekly_heatmap_html():
 
     def get_bird_icon(sp):
         if not sp: return 'bird_icons/Unbekannt.png'
-        
-        special_cases = {
-            "Rabenkrähe": "Rabe.png",
-            "Nebelkrähe": "Rabe.png",
-            "Aaskrähe": "Rabe.png",
-            "Dohle": "Rabe.png",
-            "Turmfalke": "Falke.png",
-            "Mäusebussard": "Falke.png",
-            "Rotmilan": "Milan.png",
-            "Graugans": "Gans.png",
-            "Kanadagans": "Gans.png",
-            "Stockente": "Ente.png",
-            "Waldkauz": "Uhu.png",
-            "Schleiereule": "Uhu.png",
-            "Rauchschwalbe": "Schwalbe.png",
-            "Mehlschwalbe": "Schwalbe.png",
-            "Mauersegler": "Mauersegler.png"
-        }
-        if sp in special_cases and special_cases[sp].lower() in icon_map:
-            return icon_map[special_cases[sp].lower()]
-            
-        clean = sp.replace('ä', 'ae').replace('ö', 'oe').replace('ü', 'ue')\
-                  .replace('ß', 'ss').replace('Ä', 'Ae').replace('Ö', 'Oe').replace('Ü', 'Ue')
-        clean = clean.split(' (')[0].lower()
-        
+        clean = sp.strip().lower()
         if clean in icon_map:
             return icon_map[clean]
         if clean + '.png' in icon_map:
             return icon_map[clean + '.png']
-            
         return 'bird_icons/Unbekannt.png'
 
     if not grouped.empty:
@@ -746,11 +706,31 @@ def yearly_page():
 
 @app.route('/manual_entry')
 def manual_entry_page():
-    return render_template('manual_entry.html', species_list=list(BIRD_TRANSLATIONS.values()))
+    species_set = set(get_bird_dictionary().values())
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    try:
+        c.execute("SELECT DISTINCT species FROM detections")
+        for row in c.fetchall():
+            species_set.add(row[0])
+    except:
+        pass
+    conn.close()
+    return render_template('manual_entry.html', species_list=sorted(list(species_set)))
 
 @app.route('/delete_entry')
 def delete_entry_page():
-    return render_template('delete_entry.html', species_list=list(BIRD_TRANSLATIONS.values()))
+    species_set = set(get_bird_dictionary().values())
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    try:
+        c.execute("SELECT DISTINCT species FROM detections")
+        for row in c.fetchall():
+            species_set.add(row[0])
+    except:
+        pass
+    conn.close()
+    return render_template('delete_entry.html', species_list=sorted(list(species_set)))
 
 @app.route('/api/settings/save', methods=['POST'])
 def api_save_settings():
@@ -765,7 +745,28 @@ def api_save_settings():
     save_setting("radar_snr_min", data.get("radar_snr_min", 5.0))
     if "mic_index" in data:
         save_setting("mic_index", data.get("mic_index", -1))
+    if "bird_dictionary" in data:
+        save_setting("bird_dictionary", data.get("bird_dictionary", {}))
     return jsonify({"msg": "Einstellungen gespeichert!"})
+
+@app.route('/api/control/apply_dictionary', methods=['POST'])
+def api_control_apply_dictionary():
+    bird_dict = get_bird_dictionary()
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    updated_count = 0
+    try:
+        for eng, trans in bird_dict.items():
+            if eng != trans and trans.strip():
+                c.execute("UPDATE detections SET species = ? WHERE species = ?", (trans, eng))
+                updated_count += c.rowcount
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        conn.close()
+    return jsonify({"msg": f"Wörterbuch angewendet. {updated_count} Einträge wurden aktualisiert."})
 
 @app.route('/api/status')
 def api_status():

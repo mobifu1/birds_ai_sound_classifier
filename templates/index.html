@@ -133,41 +133,7 @@
         function getBirdIcon(species) {
             if (!species) return '/static/bird_icons/Unbekannt.png';
             
-            // Umlaut-Ersetzung und Säuberung
-            let clean = species.replace(/ä/g, 'ae')
-                               .replace(/ö/g, 'oe')
-                               .replace(/ü/g, 'ue')
-                               .replace(/ß/g, 'ss')
-                               .replace(/Ä/g, 'Ae')
-                               .replace(/Ö/g, 'Oe')
-                               .replace(/Ü/g, 'Ue');
-            
-            // Klammern entfernen z.B. "Gimpel (Dompfaff)" -> "Gimpel"
-            clean = clean.split(' (')[0];
-            
-            // Sonderfälle
-            const specialCases = {
-                "Rabenkrähe": "Rabe.png",
-                "Nebelkrähe": "Rabe.png",
-                "Aaskrähe": "Rabe.png",
-                "Dohle": "Rabe.png",
-                "Turmfalke": "Falke.png",
-                "Mäusebussard": "Falke.png",
-                "Rotmilan": "Milan.png",
-                "Graugans": "Gans.png",
-                "Kanadagans": "Gans.png",
-                "Stockente": "Ente.png",
-                "Waldkauz": "Uhu.png",
-                "Schleiereule": "Uhu.png",
-                "Rauchschwalbe": "Schwalbe.png",
-                "Mehlschwalbe": "Schwalbe.png",
-                "Mauersegler": "Mauersegler.png"
-            };
-            
-            if (specialCases[species]) {
-                return `/static/bird_icons/${specialCases[species]}`;
-            }
-            
+            let clean = species.trim();
             const knownIcons = {{ available_icons | tojson }};
             
             const match = knownIcons.find(icon => icon.toLowerCase() === (clean + '.png').toLowerCase());

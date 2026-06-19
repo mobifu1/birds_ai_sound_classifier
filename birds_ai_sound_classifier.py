@@ -899,8 +899,11 @@ def api_top_species():
     c.execute(f"SELECT COUNT(DISTINCT species) FROM detections WHERE date(timestamp) = date('now', 'localtime') AND timestamp >= datetime('now', '-{radar_time_range} hours', 'localtime')")
     unique_count = c.fetchone()[0]
     
+    c.execute("SELECT COUNT(*) FROM detections WHERE timestamp >= datetime('now', '-1 hours', 'localtime')")
+    last_hour_count = c.fetchone()[0]
+    
     conn.close()
-    return jsonify({"top": top_data, "latest": latest_species, "latest_id": latest_id, "unique_species_count": unique_count})
+    return jsonify({"top": top_data, "latest": latest_species, "latest_id": latest_id, "unique_species_count": unique_count, "last_hour_count": last_hour_count})
 
 # --- DATENBANK MANAGEMENT ROUTEN ---
 @app.route('/api/detections/by_date')

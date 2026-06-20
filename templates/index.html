@@ -155,15 +155,36 @@
         const archiveSpeciesStr = {{ s.get('archive_species', '') | tojson }};
         const archiveSpeciesList = archiveSpeciesStr.split(',').map(s => s.trim().toLowerCase()).filter(s => s.length > 0);
 
+        let globalAudioCtx = null;
+
+        function initAudio() {
+            if (!globalAudioCtx) {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                if (AudioContext) {
+                    globalAudioCtx = new AudioContext();
+                }
+            }
+            if (globalAudioCtx && globalAudioCtx.state === 'suspended') {
+                globalAudioCtx.resume();
+            }
+        }
+
+        // Initialize AudioContext on first user interaction to bypass browser autoplay blocks
+        document.addEventListener('click', initAudio, { once: true });
+        document.addEventListener('touchstart', initAudio, { once: true });
+
         function playAlarmSound() {
-            const AudioContext = window.AudioContext || window.webkitAudioContext;
-            if (!AudioContext) return;
-            const ctx = new AudioContext();
+            if (!globalAudioCtx) {
+                initAudio();
+            }
+            if (!globalAudioCtx) return;
             
-            if (ctx.state === 'suspended') {
-                ctx.resume();
+            // If still suspended (no user interaction yet), browser will likely block this.
+            if (globalAudioCtx.state === 'suspended') {
+                globalAudioCtx.resume();
             }
 
+            const ctx = globalAudioCtx;
             const osc = ctx.createOscillator();
             const gainNode = ctx.createGain();
             osc.type = 'sine';

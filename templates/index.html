@@ -150,6 +150,36 @@
 
         let previousLatestSpecies = null;
         let previousLatestId = null;
+        
+        const alarmActive = {{ s.get('alarm_active', False) | tojson }};
+        const archiveSpeciesStr = {{ s.get('archive_species', '') | tojson }};
+        const archiveSpeciesList = archiveSpeciesStr.split(',').map(s => s.trim().toLowerCase()).filter(s => s.length > 0);
+
+        function playAlarmSound() {
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            if (!AudioContext) return;
+            const ctx = new AudioContext();
+            
+            if (ctx.state === 'suspended') {
+                ctx.resume();
+            }
+
+            const osc = ctx.createOscillator();
+            const gainNode = ctx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(800, ctx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(1200, ctx.currentTime + 0.1);
+            
+            gainNode.gain.setValueAtTime(0, ctx.currentTime);
+            gainNode.gain.linearRampToValueAtTime(0.5, ctx.currentTime + 0.05);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5);
+            
+            osc.connect(gainNode);
+            gainNode.connect(ctx.destination);
+            
+            osc.start();
+            osc.stop(ctx.currentTime + 0.5);
+        }
 
         function updateRadar(topDetections, latestSpecies, latestId) {
             const container = document.getElementById('radar-container');
@@ -178,10 +208,20 @@
             const numNodes = topDetections.length;
 
             let isNewLatest = false;
-            if (latestId !== previousLatestId) {
+            if (previousLatestId === null) {
+                previousLatestId = latestId;
+                previousLatestSpecies = latestSpecies;
+            } else if (latestId !== previousLatestId) {
                 isNewLatest = true;
                 previousLatestId = latestId;
                 previousLatestSpecies = latestSpecies;
+                
+                if (alarmActive && latestSpecies) {
+                    const speciesLower = latestSpecies.toLowerCase();
+                    if (archiveSpeciesList.includes(speciesLower)) {
+                        playAlarmSound();
+                    }
+                }
             }
             
             topDetections.forEach((det, i) => {

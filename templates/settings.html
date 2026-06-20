@@ -134,6 +134,13 @@
                 <label>Audio Archivierung (Vogelarten):<br><small>Kommaseparierte Liste von Vogelarten. Wenn eine dieser Arten erkannt wird, wird die Audio-Datei umbenannt und im Ordner "archive" gespeichert.</small></label>
                 <input type="text" id="archive_species" value="{{ s.get('archive_species', '') }}" placeholder="z.B. Amsel, Rotkehlchen, Blaumeise">
             </div>
+
+            <div style="margin-bottom: 20px;">
+                <label style="display: flex; align-items: center; cursor: pointer;">
+                    <input type="checkbox" id="alarm_active" style="width: 20px; height: 20px; margin-right: 10px;" {% if s.get('alarm_active', False) %}checked{% endif %}>
+                    <span style="color: #ccc;"><strong>Alarm Sound:</strong> Spiele einen kurzen Ton ab, wenn eine Vogelart aus der Archivierungsliste aktuell erkannt wird.</span>
+                </label>
+            </div>
             <p style="font-size: 0.9rem; color: #ccc;">Ordnet englischen Begriffen einen Namen für die Anzeige und für die Icon-Suche zu. Das gesuchte Icon muss exakt wie die Übersetzung heißen (z.B. <code>Amsel.png</code>). Groß-/Kleinschreibung wird ignoriert.</p>
             <div id="dictionary-container" style="display: flex; flex-direction: column; gap: 10px;">
                 <!-- Rows will be injected here via Javascript -->
@@ -299,6 +306,7 @@
                 radar_snr_min: parseFloat(document.getElementById('radar_snr_min').value),
                 mic_index: parseInt(document.getElementById('mic_index').value),
                 archive_species: document.getElementById('archive_species').value,
+                alarm_active: document.getElementById('alarm_active').checked,
                 bird_dictionary: birdDict
             };
 

@@ -859,6 +859,8 @@ def api_save_settings():
         save_setting("mic_index", data.get("mic_index", -1))
     if "archive_species" in data:
         save_setting("archive_species", data.get("archive_species", ""))
+    if "alarm_active" in data:
+        save_setting("alarm_active", bool(data.get("alarm_active", False)))
     if "bird_dictionary" in data:
         save_setting("bird_dictionary", data.get("bird_dictionary", {}))
     return jsonify({"msg": "Einstellungen gespeichert!"})

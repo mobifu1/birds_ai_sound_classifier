@@ -321,6 +321,27 @@ class AudioMonitor:
                     if confidence >= min_conf:
                         update_log(f"Erkannt: {species} ({confidence:.0%}) | SNR: {calculated_snr:.1f}dB")
                         save_detection(species, confidence, calculated_snr)
+                        
+                        archive_species_str = settings.get("archive_species", "")
+                        if archive_species_str:
+                            archive_list = [s.strip().lower() for s in archive_species_str.split(',') if s.strip()]
+                            if species.lower() in archive_list:
+                                import random
+                                import shutil
+                                archive_dir = os.path.join(AUDIO_DIR, "archive")
+                                if not os.path.exists(archive_dir):
+                                    os.makedirs(archive_dir)
+                                
+                                safe_species = species.replace(" ", "_").replace("/", "_")
+                                rand_num = random.randint(100000, 999999)
+                                new_filename = f"{safe_species}_{rand_num}.wav"
+                                new_filepath = os.path.join(archive_dir, new_filename)
+                                
+                                try:
+                                    shutil.copy(TEMP_WAV, new_filepath)
+                                    update_log(f"Audio archiviert: {new_filename}")
+                                except Exception as e:
+                                    update_log(f"Fehler beim Archivieren: {e}")
                 else:
                     pass # print("[KI] Nichts erkannt.") # Terminal-Ausgabe deaktiviert
                 
@@ -376,8 +397,11 @@ def create_chart(title, labels, values):
     bars = plt.bar(labels, values, color=bar_colors)
     plt.title(title, color='white')
     plt.xticks(rotation=45, ha='right')
-    plt.yscale('symlog', subs=[3, 6])
-    plt.ylim(bottom=0)
+    plt.yscale('symlog', subs=list(range(1, 10)))
+    
+    max_val = max(values) if values else 10
+    plt.ylim(bottom=0, top=max(10, max_val * 1.1))
+    
     plt.yticks(color='white')
     plt.grid(True, which='major', axis='y', color='#666', linestyle='-', alpha=0.5)
     plt.grid(True, which='minor', axis='y', color='#444', linestyle='--', alpha=0.5)
@@ -769,14 +793,24 @@ def yearly_page():
     conn.close()
     
     total = sum([r[1] for r in rows])
-    chart_url = None
+    chart_urls = []
     if rows:
-        labels = [r[0] for r in rows]
-        values = [r[1] for r in rows]
-        chart_url = create_chart(f"Vögel Jahr {year_str}", labels, values)
+        if len(rows) >= 50:
+            half = len(rows) // 2
+            labels_most = [r[0] for r in rows[:half]]
+            values_most = [r[1] for r in rows[:half]]
+            labels_rare = [r[0] for r in rows[half:]]
+            values_rare = [r[1] for r in rows[half:]]
+            
+            chart_urls.append(create_chart(f"Vögel Jahr {year_str} (Häufig)", labels_most, values_most))
+            chart_urls.append(create_chart(f"Vögel Jahr {year_str} (Selten)", labels_rare, values_rare))
+        else:
+            labels = [r[0] for r in rows]
+            values = [r[1] for r in rows]
+            chart_urls.append(create_chart(f"Vögel Jahr {year_str}", labels, values))
         
     return render_template('yearly.html', 
-        chart_url=chart_url, selected_year=year, total_birds_year=total,
+        chart_urls=chart_urls, selected_year=year, total_birds_year=total,
         prev_year=year-1, next_year=year+1,
         is_current_year=(year == today.year), current_year=today.year,
         unique_species_year=len(rows)
@@ -823,6 +857,8 @@ def api_save_settings():
     save_setting("radar_snr_min", data.get("radar_snr_min", 5.0))
     if "mic_index" in data:
         save_setting("mic_index", data.get("mic_index", -1))
+    if "archive_species" in data:
+        save_setting("archive_species", data.get("archive_species", ""))
     if "bird_dictionary" in data:
         save_setting("bird_dictionary", data.get("bird_dictionary", {}))
     return jsonify({"msg": "Einstellungen gespeichert!"})

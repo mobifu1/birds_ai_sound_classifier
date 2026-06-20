@@ -70,11 +70,13 @@
             <span style="font-size: 0.7em; color: #aed581;">&#128038; Unterschiedliche Arten: {{ unique_species_year }}</span>
         </div>
 
-        {% if chart_url %}
-        <div style="text-align:center; margin-top: 20px;">
-            <img src="{{ chart_url }}" alt="Jahres-Chart"
-                style="max-width:100%; height:auto; border-radius:8px; border: 1px solid #333;">
-        </div>
+        {% if chart_urls %}
+            {% for curl in chart_urls %}
+            <div style="text-align:center; margin-top: 20px;">
+                <img src="{{ curl }}" alt="Jahres-Chart"
+                    style="max-width:100%; height:auto; border-radius:8px; border: 1px solid #333;">
+            </div>
+            {% endfor %}
         {% else %}
         <p style="color: #ff9800; font-weight:bold;">Für das Jahr {{ selected_year }} sind keine Daten vorhanden.</p>
         {% endif %}

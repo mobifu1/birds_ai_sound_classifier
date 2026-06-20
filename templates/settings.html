@@ -129,7 +129,11 @@
         </div>
 
         <div class="section">
-            <h2>Vogelarten Wörterbuch (Dictionary)</h2>
+            <h2>Vogelarten Wörterbuch (Dictionary) & Archivierung</h2>
+            <div style="margin-bottom: 20px;">
+                <label>Audio Archivierung (Vogelarten):<br><small>Kommaseparierte Liste von Vogelarten. Wenn eine dieser Arten erkannt wird, wird die Audio-Datei umbenannt und im Ordner "archive" gespeichert.</small></label>
+                <input type="text" id="archive_species" value="{{ s.get('archive_species', '') }}" placeholder="z.B. Amsel, Rotkehlchen, Blaumeise">
+            </div>
             <p style="font-size: 0.9rem; color: #ccc;">Ordnet englischen Begriffen einen Namen für die Anzeige und für die Icon-Suche zu. Das gesuchte Icon muss exakt wie die Übersetzung heißen (z.B. <code>Amsel.png</code>). Groß-/Kleinschreibung wird ignoriert.</p>
             <div id="dictionary-container" style="display: flex; flex-direction: column; gap: 10px;">
                 <!-- Rows will be injected here via Javascript -->
@@ -294,6 +298,7 @@
                 radar_snr_max: parseFloat(document.getElementById('radar_snr_max').value),
                 radar_snr_min: parseFloat(document.getElementById('radar_snr_min').value),
                 mic_index: parseInt(document.getElementById('mic_index').value),
+                archive_species: document.getElementById('archive_species').value,
                 bird_dictionary: birdDict
             };
 

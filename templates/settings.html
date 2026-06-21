@@ -132,7 +132,7 @@
             <h2>Vogelarten Wörterbuch (Dictionary) & Archivierung</h2>
             <div style="margin-bottom: 20px;">
                 <label>Audio Archivierung (Vogelarten):<br><small>Kommaseparierte Liste von Vogelarten. Wenn eine dieser Arten erkannt wird, wird die Audio-Datei umbenannt und im Ordner "archive" gespeichert.</small></label>
-                <input type="text" id="archive_species" value="{{ s.get('archive_species', '') }}" placeholder="z.B. Amsel, Rotkehlchen, Blaumeise">
+                <textarea id="archive_species" placeholder="z.B. Amsel, Rotkehlchen, Blaumeise" rows="3" style="width: 100%; padding: 10px; border: 1px solid #444; border-radius: 5px; background: #1a1a1a; color: #fff; box-sizing: border-box; resize: vertical; font-family: inherit;">{{ s.get('archive_species', '') }}</textarea>
             </div>
 
             <div style="margin-bottom: 20px;">

@@ -381,11 +381,11 @@ def settings_page():
         except Exception:
             pass
     pa.terminate()
-
     return render_template('settings.html', s=s, mics=mics)
 
 def create_chart(title, labels, values):
-    plt.figure(figsize=(10, 6), facecolor='#1e1e1e')
+    height = max(6, len(labels) * 0.4)
+    plt.figure(figsize=(10, height), facecolor='#1e1e1e')
     ax = plt.axes()
     ax.set_facecolor('#1e1e1e')
     ax.tick_params(colors='white')
@@ -394,21 +394,32 @@ def create_chart(title, labels, values):
     
     color_palette = ['#e6194b', '#3cb44b', '#ffe119', '#4363d8', '#f58231', '#911eb4', '#46f0f0', '#f032e6', '#bcf60c', '#fabebe', '#008080', '#e6beff', '#9a6324', '#fffac8', '#800000', '#aaffc3', '#808000', '#ffd8b1', '#000075', '#808080', '#ffffff', '#000000']
     bar_colors = [color_palette[i % len(color_palette)] for i in range(len(labels))]
-    bars = plt.bar(labels, values, color=bar_colors)
-    plt.title(title, color='white')
-    plt.xticks(rotation=45, ha='right')
-    plt.yscale('symlog', subs=list(range(1, 10)))
+    
+    labels_rev = list(reversed(labels))
+    values_rev = list(reversed(values))
+    bar_colors_rev = list(reversed(bar_colors))
+    
+    bars = plt.barh(labels_rev, values_rev, color=bar_colors_rev)
+    if title:
+        plt.title(title, color='white')
+    else:
+        plt.title('Anzahl', color='white', pad=20)
+        
+    plt.xscale('symlog', subs=list(range(1, 10)))
     
     max_val = max(values) if values else 10
-    plt.ylim(bottom=0, top=max(10, max_val * 1.1))
+    plt.xlim(left=0, right=max(10, max_val * 1.1))
     
-    plt.yticks(color='white')
-    plt.grid(True, which='major', axis='y', color='#666', linestyle='-', alpha=0.5)
-    plt.grid(True, which='minor', axis='y', color='#444', linestyle='--', alpha=0.5)
+    # Tick parameters for both top and bottom
+    ax.tick_params(axis='x', which='both', bottom=True, top=True, labelbottom=True, labeltop=True, colors='white')
+    ax.tick_params(axis='y', colors='white')
+    ax.set_xlabel('Anzahl', color='white')
+    plt.grid(True, which='major', axis='x', color='#666', linestyle='-', alpha=0.5)
+    plt.grid(True, which='minor', axis='x', color='#444', linestyle='--', alpha=0.5)
     plt.tight_layout()
     
     buf = io.BytesIO()
-    plt.savefig(buf, format='png')
+    plt.savefig(buf, format='png', facecolor='#1e1e1e')
     buf.seek(0)
     img_base64 = base64.b64encode(buf.read()).decode('utf-8')
     plt.close()
@@ -645,7 +656,7 @@ def generate_weekly_heatmap_html():
         pivot_pct = pivot_pct.sort_values('total_sort_idx', ascending=False)
         pivot_pct = pivot_pct.drop('total_sort_idx', axis=1)
 
-        html_table = '<div class="table-responsive" style="margin-top:30px;"><h2 style="color:#4CAF50;">Ganzjahres-Heatmap</h2><table class="weekly-table">'
+        html_table = '<div class="table-responsive" style="margin-top:30px;"><table class="weekly-table">'
         html_table += '<thead><tr><th style="text-align:left;">Vogelart</th>'
         for col in pivot_pct.columns:
             total_in_week = int(week_totals[col])
@@ -795,19 +806,9 @@ def yearly_page():
     total = sum([r[1] for r in rows])
     chart_urls = []
     if rows:
-        if len(rows) >= 50:
-            half = len(rows) // 2
-            labels_most = [r[0] for r in rows[:half]]
-            values_most = [r[1] for r in rows[:half]]
-            labels_rare = [r[0] for r in rows[half:]]
-            values_rare = [r[1] for r in rows[half:]]
-            
-            chart_urls.append(create_chart(f"Vögel Jahr {year_str} (Häufig)", labels_most, values_most))
-            chart_urls.append(create_chart(f"Vögel Jahr {year_str} (Selten)", labels_rare, values_rare))
-        else:
-            labels = [r[0] for r in rows]
-            values = [r[1] for r in rows]
-            chart_urls.append(create_chart(f"Vögel Jahr {year_str}", labels, values))
+        labels = [r[0] for r in rows]
+        values = [r[1] for r in rows]
+        chart_urls.append(create_chart("", labels, values))
         
     return render_template('yearly.html', 
         chart_urls=chart_urls, selected_year=year, total_birds_year=total,

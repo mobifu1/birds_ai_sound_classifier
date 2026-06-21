@@ -495,7 +495,9 @@ def daily_page():
     first_bird = first[0] if first else None
     first_bird_time = first[1].split(' ')[1][:5] if first else None
 
+    s = load_settings()
     return render_template('daily.html', 
+        s=s,
         selected_date_str=date_str, total_birds_day=total, 
         first_bird=first_bird, first_bird_time=first_bird_time,
         prev_date=prev_date, next_date=next_date,

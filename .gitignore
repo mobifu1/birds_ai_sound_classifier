@@ -7,3 +7,6 @@ backup_db/
 *.db
 debug_log.txt
 *.wav
+
+*.db-shm
+*.db-wal

@@ -115,6 +115,7 @@
             <div class="card" style="background: #2c2c2c; padding: 20px; border-radius: 10px; flex: 1 1 100%; box-shadow: 0 4px 6px rgba(0,0,0,0.3); min-height: 610px; position: relative;">
 
                 <div id="radar-container" style="position: relative; width: 100%; height: 570px; margin-top: 0px; overflow: visible;">
+                    <img id="night-icon" src="{{ url_for('static', filename='bird_icons/Nacht.png') }}" style="position: absolute; top: 10px; left: 10px; width: 48px; height: 48px; z-index: 20; display: none;" alt="Nachtmodus">
                     <svg id="radar-lines" style="position: absolute; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none;"></svg>
                     
                     <div id="radar-center" class="radar-center-glow" style="position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 70px; height: 70px; background: #1b5e20; border: 3px solid #4CAF50; border-radius: 50%; display: flex; align-items: center; justify-content: center; z-index: 10; box-shadow: 0 0 20px rgba(76, 175, 80, 0.6);">
@@ -134,6 +135,7 @@
         </div>
     </div>
 
+    <script src="{{ url_for('static', filename='suncalc.js') }}"></script>
     <script>
         function getBirdIcon(species) {
             if (!species) return '/static/bird_icons/Unbekannt.png';
@@ -350,6 +352,29 @@
         // UI Daten alle 3 Sekunden aktualisieren
         setInterval(updateData, 3000);
         updateData();
+
+        function updateNightIcon() {
+            const lat = {{ s.get('gps_lat', 51.1) }};
+            const lon = {{ s.get('gps_lon', 10.45) }};
+            const now = new Date();
+            const times = SunCalc.getTimes(now, lat, lon);
+            
+            const sunsetTime = times.sunset.getTime() + (30 * 60000); 
+            const sunriseTime = times.sunrise.getTime() - (30 * 60000); 
+            
+            let isNight = false;
+            if (now.getTime() >= sunsetTime || now.getTime() <= sunriseTime) {
+                isNight = true;
+            }
+            
+            const icon = document.getElementById('night-icon');
+            if (icon) {
+                icon.style.display = isNight ? 'block' : 'none';
+            }
+        }
+
+        setInterval(updateNightIcon, 60000);
+        updateNightIcon();
     </script>
 </body>
 </html>

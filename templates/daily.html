@@ -193,6 +193,45 @@
             {{ version }}
         </div>
     </div>
+    
+    <script src="{{ url_for('static', filename='suncalc.js') }}"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Get coordinates from settings, fallback to default
+            const lat = {{ s.get('gps_lat', 51.1) }};
+            const lon = {{ s.get('gps_lon', 10.45) }};
+            
+            // Selected date with midday time to prevent timezone shift issues
+            const selectedDate = new Date("{{ selected_date_str }}T12:00:00");
+            
+            // Get sunrise/sunset for that day
+            const times = SunCalc.getTimes(selectedDate, lat, lon);
+            
+            // Convert to decimal hours for easy comparison
+            const sunrise = times.sunrise.getHours() + times.sunrise.getMinutes() / 60;
+            const sunset = times.sunset.getHours() + times.sunset.getMinutes() / 60;
+
+            const headers = document.querySelectorAll('.weekly-table th');
+            headers.forEach(th => {
+                const match = th.innerHTML.match(/^(\d{2})h/);
+                if (match) {
+                    const hour = parseInt(match[1], 10);
+                    // Check if hour is between sunrise and sunset
+                    if (hour >= Math.floor(sunrise) && hour <= Math.floor(sunset)) {
+                        // Light yellow highlight
+                        th.style.backgroundColor = '#fff59d';
+                        th.style.color = '#000';
+                        th.style.borderBottom = '2px solid #fbc02d';
+                        
+                        const small = th.querySelector('small');
+                        if (small) {
+                            small.style.cssText = 'color: #444 !important; font-weight: bold;';
+                        }
+                    }
+                }
+            });
+        });
+    </script>
 </body>
 
 </html>

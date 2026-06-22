@@ -556,8 +556,9 @@ def generate_daily_heatmap_html(date_str):
         # Avoid division by zero
         pivot_pct = pivot_counts.div(hour_totals.replace(0, 1), axis=1).mul(100).fillna(0)
         
+        num_species = len(pivot_counts.index)
         html_table = '<div class="table-responsive" style="margin-top:20px;"><table class="weekly-table">'
-        html_table += '<thead><tr><th style="text-align:left;">Vogelart</th>'
+        html_table += f'<thead><tr><th style="text-align:left;">Vogelarten ({num_species})</th>'
         for col in pivot_pct.columns:
             total_in_hour = int(hour_totals[col])
             # Kürzeres Format für die Uhrzeit z.B. nur '14' statt '14:00' um Platz zu sparen, aber '14:00' ist auch ok
@@ -1055,9 +1056,26 @@ def api_top_species():
     
     c.execute("SELECT COUNT(*) FROM detections WHERE timestamp >= datetime('now', '-1 hours', 'localtime')")
     last_hour_count = c.fetchone()[0]
+    c.execute("""
+        SELECT species
+        FROM detections
+        GROUP BY species
+        HAVING date(MIN(timestamp)) = date('now', 'localtime')
+        ORDER BY MIN(timestamp) DESC
+        LIMIT 1
+    """)
+    new_record = c.fetchone()
+    new_record_species = new_record[0] if new_record else None
     
     conn.close()
-    return jsonify({"top": top_data, "latest": latest_species, "latest_id": latest_id, "unique_species_count": unique_count, "last_hour_count": last_hour_count})
+    return jsonify({
+        "top": top_data, 
+        "latest": latest_species, 
+        "latest_id": latest_id, 
+        "unique_species_count": unique_count, 
+        "last_hour_count": last_hour_count,
+        "new_record_species": new_record_species
+    })
 
 # --- DATENBANK MANAGEMENT ROUTEN ---
 @app.route('/api/detections/by_date')

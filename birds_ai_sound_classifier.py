@@ -907,6 +907,41 @@ def api_status():
         "today_detections": today_count
     })
 
+@app.route('/api/check_model_update')
+def check_model_update():
+    current_version = "V2.4"
+    try:
+        import urllib.request
+        import json
+        req = urllib.request.Request(
+            'https://api.github.com/repos/birdnet-team/BirdNET-Analyzer/releases/latest',
+            headers={'User-Agent': 'Mozilla/5.0'}
+        )
+        with urllib.request.urlopen(req, timeout=5) as response:
+            data = json.loads(response.read().decode())
+            latest_version = data.get('tag_name', '')
+            html_url = data.get('html_url', 'https://github.com/birdnet-team/BirdNET-Analyzer/releases')
+            
+            cur_norm = current_version.lower().replace('v', '').strip()
+            lat_norm = latest_version.lower().replace('v', '').strip()
+            
+            if lat_norm.startswith(cur_norm) and len(lat_norm) <= len(cur_norm) + 2:
+                is_newer = False
+            elif lat_norm != cur_norm:
+                is_newer = True
+            else:
+                is_newer = False
+                
+            return jsonify({
+                "success": True,
+                "current_version": current_version,
+                "latest_version": latest_version,
+                "is_newer": is_newer,
+                "download_url": html_url
+            })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)})
+
 @app.route('/api/audio_level')
 def api_audio_level():
     return jsonify({"level": latest_audio_level})

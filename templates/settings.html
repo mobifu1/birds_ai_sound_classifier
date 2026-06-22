@@ -60,6 +60,15 @@
         </div>
 
         <div class="section">
+            <h2>KI Modell</h2>
+            <div class="row">
+                <label>Aktuelles BirdNET Modell: <strong>V2.4</strong></label>
+                <button type="button" class="btn btn-blue" onclick="checkModelUpdate()" id="btn-check-update" style="width: auto; margin-top: 10px;">Auf neuere Version prüfen</button>
+                <div id="model-update-result" style="margin-top: 15px; display: none; padding: 10px; border-radius: 5px;"></div>
+            </div>
+        </div>
+
+        <div class="section">
             <h2>Hardware</h2>
             <div class="row">
                 <label>Mikrofon Auswahl:<br><small>Wird beim nächsten Start der Überwachung angewendet.</small></label>
@@ -283,6 +292,41 @@
                     })
                     .catch(e => alert("Fehler bei der Anfrage: " + e));
             }
+        }
+
+        function checkModelUpdate() {
+            const btn = document.getElementById('btn-check-update');
+            const resDiv = document.getElementById('model-update-result');
+            btn.disabled = true;
+            btn.innerText = "Prüfe...";
+            resDiv.style.display = 'none';
+
+            fetch('/api/check_model_update')
+                .then(r => r.json())
+                .then(data => {
+                    btn.disabled = false;
+                    btn.innerText = "Auf neuere Version prüfen";
+                    resDiv.style.display = 'block';
+                    if (!data.success) {
+                        resDiv.style.background = '#F44336';
+                        resDiv.innerHTML = "Fehler bei der Prüfung: " + data.error;
+                    } else {
+                        if (data.is_newer) {
+                            resDiv.style.background = '#f57c00';
+                            resDiv.innerHTML = `<strong>Neue Version verfügbar!</strong> (Aktuell: ${data.current_version}, Neu: ${data.latest_version})<br><br><a href="${data.download_url}" target="_blank" style="color: #fff; text-decoration: underline; font-weight: bold;">Hier klicken um zur Download-Seite zu gelangen</a><br><small style="margin-top: 5px; display: block;">Bitte lade die neuen Modell-Dateien (Labels.txt und .tflite) herunter und ersetze sie im "model" Ordner.</small>`;
+                        } else {
+                            resDiv.style.background = '#4CAF50';
+                            resDiv.innerHTML = `Dein Modell ist auf dem neuesten Stand! (Aktuell: ${data.current_version})`;
+                        }
+                    }
+                })
+                .catch(e => {
+                    btn.disabled = false;
+                    btn.innerText = "Auf neuere Version prüfen";
+                    resDiv.style.display = 'block';
+                    resDiv.style.background = '#F44336';
+                    resDiv.innerHTML = "Netzwerkfehler: " + e;
+                });
         }
 
         function saveSettings() {

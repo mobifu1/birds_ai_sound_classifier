@@ -327,7 +327,7 @@ class AudioMonitor:
                         archive_species_str = settings.get("archive_species", "")
                         if archive_species_str:
                             archive_list = [s.strip().lower() for s in archive_species_str.split(',') if s.strip()]
-                            if species.lower() in archive_list:
+                            if species.lower() in archive_list or "*" in archive_list or "alle" in archive_list:
                                 import random
                                 import shutil
                                 archive_dir = os.path.join(AUDIO_DIR, "archive")
@@ -335,15 +335,25 @@ class AudioMonitor:
                                     os.makedirs(archive_dir)
                                 
                                 safe_species = species.replace(" ", "_").replace("/", "_")
-                                rand_num = random.randint(100000, 999999)
-                                new_filename = f"{safe_species}_{rand_num}.wav"
-                                new_filepath = os.path.join(archive_dir, new_filename)
+                                max_archive_files = int(settings.get("max_archive_files", 0))
+                                can_save = True
                                 
-                                try:
-                                    shutil.copy(TEMP_WAV, new_filepath)
-                                    update_log(f"Audio archiviert: {new_filename}")
-                                except Exception as e:
-                                    update_log(f"Fehler beim Archivieren: {e}")
+                                if max_archive_files > 0:
+                                    existing_files = [f for f in os.listdir(archive_dir) if f.startswith(safe_species + "_") and f.endswith(".wav")]
+                                    if len(existing_files) >= max_archive_files:
+                                        can_save = False
+                                        # Optionally log that limit is reached, but it might spam the log. We can stay quiet.
+                                
+                                if can_save:
+                                    rand_num = random.randint(100000, 999999)
+                                    new_filename = f"{safe_species}_{rand_num}.wav"
+                                    new_filepath = os.path.join(archive_dir, new_filename)
+                                    
+                                    try:
+                                        shutil.copy(TEMP_WAV, new_filepath)
+                                        update_log(f"Audio archiviert: {new_filename}")
+                                    except Exception as e:
+                                        update_log(f"Fehler beim Archivieren: {e}")
                 else:
                     pass # print("[KI] Nichts erkannt.") # Terminal-Ausgabe deaktiviert
                 
@@ -906,6 +916,8 @@ def api_save_settings():
         save_setting("mic_index", data.get("mic_index", -1))
     if "archive_species" in data:
         save_setting("archive_species", data.get("archive_species", ""))
+    if "max_archive_files" in data:
+        save_setting("max_archive_files", int(data.get("max_archive_files", 0)))
     if "alarm_active" in data:
         save_setting("alarm_active", bool(data.get("alarm_active", False)))
     if "bird_dictionary" in data:

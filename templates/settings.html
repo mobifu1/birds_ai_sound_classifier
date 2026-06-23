@@ -144,6 +144,11 @@
                 <textarea id="archive_species" placeholder="z.B. Amsel, Rotkehlchen, Blaumeise" rows="3" style="width: 100%; padding: 10px; border: 1px solid #444; border-radius: 5px; background: #1a1a1a; color: #fff; box-sizing: border-box; resize: vertical; font-family: inherit;">{{ s.get('archive_species', '') }}</textarea>
             </div>
 
+            <div class="row">
+                <label>Maximale Anzahl an Audio-Dateien pro Vogelart:<br><small>Limit für die Archivierung (0 = unbegrenzt)</small></label>
+                <input type="number" id="max_archive_files" value="{{ s.get('max_archive_files', 0) }}" min="0">
+            </div>
+
             <div style="margin-bottom: 20px;">
                 <label style="display: flex; align-items: center; cursor: pointer;">
                     <input type="checkbox" id="alarm_active" style="width: 20px; height: 20px; margin-right: 10px;" {% if s.get('alarm_active', False) %}checked{% endif %}>
@@ -350,6 +355,7 @@
                 radar_snr_min: parseFloat(document.getElementById('radar_snr_min').value),
                 mic_index: parseInt(document.getElementById('mic_index').value),
                 archive_species: document.getElementById('archive_species').value,
+                max_archive_files: parseInt(document.getElementById('max_archive_files').value) || 0,
                 alarm_active: document.getElementById('alarm_active').checked,
                 bird_dictionary: birdDict
             };

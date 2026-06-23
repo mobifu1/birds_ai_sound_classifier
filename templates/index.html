@@ -251,7 +251,7 @@
                 
                 if (alarmActive && latestSpecies) {
                     const speciesLower = latestSpecies.toLowerCase();
-                    if (archiveSpeciesList.includes(speciesLower)) {
+                    if (archiveSpeciesList.includes(speciesLower) || archiveSpeciesList.includes('*') || archiveSpeciesList.includes('alle')) {
                         playAlarmSound();
                     }
                 }

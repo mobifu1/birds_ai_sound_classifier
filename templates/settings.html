@@ -161,6 +161,7 @@
             </div>
             <button type="button" class="btn btn-blue" onclick="addDictionaryRow('', '')" style="margin-top: 15px; width: auto;">+ Neuer Eintrag</button>
             <button type="button" class="btn btn-orange" onclick="applyDictionary()" style="margin-top: 15px; margin-left: 10px; width: auto;">Wörterbuch auf DB anwenden</button>
+            <button type="button" class="btn btn-red" onclick="deleteSingleOccurrences()" style="margin-top: 15px; margin-left: 10px; width: auto;">Einzelne Vogelarten löschen</button>
         </div>
 
         <button type="button" class="btn" style="width: 200px; display: block; margin: 30px auto;" onclick="saveSettings()">Speichern</button>
@@ -290,6 +291,18 @@
         function applyDictionary() {
             if (confirm("Möchtest du das aktuelle Wörterbuch wirklich auf alle vorhandenen englischen Begriffe in der Datenbank anwenden?")) {
                 fetch('/api/control/apply_dictionary', { method: 'POST' })
+                    .then(r => r.json())
+                    .then(d => {
+                        if (d.error) alert("Fehler: " + d.error);
+                        else alert(d.msg);
+                    })
+                    .catch(e => alert("Fehler bei der Anfrage: " + e));
+            }
+        }
+
+        function deleteSingleOccurrences() {
+            if (confirm("Möchtest du wirklich alle Vogelarten löschen, die nur genau einmal in der Datenbank vorkommen?")) {
+                fetch('/api/control/delete_single_occurrences', { method: 'POST' })
                     .then(r => r.json())
                     .then(d => {
                         if (d.error) alert("Fehler: " + d.error);

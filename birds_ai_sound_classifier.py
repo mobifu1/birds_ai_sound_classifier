@@ -943,6 +943,29 @@ def api_control_apply_dictionary():
         conn.close()
     return jsonify({"msg": f"Wörterbuch angewendet. {updated_count} Einträge wurden aktualisiert."})
 
+@app.route('/api/control/delete_single_occurrences', methods=['POST'])
+def api_control_delete_single_occurrences():
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    deleted_count = 0
+    try:
+        c.execute("""
+            DELETE FROM detections 
+            WHERE species IN (
+                SELECT species FROM detections 
+                GROUP BY species 
+                HAVING COUNT(*) = 1
+            )
+        """)
+        deleted_count = c.rowcount
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        conn.close()
+    return jsonify({"msg": f"{deleted_count} einzelne Vogelarten wurden gelöscht."})
+
 @app.route('/api/status')
 def api_status():
     conn = sqlite3.connect(DB_FILE)

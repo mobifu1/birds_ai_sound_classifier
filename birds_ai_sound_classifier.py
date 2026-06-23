@@ -1029,6 +1029,12 @@ def api_audio_level():
 def api_latest_logs():
     return jsonify(list(log_messages))
 
+@app.route('/api/live_audio')
+def api_live_audio():
+    if os.path.exists(TEMP_WAV):
+        return send_file(TEMP_WAV, mimetype="audio/wav")
+    return abort(404)
+
 # --- CONTROL ROUTEN ---
 @app.route('/api/control/start', methods=['POST'])
 def api_control_start():

@@ -50,6 +50,14 @@
                         <div id="audio-meter" class="meter-bar"></div>
                     </div>
                 </div>
+
+                <div style="margin-top: 20px;">
+                    <label style="font-size: 0.9rem; color: #ccc;">Live Audio (letzte 3 Sek.):</label>
+                    <div style="display: flex; gap: 10px; align-items: center; margin-top: 5px;">
+                        <audio id="live-audio-player" controls style="height: 30px; flex: 1;"></audio>
+                        <button class="btn btn-blue" style="width: auto; padding: 5px 15px; font-size: 0.9rem; margin: 0;" onclick="playLiveAudio()">Laden & Play</button>
+                    </div>
+                </div>
             </div>
 
             <!-- Live Log -->
@@ -384,6 +392,12 @@
                 window.location.href = '/';
             })
             .catch(err => alert("Fehler beim Speichern: " + err));
+        }
+
+        function playLiveAudio() {
+            const player = document.getElementById('live-audio-player');
+            player.src = '/api/live_audio?t=' + new Date().getTime();
+            player.play();
         }
     </script>
 </body>

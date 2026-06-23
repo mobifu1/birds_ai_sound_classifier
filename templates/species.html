@@ -91,6 +91,59 @@
             {% else %}
             <p style="color: #ff9800; font-weight:bold;">Für {{ selected_species }} sind keine ausreichenden Daten zur Chart-Erstellung vorhanden.</p>
             {% endif %}
+
+            {% if wav_files %}
+            <div style="margin-top: 30px; background: #263238; padding: 15px; border-radius: 8px; border: 1px solid #37474f;">
+                <h3 style="margin-top: 0;">Archivierte Audioaufnahmen</h3>
+                <p style="color: #aaa; margin-bottom: 15px;">Klicken Sie auf eine Datei, um das Spectrogramm anzuzeigen und die Audio-Datei abzuspielen.</p>
+                
+                <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px; max-height: 200px; overflow-y: auto; padding: 5px;">
+                    {% for wav in wav_files %}
+                    <button class="wav-btn" onclick="loadSpectrogram('{{ wav }}')" style="padding: 8px 12px; background: #37474f; color: white; border: 1px solid #546e7a; border-radius: 4px; cursor: pointer; transition: background 0.2s;">
+                        &#128190; {{ wav }}
+                    </button>
+                    {% endfor %}
+                </div>
+                
+                <div id="spectrogram-container" style="display: none; text-align: center; margin-top: 20px;">
+                    <h4 id="spectrogram-title" style="color: #81d4fa; margin-bottom: 15px;"></h4>
+                    <div id="loading-text" style="color: #aaa; margin-bottom: 10px; font-style: italic;">Spectrogramm wird generiert (kann einige Sekunden dauern)...</div>
+                    <img id="spectrogram-img" src="" alt="Spectrogramm" style="max-width: 100%; border-radius: 8px; border: 1px solid #333; margin-bottom: 15px; display: none;" onload="document.getElementById('loading-text').style.display='none'; this.style.display='inline';">
+                    <br>
+                    <audio id="audio-player" controls style="width: 100%; max-width: 600px; margin-top: 10px;">
+                        <source id="audio-source" src="" type="audio/wav">
+                        Ihr Browser unterstützt das Audio-Element nicht.
+                    </audio>
+                </div>
+            </div>
+
+            <script>
+                function loadSpectrogram(filename) {
+                    var container = document.getElementById('spectrogram-container');
+                    var img = document.getElementById('spectrogram-img');
+                    var audio = document.getElementById('audio-player');
+                    var source = document.getElementById('audio-source');
+                    var title = document.getElementById('spectrogram-title');
+                    var loadingText = document.getElementById('loading-text');
+                    
+                    container.style.display = 'block';
+                    title.innerText = "Ausgewählt: " + filename;
+                    
+                    img.style.display = 'none';
+                    loadingText.style.display = 'block';
+                    img.src = "/api/archive/spectrogram/" + encodeURIComponent(filename);
+                    
+                    source.src = "/api/archive/audio/" + encodeURIComponent(filename);
+                    audio.load();
+                }
+            </script>
+            <style>
+                .wav-btn:hover {
+                    background: #546e7a !important;
+                }
+            </style>
+            {% endif %}
+
         {% else %}
             <p style="text-align: center; color: #aaa; margin-top: 40px; font-size: 1.1em;">
                 Bitte wählen Sie oben eine Vogelart aus, um deren typische Aktivitätszeiten zu sehen.

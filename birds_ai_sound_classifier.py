@@ -19,8 +19,10 @@ import matplotlib.pyplot as plt
 import io
 import base64
 
-from flask import Flask, render_template, jsonify, request
+from flask import Flask, render_template, jsonify, request, send_file, abort
 from waitress import serve
+import librosa
+import librosa.display
 
 # BirdNET Imports
 import birdnetlib.analyzer
@@ -761,6 +763,7 @@ def species_page():
     
     chart_url = None
     total_count = 0
+    wav_files = []
     if selected_species:
         c.execute("SELECT strftime('%H', timestamp) as hour, COUNT(*) FROM detections WHERE species = ? GROUP BY hour", (selected_species,))
         rows = c.fetchall()
@@ -781,14 +784,54 @@ def species_page():
                         pass
             chart_url = create_species_polar_chart(selected_species, hourly_counts)
             
+        archive_path = os.path.join(AUDIO_DIR, "archive")
+        if os.path.exists(archive_path):
+            prefix = selected_species + "_"
+            wav_files = [f for f in os.listdir(archive_path) if f.startswith(prefix) and f.endswith('.wav')]
+            wav_files.sort(reverse=True) # newest first, assuming IDs might correlate with time or just standard sort
+            
     conn.close()
     
     return render_template('species.html', 
         all_species=all_species, 
         selected_species=selected_species,
         chart_url=chart_url,
-        total_count=total_count
+        total_count=total_count,
+        wav_files=wav_files
     )
+
+@app.route('/api/archive/audio/<filename>')
+def serve_archive_audio(filename):
+    archive_path = os.path.join(AUDIO_DIR, "archive")
+    file_path = os.path.join(archive_path, filename)
+    if os.path.exists(file_path):
+        return send_file(file_path)
+    abort(404)
+
+@app.route('/api/archive/spectrogram/<filename>')
+def serve_archive_spectrogram(filename):
+    archive_path = os.path.join(AUDIO_DIR, "archive")
+    file_path = os.path.join(archive_path, filename)
+    if not os.path.exists(file_path):
+        abort(404)
+    
+    try:
+        y, sr = librosa.load(file_path, sr=None)
+        fig, ax = plt.subplots(figsize=(8, 4))
+        S = librosa.feature.melspectrogram(y=y, sr=sr, n_mels=128, fmax=8000)
+        S_dB = librosa.power_to_db(S, ref=np.max)
+        img = librosa.display.specshow(S_dB, x_axis='time', y_axis='mel', sr=sr, fmax=8000, ax=ax)
+        ax.set_title(f"Spectrogram: {filename}")
+        fig.colorbar(img, ax=ax, format='%+2.0f dB')
+        
+        buf = io.BytesIO()
+        fig.savefig(buf, format='png', bbox_inches='tight')
+        buf.seek(0)
+        plt.close(fig)
+        return send_file(buf, mimetype='image/png')
+    except Exception as e:
+        print(f"Error generating spectrogram: {e}")
+        abort(500)
 
 @app.route('/yearly')
 def yearly_page():

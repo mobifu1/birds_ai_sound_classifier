@@ -828,9 +828,9 @@ def serve_archive_spectrogram(filename):
     try:
         y, sr = librosa.load(file_path, sr=None)
         fig, ax = plt.subplots(figsize=(8, 4))
-        S = librosa.feature.melspectrogram(y=y, sr=sr, n_mels=128, fmax=8000)
+        S = librosa.feature.melspectrogram(y=y, sr=sr, n_mels=128, fmax=20000)
         S_dB = librosa.power_to_db(S, ref=np.max)
-        img = librosa.display.specshow(S_dB, x_axis='time', y_axis='mel', sr=sr, fmax=8000, ax=ax)
+        img = librosa.display.specshow(S_dB, x_axis='time', y_axis='mel', sr=sr, fmax=20000, ax=ax)
         ax.set_title(f"Spectrogram: {filename}")
         fig.colorbar(img, ax=ax, format='%+2.0f dB')
         

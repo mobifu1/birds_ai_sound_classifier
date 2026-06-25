@@ -996,6 +996,10 @@ def api_save_settings():
         save_setting("max_archive_files", int(data.get("max_archive_files", 0)))
     if "alarm_active" in data:
         save_setting("alarm_active", bool(data.get("alarm_active", False)))
+    if "highpass_active" in data:
+        save_setting("highpass_active", bool(data.get("highpass_active", False)))
+    if "highpass_freq" in data:
+        save_setting("highpass_freq", int(data.get("highpass_freq", 1000)))
     if "bird_dictionary" in data:
         save_setting("bird_dictionary", data.get("bird_dictionary", {}))
     return jsonify({"msg": "Einstellungen gespeichert!"})

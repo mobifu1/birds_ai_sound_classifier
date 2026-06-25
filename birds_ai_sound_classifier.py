@@ -54,6 +54,12 @@ app = Flask(__name__)
 log_messages = deque(maxlen=100)
 latest_audio_level = 0
 
+WATERFALL_HEIGHT = 150
+MAX_FREQ = 20000
+freq_resolution = RATE / CHUNK
+max_bin = int(MAX_FREQ / freq_resolution)
+latest_waterfall_data = np.zeros((WATERFALL_HEIGHT, max_bin), dtype=np.float32)
+
 
 DEFAULT_BIRD_TRANSLATIONS = {
     # Meisen & Baumläufer
@@ -249,11 +255,36 @@ class AudioMonitor:
                         if hpf_active:
                             audio_chunk_hp, zi = signal.lfilter(b, a, audio_chunk, zi=zi)
                             chunk_amp = int(np.max(np.abs(audio_chunk_hp)))
+                            vis_audio = audio_chunk_hp.astype(np.float32)
                         else:
                             chunk_amp = int(np.max(np.abs(audio_chunk)))
+                            vis_audio = audio_chunk.astype(np.float32)
                         
                         global latest_audio_level
                         latest_audio_level = chunk_amp
+
+                        # Waterfall processing
+                        global latest_waterfall_data, max_bin
+                        window = np.hanning(len(vis_audio))
+                        vis_audio = vis_audio * window
+                        fft_data = np.fft.rfft(vis_audio)
+                        fft_mag = np.abs(fft_data)
+                        fft_mag = 20 * np.log10(fft_mag + 1e-6)
+                        fft_mag_cropped = fft_mag[:max_bin]
+                        
+                        nr_active = current_settings.get("nr_active", False)
+                        if nr_active:
+                            quality = current_settings.get("nr_quality", "Medium")
+                            perc = 50 if quality == "Low" else (90 if quality == "High" else 75)
+                            reduction = 10 if quality == "Low" else (30 if quality == "High" else 20)
+                            noise_floor = np.percentile(fft_mag_cropped, perc)
+                            fft_mag_cropped = np.where(fft_mag_cropped < noise_floor, fft_mag_cropped - reduction, fft_mag_cropped)
+                            
+                        min_db = -20
+                        max_db = 100
+                        fft_norm = np.clip((fft_mag_cropped - min_db) / (max_db - min_db), 0, 1)
+                        latest_waterfall_data = np.roll(latest_waterfall_data, 1, axis=0)
+                        latest_waterfall_data[0, :] = fft_norm
                     except:
                         pass
 
@@ -1156,6 +1187,29 @@ def check_model_update():
             })
     except Exception as e:
         return jsonify({"success": False, "error": str(e)})
+
+from flask import Response
+import matplotlib.cm as cm
+from PIL import Image
+
+def generate_waterfall_stream():
+    cmap = cm.get_cmap('viridis')
+    while True:
+        global latest_waterfall_data
+        data = latest_waterfall_data.copy()
+        mapped = cmap(data)
+        img_data = (mapped[:, :, :3] * 255).astype(np.uint8)
+        img = Image.fromarray(img_data, mode='RGB')
+        buf = io.BytesIO()
+        img.save(buf, format='JPEG', quality=80)
+        frame = buf.getvalue()
+        yield (b'--frame\r\n'
+               b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+        time.sleep(0.05)
+
+@app.route('/api/waterfall_feed')
+def waterfall_feed():
+    return Response(generate_waterfall_stream(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
 @app.route('/api/audio_level')
 def api_audio_level():

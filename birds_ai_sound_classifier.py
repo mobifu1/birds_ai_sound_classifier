@@ -325,36 +325,24 @@ class AudioMonitor:
                     except Exception as e:
                         print(f"Fehler bei Highpass Filter: {e}")
 
-                # Noise Reduction (Spectral Gating)
+                # Noise Reduction (using noisereduce)
                 if settings.get("nr_active", False):
                     try:
+                        import noisereduce as nr
                         quality = settings.get("nr_quality", "Medium")
                         if quality == "Low":
-                            perc = 50
-                            reduction_db = 10
+                            prop_decrease = 0.5
                         elif quality == "Medium":
-                            perc = 75
-                            reduction_db = 20
+                            prop_decrease = 0.8
                         elif quality == "High":
-                            perc = 90
-                            reduction_db = 30
+                            prop_decrease = 1.0
                         else:
-                            perc = 75
-                            reduction_db = 20
+                            prop_decrease = 0.8
                             
                         audio_data_nr = np.frombuffer(raw_data, dtype=np.int16).astype(np.float32)
                         
-                        # Apply spectral gate
-                        fft_data = np.fft.rfft(audio_data_nr)
-                        fft_mag = np.abs(fft_data)
-                        fft_phase = np.angle(fft_data)
-                        
-                        noise_floor = np.percentile(fft_mag, perc)
-                        reduction_factor = 10 ** (-reduction_db / 20.0)
-                        
-                        new_mag = np.where(fft_mag < noise_floor, fft_mag * reduction_factor, fft_mag)
-                        new_fft = new_mag * np.exp(1j * fft_phase)
-                        audio_data_nr = np.fft.irfft(new_fft)
+                        # Apply noisereduce
+                        audio_data_nr = nr.reduce_noise(y=audio_data_nr, sr=RATE, prop_decrease=prop_decrease)
                         
                         raw_data = np.clip(audio_data_nr, -32768, 32767).astype(np.int16).tobytes()
                     except Exception as e:

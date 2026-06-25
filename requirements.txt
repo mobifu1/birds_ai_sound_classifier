@@ -9,3 +9,4 @@ matplotlib
 numpy
 scipy
 pillow
+noisereduce

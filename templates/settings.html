@@ -52,6 +52,18 @@
                 </div>
 
                 <div style="margin-top: 20px;">
+                    <label style="font-size: 0.9rem; color: #ccc;">Audio High-Pass Filter:</label>
+                    <div style="display: flex; gap: 10px; align-items: center; margin-top: 5px;">
+                        <label style="display: flex; align-items: center; cursor: pointer; margin: 0; color: #ccc;">
+                            <input type="checkbox" id="highpass_active" style="width: 18px; height: 18px; margin-right: 8px;" {% if s.get('highpass_active', False) %}checked{% endif %}>
+                            Aktiv
+                        </label>
+                        <input type="number" id="highpass_freq" value="{{ s.get('highpass_freq', 1000) }}" min="10" max="20000" style="width: 100px; padding: 5px; background: #1a1a1a; color: #fff; border: 1px solid #444; border-radius: 4px;">
+                        <span style="color: #ccc; font-size: 0.9rem;">Hz</span>
+                    </div>
+                </div>
+
+                <div style="margin-top: 20px;">
                     <label style="font-size: 0.9rem; color: #ccc;">Live Audio (letzte 3 Sek.):</label>
                     <div style="display: flex; gap: 10px; align-items: center; margin-top: 5px;">
                         <audio id="live-audio-player" controls style="height: 30px; flex: 1;"></audio>
@@ -378,6 +390,8 @@
                 archive_species: document.getElementById('archive_species').value,
                 max_archive_files: parseInt(document.getElementById('max_archive_files').value) || 0,
                 alarm_active: document.getElementById('alarm_active').checked,
+                highpass_active: document.getElementById('highpass_active').checked,
+                highpass_freq: parseInt(document.getElementById('highpass_freq').value),
                 bird_dictionary: birdDict
             };
 

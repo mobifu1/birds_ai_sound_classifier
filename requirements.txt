@@ -7,3 +7,5 @@ resampy
 librosa
 matplotlib
 numpy
+scipy
+pillow

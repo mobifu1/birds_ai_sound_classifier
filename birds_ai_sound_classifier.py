@@ -13,6 +13,7 @@ from collections import deque
 import numpy as np
 import pandas as pd
 import queue
+from scipy import signal
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -263,6 +264,19 @@ class AudioMonitor:
                 except queue.Empty:
                     continue
                 
+                # Highpass filter
+                settings = load_settings()
+                if settings.get("highpass_active", False):
+                    try:
+                        cutoff = float(settings.get("highpass_freq", 1000))
+                        if 0 < cutoff < RATE / 2:
+                            audio_data_hp = np.frombuffer(raw_data, dtype=np.int16).astype(np.float32)
+                            b, a = signal.butter(4, cutoff / (0.5 * RATE), btype='high', analog=False)
+                            audio_data_hp = signal.filtfilt(b, a, audio_data_hp)
+                            raw_data = np.clip(audio_data_hp, -32768, 32767).astype(np.int16).tobytes()
+                    except Exception as e:
+                        print(f"Fehler bei Highpass Filter: {e}")
+
                 # Speichern in Temp-Datei
                 wf = wave.open(TEMP_WAV, 'wb')
                 wf.setnchannels(CHANNELS)

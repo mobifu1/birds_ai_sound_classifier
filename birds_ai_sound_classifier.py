@@ -508,14 +508,76 @@ def daily_page():
     first_bird_time = first[1].split(' ')[1][:5] if first else None
 
     s = load_settings()
+    daily_chart = create_daily_total_chart(date_str)
     return render_template('daily.html', 
         s=s,
         selected_date_str=date_str, total_birds_day=total, 
         first_bird=first_bird, first_bird_time=first_bird_time,
         prev_date=prev_date, next_date=next_date,
         is_today=(dt == today), today_str=today.strftime('%Y-%m-%d'),
-        table_content=generate_daily_heatmap_html(date_str)
+        table_content=generate_daily_heatmap_html(date_str),
+        daily_chart=daily_chart
     )
+
+def create_daily_total_chart(date_str):
+    query = f"""
+    SELECT 
+        strftime('%H', timestamp) as hour_sort,
+        COUNT(*) as counts
+    FROM detections
+    WHERE timestamp LIKE '{date_str}%'
+    GROUP BY hour_sort
+    ORDER BY hour_sort
+    """
+    conn = sqlite3.connect(DB_FILE, timeout=10)
+    try:
+        grouped = pd.read_sql_query(query, conn)
+    except:
+        grouped = pd.DataFrame()
+    finally:
+        conn.close()
+
+    plt.figure(figsize=(10, 3), facecolor='#1e1e1e')
+    ax = plt.axes()
+    ax.set_facecolor('#1e1e1e')
+    ax.tick_params(colors='white')
+    for spine in ax.spines.values():
+        spine.set_color('#444')
+    
+    hours = list(range(24))
+    hour_labels = [f"{h:02d}:00" for h in hours]
+    
+    counts = [0] * 24
+    if not grouped.empty:
+        for _, row in grouped.iterrows():
+            if pd.notna(row['hour_sort']):
+                try:
+                    h = int(row['hour_sort'])
+                    counts[h] = int(row['counts'])
+                except:
+                    pass
+
+    plt.plot(hours, counts, color='yellow', linewidth=2, marker='o', markersize=4)
+    plt.fill_between(hours, counts, color='yellow', alpha=0.1)
+    
+    plt.xticks(hours, hour_labels, rotation=45, ha='right', color='white')
+    
+    # Force integer labels on Y axis
+    from matplotlib.ticker import MaxNLocator
+    ax.yaxis.set_major_locator(MaxNLocator(integer=True))
+    
+    plt.ylim(bottom=0)
+    if max(counts) == 0:
+        plt.ylim(top=10)
+    plt.yticks(color='white')
+    plt.grid(color='#444', linestyle='--', linewidth=0.5, alpha=0.5)
+    plt.tight_layout()
+    
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png', bbox_inches='tight', transparent=True)
+    plt.close()
+    buf.seek(0)
+    return base64.b64encode(buf.read()).decode('utf-8')
 
 def generate_daily_heatmap_html(date_str):
     query = f"""

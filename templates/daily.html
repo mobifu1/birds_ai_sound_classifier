@@ -188,6 +188,13 @@
 
         {{ table_content|safe }}
 
+        {% if daily_chart %}
+        <div style="margin-top: 30px; text-align: center;">
+            <h2 style="text-align: left; margin-bottom: 15px;">📊 Verlauf aller Rufe</h2>
+            <img src="data:image/png;base64,{{ daily_chart }}" alt="Verlauf aller Rufe" style="width: 100%; aspect-ratio: 100 / 30; object-fit: contain;">
+        </div>
+        {% endif %}
+
         <br>
         <div class="footer">
             {{ version }}

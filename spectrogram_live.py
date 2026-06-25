@@ -68,7 +68,7 @@ class SpectrogramApp:
 
         # High-Pass Filter Frame
         hpf_frame = ttk.LabelFrame(control_frame, text="High-Pass Filter", padding=5)
-        hpf_frame.grid(row=0, column=3, padx=20, pady=5)
+        hpf_frame.grid(row=0, column=3, padx=10, pady=5)
 
         self.hpf_var = tk.BooleanVar(value=False)
         self.hpf_check = ttk.Checkbutton(hpf_frame, text="Active", variable=self.hpf_var)
@@ -78,6 +78,21 @@ class SpectrogramApp:
         self.hpf_freq_var = tk.StringVar(value="1000")
         self.hpf_entry = ttk.Entry(hpf_frame, textvariable=self.hpf_freq_var, width=8)
         self.hpf_entry.grid(row=0, column=2, padx=5)
+
+        # Noise Reduction Frame
+        nr_frame = ttk.LabelFrame(control_frame, text="Noise Reduction", padding=5)
+        nr_frame.grid(row=0, column=4, padx=10, pady=5)
+
+        self.nr_var = tk.BooleanVar(value=False)
+        self.nr_check = ttk.Checkbutton(nr_frame, text="Active", variable=self.nr_var)
+        self.nr_check.grid(row=0, column=0, padx=5)
+
+        ttk.Label(nr_frame, text="Quality:").grid(row=0, column=1, padx=5)
+        self.nr_quality_var = tk.StringVar(value="Medium")
+        self.nr_quality_combo = ttk.Combobox(nr_frame, textvariable=self.nr_quality_var, state="readonly", width=8)
+        self.nr_quality_combo['values'] = ("Low", "Medium", "High")
+        self.nr_quality_combo.current(1)
+        self.nr_quality_combo.grid(row=0, column=2, padx=5)
 
         # Waterfall Display
         # Create a canvas that is properly sized
@@ -166,6 +181,28 @@ class SpectrogramApp:
                 # Crop to max frequency
                 fft_mag_cropped = fft_mag[:self.max_bin]
                 
+                # Apply Noise Reduction if active
+                if self.nr_var.get():
+                    quality = self.nr_quality_var.get()
+                    if quality == "Low":
+                        perc = 50
+                        reduction = 10
+                    elif quality == "Medium":
+                        perc = 75
+                        reduction = 20
+                    elif quality == "High":
+                        perc = 90
+                        reduction = 30
+                    else:
+                        perc = 75
+                        reduction = 20
+                    
+                    noise_floor = np.percentile(fft_mag_cropped, perc)
+                    # Attenuate the noise below threshold
+                    fft_mag_cropped = np.where(fft_mag_cropped < noise_floor, 
+                                               fft_mag_cropped - reduction, 
+                                               fft_mag_cropped)
+
                 # Normalize for visualization (e.g., -60dB to 60dB map to 0.0 to 1.0)
                 min_db = -20
                 max_db = 100

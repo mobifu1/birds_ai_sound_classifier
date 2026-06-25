@@ -227,6 +227,17 @@ class AudioMonitor:
                 frames = []
                 chunks_needed = int(RATE / CHUNK * RECORD_SECONDS)
                 
+                # Filter vorbereiten, falls aktiv (für Live-Pegel Anzeige)
+                current_settings = load_settings()
+                hpf_active = current_settings.get("highpass_active", False)
+                if hpf_active:
+                    try:
+                        cutoff = float(current_settings.get("highpass_freq", 150))
+                        b, a = signal.butter(4, cutoff / (0.5 * RATE), btype='high', analog=False)
+                        zi = signal.lfilter_zi(b, a) * 0.0
+                    except:
+                        hpf_active = False
+
                 for i in range(chunks_needed):
                     if not self.running:
                         break
@@ -234,7 +245,13 @@ class AudioMonitor:
                     frames.append(data)
                     
                     try:
-                        chunk_amp = int(np.max(np.abs(np.frombuffer(data, dtype=np.int16))))
+                        audio_chunk = np.frombuffer(data, dtype=np.int16)
+                        if hpf_active:
+                            audio_chunk_hp, zi = signal.lfilter(b, a, audio_chunk, zi=zi)
+                            chunk_amp = int(np.max(np.abs(audio_chunk_hp)))
+                        else:
+                            chunk_amp = int(np.max(np.abs(audio_chunk)))
+                        
                         global latest_audio_level
                         latest_audio_level = chunk_amp
                     except:
@@ -268,7 +285,7 @@ class AudioMonitor:
                 settings = load_settings()
                 if settings.get("highpass_active", False):
                     try:
-                        cutoff = float(settings.get("highpass_freq", 1000))
+                        cutoff = float(settings.get("highpass_freq", 150))
                         if 0 < cutoff < RATE / 2:
                             audio_data_hp = np.frombuffer(raw_data, dtype=np.int16).astype(np.float32)
                             b, a = signal.butter(4, cutoff / (0.5 * RATE), btype='high', analog=False)

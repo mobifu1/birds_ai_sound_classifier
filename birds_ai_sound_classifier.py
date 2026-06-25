@@ -1193,7 +1193,7 @@ import matplotlib.cm as cm
 from PIL import Image
 
 def generate_waterfall_stream():
-    cmap = cm.get_cmap('viridis')
+    cmap = matplotlib.colormaps['viridis']
     while True:
         global latest_waterfall_data
         data = latest_waterfall_data.copy()

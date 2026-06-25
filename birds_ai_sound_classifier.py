@@ -294,6 +294,41 @@ class AudioMonitor:
                     except Exception as e:
                         print(f"Fehler bei Highpass Filter: {e}")
 
+                # Noise Reduction (Spectral Gating)
+                if settings.get("nr_active", False):
+                    try:
+                        quality = settings.get("nr_quality", "Medium")
+                        if quality == "Low":
+                            perc = 50
+                            reduction_db = 10
+                        elif quality == "Medium":
+                            perc = 75
+                            reduction_db = 20
+                        elif quality == "High":
+                            perc = 90
+                            reduction_db = 30
+                        else:
+                            perc = 75
+                            reduction_db = 20
+                            
+                        audio_data_nr = np.frombuffer(raw_data, dtype=np.int16).astype(np.float32)
+                        
+                        # Apply spectral gate
+                        fft_data = np.fft.rfft(audio_data_nr)
+                        fft_mag = np.abs(fft_data)
+                        fft_phase = np.angle(fft_data)
+                        
+                        noise_floor = np.percentile(fft_mag, perc)
+                        reduction_factor = 10 ** (-reduction_db / 20.0)
+                        
+                        new_mag = np.where(fft_mag < noise_floor, fft_mag * reduction_factor, fft_mag)
+                        new_fft = new_mag * np.exp(1j * fft_phase)
+                        audio_data_nr = np.fft.irfft(new_fft)
+                        
+                        raw_data = np.clip(audio_data_nr, -32768, 32767).astype(np.int16).tobytes()
+                    except Exception as e:
+                        print(f"Fehler bei Noise Reduction: {e}")
+
                 # Speichern in Temp-Datei
                 wf = wave.open(TEMP_WAV, 'wb')
                 wf.setnchannels(CHANNELS)
@@ -1017,6 +1052,10 @@ def api_save_settings():
         save_setting("highpass_active", bool(data.get("highpass_active", False)))
     if "highpass_freq" in data:
         save_setting("highpass_freq", int(data.get("highpass_freq", 1000)))
+    if "nr_active" in data:
+        save_setting("nr_active", bool(data.get("nr_active", False)))
+    if "nr_quality" in data:
+        save_setting("nr_quality", str(data.get("nr_quality", "Medium")))
     if "bird_dictionary" in data:
         save_setting("bird_dictionary", data.get("bird_dictionary", {}))
     return jsonify({"msg": "Einstellungen gespeichert!"})

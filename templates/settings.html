@@ -64,6 +64,22 @@
                 </div>
 
                 <div style="margin-top: 20px;">
+                    <label style="font-size: 0.9rem; color: #ccc;">Digitale Rauschunterdrückung:</label>
+                    <div style="display: flex; gap: 10px; align-items: center; margin-top: 5px;">
+                        <label style="display: flex; align-items: center; cursor: pointer; margin: 0; color: #ccc;">
+                            <input type="checkbox" id="nr_active" style="width: 18px; height: 18px; margin-right: 8px;" {% if s.get('nr_active', False) %}checked{% endif %}>
+                            Aktiv
+                        </label>
+                        <select id="nr_quality" style="width: 120px; padding: 5px; background: #1a1a1a; color: #fff; border: 1px solid #444; border-radius: 4px;">
+                            <option value="Low" {% if s.get('nr_quality', 'Medium') == 'Low' %}selected{% endif %}>Low</option>
+                            <option value="Medium" {% if s.get('nr_quality', 'Medium') == 'Medium' %}selected{% endif %}>Medium</option>
+                            <option value="High" {% if s.get('nr_quality', 'Medium') == 'High' %}selected{% endif %}>High</option>
+                        </select>
+                        <span style="color: #ccc; font-size: 0.9rem;">Level</span>
+                    </div>
+                </div>
+
+                <div style="margin-top: 20px;">
                     <label style="font-size: 0.9rem; color: #ccc;">Live Audio (letzte 3 Sek.):</label>
                     <div style="display: flex; gap: 10px; align-items: center; margin-top: 5px;">
                         <audio id="live-audio-player" controls style="height: 30px; flex: 1;"></audio>
@@ -392,6 +408,8 @@
                 alarm_active: document.getElementById('alarm_active').checked,
                 highpass_active: document.getElementById('highpass_active').checked,
                 highpass_freq: parseInt(document.getElementById('highpass_freq').value),
+                nr_active: document.getElementById('nr_active').checked,
+                nr_quality: document.getElementById('nr_quality').value,
                 bird_dictionary: birdDict
             };
 

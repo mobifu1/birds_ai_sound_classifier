@@ -1290,7 +1290,9 @@ def api_top_species():
     c = conn.cursor()
     query = f"""
         SELECT d1.species, COUNT(*) as count,
-               (SELECT snr FROM detections d2 WHERE d2.species = d1.species ORDER BY timestamp DESC LIMIT 1) as snr
+               (SELECT snr FROM detections d2 WHERE d2.species = d1.species ORDER BY timestamp DESC LIMIT 1) as snr,
+               (SELECT confidence FROM detections d2 WHERE d2.species = d1.species ORDER BY timestamp DESC LIMIT 1) as confidence,
+               (SELECT timestamp FROM detections d2 WHERE d2.species = d1.species ORDER BY timestamp DESC LIMIT 1) as timestamp
         FROM detections d1
         WHERE date(timestamp) = date('now', 'localtime')
           AND timestamp >= datetime('now', '-{radar_time_range} hours', 'localtime')
@@ -1317,7 +1319,28 @@ def api_top_species():
         elif snr_val is None:
             snr_val = 0.0
             
-        top_data.append({"species": r[0], "count": r[1], "snr": float(snr_val)})
+        conf_val = r[3]
+        if isinstance(conf_val, bytes):
+            import struct
+            try:
+                if len(conf_val) == 8:
+                    conf_val = struct.unpack('d', conf_val)[0]
+                elif len(conf_val) == 4:
+                    conf_val = struct.unpack('f', conf_val)[0]
+                else:
+                    conf_val = 0.0
+            except:
+                conf_val = 0.0
+        elif conf_val is None:
+            conf_val = 0.0
+            
+        top_data.append({
+            "species": r[0], 
+            "count": r[1], 
+            "snr": float(snr_val),
+            "confidence": float(conf_val),
+            "timestamp": r[4]
+        })
 
     
     c.execute("SELECT species, rowid FROM detections ORDER BY timestamp DESC LIMIT 1")

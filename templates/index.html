@@ -293,6 +293,20 @@
                 
                 const isUnknown = iconSrc.includes('Unbekannt.png');
                 
+                let timeStr = det.timestamp || "";
+                if (timeStr) {
+                    let parts = timeStr.split(' ');
+                    if (parts.length > 1) {
+                        timeStr = parts[1].substring(0, 5);
+                    }
+                } else {
+                    timeStr = "--:--";
+                }
+                let confStr = det.confidence !== undefined ? Math.round(det.confidence * 100) + '%' : '--%';
+                let snrStr = det.snr !== undefined ? det.snr.toFixed(1) + 'dB' : '--dB';
+                
+                node.title = `T:${timeStr} | K:${confStr} | SNR:${snrStr}`;
+
                 node.innerHTML = `
                     ${isUnknown 
                         ? `<div style="width: 52px; height: 52px; border-radius: 50%; background: #333; display: flex; align-items: center; justify-content: center; font-size: 1.8rem; font-weight: bold; color: #ffb74d;">?</div>`

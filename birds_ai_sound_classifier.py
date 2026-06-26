@@ -405,7 +405,7 @@ class AudioMonitor:
                     
                     min_conf = float(settings.get("threshold", MIN_CONFIDENCE * 100)) / 100.0
                     
-                    if confidence >= min_conf:
+                    if confidence >= min_conf and calculated_snr > 0.0:
                         update_log(f"Erkannt: {species} ({confidence:.0%}) | SNR: {calculated_snr:.1f}dB")
                         save_detection(species, confidence, calculated_snr)
                         

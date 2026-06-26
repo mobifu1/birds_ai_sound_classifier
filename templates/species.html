@@ -114,10 +114,15 @@
                         <source id="audio-source" src="" type="audio/wav">
                         Ihr Browser unterstützt das Audio-Element nicht.
                     </audio>
+                    <div style="margin-top: 15px;">
+                        <button id="delete-wav-btn" style="padding: 8px 15px; background: #f44336; color: white; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; transition: background 0.2s; display: none;" onclick="deleteSelectedWav()">Ausgewählte Datei löschen</button>
+                    </div>
                 </div>
             </div>
 
             <script>
+                var currentSelectedWav = null;
+
                 function loadSpectrogram(filename) {
                     var container = document.getElementById('spectrogram-container');
                     var img = document.getElementById('spectrogram-img');
@@ -135,6 +140,31 @@
                     
                     source.src = "/api/archive/audio/" + encodeURIComponent(filename);
                     audio.load();
+                    
+                    currentSelectedWav = filename;
+                    document.getElementById('delete-wav-btn').style.display = 'inline-block';
+                }
+                
+                function deleteSelectedWav() {
+                    if (!currentSelectedWav) return;
+                    if (confirm("Möchten Sie die Datei '" + currentSelectedWav + "' wirklich löschen?")) {
+                        fetch('/api/archive/delete/' + encodeURIComponent(currentSelectedWav), {
+                            method: 'POST'
+                        })
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.success) {
+                                alert(data.msg);
+                                location.reload();
+                            } else {
+                                alert("Fehler: " + data.msg);
+                            }
+                        })
+                        .catch(err => {
+                            alert("Fehler beim Löschen der Datei.");
+                            console.error(err);
+                        });
+                    }
                 }
             </script>
             <style>

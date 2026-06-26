@@ -990,6 +990,18 @@ def serve_archive_spectrogram(filename):
         print(f"Error generating spectrogram: {e}")
         abort(500)
 
+@app.route('/api/archive/delete/<filename>', methods=['POST', 'DELETE'])
+def delete_archive_audio(filename):
+    archive_path = os.path.join(AUDIO_DIR, "archive")
+    file_path = os.path.join(archive_path, filename)
+    if os.path.exists(file_path):
+        try:
+            os.remove(file_path)
+            return jsonify({"success": True, "msg": "Datei erfolgreich gelöscht."})
+        except Exception as e:
+            return jsonify({"success": False, "msg": str(e)}), 500
+    return jsonify({"success": False, "msg": "Datei nicht gefunden."}), 404
+
 @app.route('/yearly')
 def yearly_page():
     today = datetime.date.today()

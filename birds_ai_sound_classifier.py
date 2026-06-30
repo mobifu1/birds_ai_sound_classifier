@@ -721,7 +721,7 @@ def generate_daily_heatmap_html(date_str):
         for col in pivot_pct.columns:
             total_in_hour = int(hour_totals[col])
             # Kürzeres Format für die Uhrzeit z.B. nur '14' statt '14:00' um Platz zu sparen, aber '14:00' ist auch ok
-            html_table += f'<th>{col[:2]}h<br><small style="color:#81d4fa;">(∑ {total_in_hour})</small></th>'
+            html_table += f'<th title="Gesamtsumme: {total_in_hour}">{col[:2]}h</th>'
         html_table += '</tr></thead><tbody>'
         
         from flask import url_for
@@ -785,7 +785,18 @@ def generate_weekly_heatmap_html():
     finally:
         conn.close()
 
-    html_table = "<p>Keine Daten für die Wochenansicht.</p>"
+    import datetime
+    current_year = datetime.datetime.now().year
+    short_y = str(current_year)[-2:]
+    all_weeks_display_empty = [f"{w:02d}<br><small style='color:#aaa'>'{short_y}</small>" for w in range(1, 53)]
+    
+    html_table = '<div class="table-responsive" style="margin-top:30px;"><table class="weekly-table">'
+    html_table += '<thead><tr><th style="text-align:left;">Vogelart</th>'
+    for col in all_weeks_display_empty:
+        html_table += f'<th title="Gesamtsumme: 0">{col}</th>'
+    html_table += '</tr></thead><tbody>'
+    html_table += f'<tr><td colspan="{len(all_weeks_display_empty)+1}" style="text-align:center;">Keine Daten vorhanden.</td></tr>'
+    html_table += '</tbody></table></div>'
 
     icon_map = {}
     static_folder = os.path.join(app.root_path, 'static', 'bird_icons')
@@ -806,12 +817,29 @@ def generate_weekly_heatmap_html():
 
     if not grouped.empty:
         pivot_counts = grouped.pivot(index='species', columns='week_display', values='counts').fillna(0)
-        week_totals = pivot_counts.sum(axis=0)
-        pivot_pct = pivot_counts.div(week_totals, axis=1).mul(100).fillna(0)
         
-        week_mapping = grouped[['week_sort', 'week_display']].drop_duplicates().sort_values('week_sort')
-        sorted_columns = week_mapping['week_display'].tolist()
-        pivot_pct = pivot_pct.reindex(columns=sorted_columns)
+        import datetime
+        current_year = datetime.datetime.now().year
+        years_to_show = {current_year}
+        for ws in grouped['week_sort']:
+            try:
+                years_to_show.add(int(ws.split('-')[0]))
+            except:
+                pass
+        
+        years_to_show = sorted(list(years_to_show))
+        all_weeks_display = []
+        for y in years_to_show:
+            short_y = str(y)[-2:]
+            for w in range(1, 54):
+                disp = f"{w:02d}<br><small style='color:#aaa'>'{short_y}</small>"
+                if w < 53 or disp in pivot_counts.columns:
+                    all_weeks_display.append(disp)
+                    
+        pivot_counts = pivot_counts.reindex(columns=all_weeks_display, fill_value=0)
+        
+        week_totals = pivot_counts.sum(axis=0)
+        pivot_pct = pivot_counts.div(week_totals.replace(0, 1), axis=1).mul(100).fillna(0)
         
         total_counts = pivot_counts.sum(axis=1)
         pivot_pct['total_sort_idx'] = total_counts
@@ -822,7 +850,7 @@ def generate_weekly_heatmap_html():
         html_table += '<thead><tr><th style="text-align:left;">Vogelart</th>'
         for col in pivot_pct.columns:
             total_in_week = int(week_totals[col])
-            html_table += f'<th>{col}<br><small style="color:#81d4fa;">(∑ {total_in_week})</small></th>'
+            html_table += f'<th title="Gesamtsumme: {total_in_week}">{col}</th>'
         html_table += '</tr></thead><tbody>'
         
         from flask import url_for

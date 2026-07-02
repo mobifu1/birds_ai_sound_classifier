@@ -109,7 +109,7 @@ DEFAULT_BIRD_TRANSLATIONS = {
     # Greifvögel & Eulen
     "Eurasian Kestrel": "Turmfalke", "Common Buzzard": "Mäusebussard", "Red Kite": "Rotmilan",
     "Northern Goshawk": "Habicht", "Eurasian Sparrowhawk": "Sperber", 
-    "Tawny Owl": "Waldkauz", "Barn Owl": "Schleiereule", "Little Owl": "Steinkauz",
+    "Tawny Owl": "Waldkauz", "Barn Owl": "Schleiereule", "Little Owl": "Steinkauz", "Long-eared Owl": "Waldohreule",
     
     # Wasservögel & Reiher
     "Gray Heron": "Graureiher", "Grey Heron": "Graureiher", "Great Egret": "Silberreiher",
@@ -400,6 +400,14 @@ class AudioMonitor:
                     
                     best = recording.detections[0] # höchste Konfidenz
                     eng_species = best['common_name']
+                    
+                    # Zeitbasierte Plausibilitätskorrektur: Sperber (tagaktiv) -> Waldohreule (nachtaktiv)
+                    # Bettelrufe von jungen Waldohreulen werden nachts oft fälschlich als Sperber erkannt.
+                    current_hour = datetime.datetime.now().hour
+                    if eng_species == "Eurasian Sparrowhawk" and (current_hour >= 21 or current_hour <= 4):
+                        eng_species = "Long-eared Owl"
+                        update_log("INFO: Sperber in der Nacht erkannt -> Automatisch korrigiert zu Waldohreule")
+
                     species = bird_dict.get(eng_species, eng_species)
                     confidence = float(best['confidence'])
                     

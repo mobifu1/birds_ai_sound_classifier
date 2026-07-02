@@ -404,15 +404,33 @@ class AudioMonitor:
                     confidence = float(best['confidence'])
                     
                     min_conf = float(settings.get("threshold", MIN_CONFIDENCE * 100)) / 100.0
+                    min_snr_val = float(settings.get("min_snr", 0.0))
                     
-                    if confidence >= min_conf and calculated_snr > 0.0:
+                    if confidence >= min_conf and calculated_snr > min_snr_val:
                         update_log(f"Erkannt: {species} ({confidence:.0%}) | SNR: {calculated_snr:.1f}dB")
+                        
+                        # Check if species is new before saving
+                        is_new_species = False
+                        try:
+                            conn_check = sqlite3.connect(DB_FILE)
+                            c_check = conn_check.cursor()
+                            c_check.execute("SELECT COUNT(*) FROM detections WHERE species = ?", (species,))
+                            if c_check.fetchone()[0] == 0:
+                                is_new_species = True
+                            conn_check.close()
+                        except Exception as e:
+                            print(f"Fehler bei DB-Check für neue Art: {e}")
+
                         save_detection(species, confidence, calculated_snr)
                         
                         archive_species_str = settings.get("archive_species", "")
                         if archive_species_str:
                             archive_list = [s.strip().lower() for s in archive_species_str.split(',') if s.strip()]
-                            if species.lower() in archive_list or "*" in archive_list or "alle" in archive_list:
+                            should_archive = species.lower() in archive_list or "*" in archive_list or "alle" in archive_list
+                            if not should_archive and "neu" in archive_list and is_new_species:
+                                should_archive = True
+
+                            if should_archive:
                                 import random
                                 import shutil
                                 archive_dir = os.path.join(AUDIO_DIR, "archive")
@@ -1114,6 +1132,7 @@ def delete_entry_page():
 def api_save_settings():
     data = request.json
     save_setting("threshold", data.get("threshold", 30))
+    save_setting("min_snr", data.get("min_snr", 0.0))
     save_setting("gps_lat", data.get("gps_lat", 51.165691))
     save_setting("gps_lon", data.get("gps_lon", 10.451526))
     save_setting("radar_zoom", data.get("radar_zoom", 1.0))

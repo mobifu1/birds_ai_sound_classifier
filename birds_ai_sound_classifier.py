@@ -764,34 +764,41 @@ def generate_daily_heatmap_html(date_str):
 
     return html_table
 
-def generate_weekly_heatmap_html():
-    query = """
+def generate_weekly_heatmap_html(year_str=None):
+    if year_str:
+        where_clause = "WHERE timestamp IS NOT NULL AND timestamp != '' AND timestamp LIKE ?"
+        params = (f"{year_str}%",)
+    else:
+        where_clause = "WHERE timestamp IS NOT NULL AND timestamp != ''"
+        params = ()
+
+    query = f"""
     SELECT 
         CASE WHEN species = 'IGNORED_LOW_CONFIDENCE' THEN 'Unbekannt' ELSE species END as species,
         strftime('%Y-', timestamp) || printf('%02d', CAST(strftime('%W', timestamp) AS INTEGER) + 1) as week_sort,
         printf('%02d', CAST(strftime('%W', timestamp) AS INTEGER) + 1) || '<br><small style=''color:#aaa''>''' || substr(strftime('%Y', timestamp), 3, 2) || '</small>' as week_display,
         COUNT(*) as counts
     FROM detections
-    WHERE timestamp IS NOT NULL AND timestamp != ''
+    {where_clause}
     GROUP BY species, week_sort, week_display
     ORDER BY week_sort
     """
     
     conn = sqlite3.connect(DB_FILE, timeout=10)
     try:
-        grouped = pd.read_sql_query(query, conn)
+        grouped = pd.read_sql_query(query, conn, params=params)
     except:
         grouped = pd.DataFrame()
     finally:
         conn.close()
 
     import datetime
-    current_year = datetime.datetime.now().year
+    current_year = int(year_str) if year_str else datetime.datetime.now().year
     short_y = str(current_year)[-2:]
     all_weeks_display_empty = [f"{w:02d}<br><small style='color:#aaa'>'{short_y}</small>" for w in range(1, 53)]
     
     html_table = '<div class="table-responsive" style="margin-top:30px;"><table class="weekly-table">'
-    html_table += '<thead><tr><th style="text-align:left;">Vogelart</th>'
+    html_table += '<thead><tr><th style="text-align:left;">Vogelarten (0)</th>'
     for col in all_weeks_display_empty:
         html_table += f'<th title="Gesamtsumme: 0">{col}</th>'
     html_table += '</tr></thead><tbody>'
@@ -819,7 +826,7 @@ def generate_weekly_heatmap_html():
         pivot_counts = grouped.pivot(index='species', columns='week_display', values='counts').fillna(0)
         
         import datetime
-        current_year = datetime.datetime.now().year
+        current_year = int(year_str) if year_str else datetime.datetime.now().year
         years_to_show = {current_year}
         for ws in grouped['week_sort']:
             try:
@@ -846,8 +853,9 @@ def generate_weekly_heatmap_html():
         pivot_pct = pivot_pct.sort_values('total_sort_idx', ascending=False)
         pivot_pct = pivot_pct.drop('total_sort_idx', axis=1)
 
+        num_species = len(pivot_pct)
         html_table = '<div class="table-responsive" style="margin-top:30px;"><table class="weekly-table">'
-        html_table += '<thead><tr><th style="text-align:left;">Vogelart</th>'
+        html_table += f'<thead><tr><th style="text-align:left;">Vogelarten ({num_species})</th>'
         for col in pivot_pct.columns:
             total_in_week = int(week_totals[col])
             html_table += f'<th title="Gesamtsumme: {total_in_week}">{col}</th>'
@@ -895,8 +903,22 @@ def generate_weekly_heatmap_html():
 
 @app.route('/weekly')
 def weekly_page():
+    import datetime
+    today = datetime.date.today()
+    year_str = request.args.get('year', str(today.year))
+    try:
+        year = int(year_str)
+    except:
+        year = today.year
+        year_str = str(year)
+
     return render_template('weekly.html', 
-        table_content=generate_weekly_heatmap_html()
+        table_content=generate_weekly_heatmap_html(year_str),
+        selected_year=year,
+        prev_year=year-1,
+        next_year=year+1,
+        is_current_year=(year == today.year),
+        current_year=today.year
     )
 
 def create_species_polar_chart(species, hourly_counts):
@@ -1475,6 +1497,49 @@ def api_recent_events():
             "confidence": f"{row[2]:.0%}"
         })
     return jsonify(events)
+
+@app.route('/api/export/weekly_csv')
+def export_weekly_csv():
+    from flask import Response
+    year_str = request.args.get('year')
+    if year_str:
+        where_clause = "WHERE timestamp IS NOT NULL AND timestamp != '' AND timestamp LIKE ?"
+        params = (f"{year_str}%",)
+    else:
+        where_clause = "WHERE timestamp IS NOT NULL AND timestamp != ''"
+        params = ()
+
+    query = f"""
+    SELECT 
+        CASE WHEN species = 'IGNORED_LOW_CONFIDENCE' THEN 'Unbekannt' ELSE species END as species,
+        printf('%02d', CAST(strftime('%W', timestamp) AS INTEGER) + 1) as week,
+        COUNT(*) as counts
+    FROM detections
+    {where_clause}
+    GROUP BY species, week
+    ORDER BY week
+    """
+    
+    conn = sqlite3.connect(DB_FILE, timeout=10)
+    try:
+        grouped = pd.read_sql_query(query, conn, params=params)
+    except:
+        grouped = pd.DataFrame()
+    finally:
+        conn.close()
+
+    if grouped.empty:
+        return "Keine Daten vorhanden für dieses Jahr.", 404
+
+    pivot_counts = grouped.pivot(index='species', columns='week', values='counts').fillna(0).astype(int)
+    csv_data = pivot_counts.to_csv(sep=';')
+    
+    filename = f"weekly_export_{year_str if year_str else 'all'}.csv"
+    return Response(
+        csv_data,
+        mimetype="text/csv",
+        headers={"Content-disposition": f"attachment; filename={filename}"}
+    )
 
 if __name__ == '__main__':
     init_db()

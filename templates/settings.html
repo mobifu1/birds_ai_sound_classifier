@@ -52,6 +52,13 @@
                 </div>
 
                 <div style="margin-top: 20px;">
+                    <label style="font-size: 0.9rem; color: #ccc;">Live Audio File Queue (0-10):</label>
+                    <div class="meter-container">
+                        <div id="queue-meter" class="meter-bar" style="width: 0%; background-color: #4CAF50;"></div>
+                    </div>
+                </div>
+
+                <div style="margin-top: 20px;">
                     <label style="font-size: 0.9rem; color: #ccc;">Audio High-Pass Filter:</label>
                     <div style="display: flex; gap: 10px; align-items: center; margin-top: 5px;">
                         <label style="display: flex; align-items: center; cursor: pointer; margin: 0; color: #ccc;">
@@ -271,6 +278,23 @@
                                 bar.style.backgroundColor = '#FFC107';
                             } else {
                                 bar.style.backgroundColor = '#F44336';
+                            }
+                        }
+                    }
+                    if (data.queue_length !== undefined) {
+                        let qPct = (data.queue_length / 10) * 100;
+                        if (qPct > 100) qPct = 100;
+                        
+                        let qBar = document.getElementById('queue-meter');
+                        if (qBar) {
+                            qBar.style.width = qPct + '%';
+                            
+                            if (data.queue_length <= 3) {
+                                qBar.style.backgroundColor = '#4CAF50'; // green
+                            } else if (data.queue_length <= 7) {
+                                qBar.style.backgroundColor = '#FFC107'; // yellow
+                            } else {
+                                qBar.style.backgroundColor = '#F44336'; // red
                             }
                         }
                     }

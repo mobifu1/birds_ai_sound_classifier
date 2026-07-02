@@ -53,6 +53,7 @@ TEMP_WAV = os.path.join(AUDIO_DIR, "temp.wav")
 app = Flask(__name__)
 log_messages = deque(maxlen=100)
 latest_audio_level = 0
+latest_queue_length = 0
 
 WATERFALL_HEIGHT = 150
 MAX_FREQ = 20000
@@ -198,7 +199,7 @@ class AudioMonitor:
         self.record_thread = None
         self.analyze_thread = None
         self.pa = pyaudio.PyAudio()
-        self.audio_queue = queue.Queue(maxsize=3) # Maximal 3 Pakete Rückstand
+        self.audio_queue = queue.Queue(maxsize=10) # Maximal 10 Pakete Rückstand
 
     def start(self):
         self.running = True
@@ -230,8 +231,10 @@ class AudioMonitor:
             stream = self.pa.open(**stream_kwargs)
             
             while self.running:
-                frames = []
-                chunks_needed = int(RATE / CHUNK * RECORD_SECONDS)
+                buffer_frames = getattr(self, '_buffer_frames', [])
+                chunk_step_needed = int(RATE / CHUNK * 1.5)  # 1.5 Sekunden Schritte
+                chunks_total_needed = int(RATE / CHUNK * RECORD_SECONDS) # 3 Sekunden Puffer
+                frames_step = []
                 
                 # Filter vorbereiten, falls aktiv (für Live-Pegel Anzeige)
                 current_settings = load_settings()
@@ -244,11 +247,11 @@ class AudioMonitor:
                     except:
                         hpf_active = False
 
-                for i in range(chunks_needed):
+                for i in range(chunk_step_needed):
                     if not self.running:
                         break
                     data = stream.read(CHUNK, exception_on_overflow=False)
-                    frames.append(data)
+                    frames_step.append(data)
                     
                     try:
                         audio_chunk = np.frombuffer(data, dtype=np.int16)
@@ -288,8 +291,12 @@ class AudioMonitor:
                     except:
                         pass
 
-                if self.running and len(frames) == chunks_needed:
-                    raw_data = b''.join(frames)
+                self._buffer_frames = buffer_frames + frames_step
+                if len(self._buffer_frames) > chunks_total_needed:
+                    self._buffer_frames = self._buffer_frames[-chunks_total_needed:]
+
+                if self.running and len(self._buffer_frames) == chunks_total_needed:
+                    raw_data = b''.join(self._buffer_frames)
                     # Blockiert nicht ewig, wenn Queue voll ist (verwirft im Zweifel alte Daten)
                     if self.audio_queue.full():
                         try:
@@ -297,6 +304,9 @@ class AudioMonitor:
                         except:
                             pass
                     self.audio_queue.put(raw_data)
+                    
+                    global latest_queue_length
+                    latest_queue_length = self.audio_queue.qsize()
 
             stream.stop_stream()
             stream.close()
@@ -304,11 +314,14 @@ class AudioMonitor:
             update_log(f"Fehler im Aufnahme-Thread: {e}")
 
     def loop_analyze(self):
+        previous_detected_species = set()
         while self.running:
             try:
                 # Wartet auf neues Audio-Paket (max 1 Sekunde, um while-Bedingung regelmäßig zu prüfen)
                 try:
                     raw_data = self.audio_queue.get(timeout=1.0)
+                    global latest_queue_length
+                    latest_queue_length = self.audio_queue.qsize()
                 except queue.Empty:
                     continue
                 
@@ -414,58 +427,66 @@ class AudioMonitor:
                     min_conf = float(settings.get("threshold", MIN_CONFIDENCE * 100)) / 100.0
                     min_snr_val = float(settings.get("min_snr", 0.0))
                     
+                    current_detected_species = set()
+                    
                     if confidence >= min_conf and calculated_snr > min_snr_val:
-                        update_log(f"Erkannt: {species} ({confidence:.0%}) | SNR: {calculated_snr:.1f}dB")
+                        current_detected_species.add(species)
                         
-                        # Check if species is new before saving
-                        is_new_species = False
-                        try:
-                            conn_check = sqlite3.connect(DB_FILE)
-                            c_check = conn_check.cursor()
-                            c_check.execute("SELECT COUNT(*) FROM detections WHERE species = ?", (species,))
-                            if c_check.fetchone()[0] == 0:
-                                is_new_species = True
-                            conn_check.close()
-                        except Exception as e:
-                            print(f"Fehler bei DB-Check für neue Art: {e}")
+                        if species not in previous_detected_species:
+                            update_log(f"Erkannt: {species} ({confidence:.0%}) | SNR: {calculated_snr:.1f}dB")
+                            
+                            # Check if species is new before saving
+                            is_new_species = False
+                            try:
+                                conn_check = sqlite3.connect(DB_FILE)
+                                c_check = conn_check.cursor()
+                                c_check.execute("SELECT COUNT(*) FROM detections WHERE species = ?", (species,))
+                                if c_check.fetchone()[0] == 0:
+                                    is_new_species = True
+                                conn_check.close()
+                            except Exception as e:
+                                print(f"Fehler bei DB-Check für neue Art: {e}")
 
-                        save_detection(species, confidence, calculated_snr)
-                        
-                        archive_species_str = settings.get("archive_species", "")
-                        if archive_species_str:
-                            archive_list = [s.strip().lower() for s in archive_species_str.split(',') if s.strip()]
-                            should_archive = species.lower() in archive_list or "*" in archive_list or "alle" in archive_list
-                            if not should_archive and "neu" in archive_list and is_new_species:
-                                should_archive = True
+                            save_detection(species, confidence, calculated_snr)
+                            
+                            archive_species_str = settings.get("archive_species", "")
+                            if archive_species_str:
+                                archive_list = [s.strip().lower() for s in archive_species_str.split(',') if s.strip()]
+                                should_archive = species.lower() in archive_list or "*" in archive_list or "alle" in archive_list
+                                if not should_archive and "neu" in archive_list and is_new_species:
+                                    should_archive = True
 
-                            if should_archive:
-                                import random
-                                import shutil
-                                archive_dir = os.path.join(AUDIO_DIR, "archive")
-                                if not os.path.exists(archive_dir):
-                                    os.makedirs(archive_dir)
-                                
-                                safe_species = species.replace(" ", "_").replace("/", "_")
-                                max_archive_files = int(settings.get("max_archive_files", 0))
-                                can_save = True
-                                
-                                if max_archive_files > 0:
-                                    existing_files = [f for f in os.listdir(archive_dir) if f.startswith(safe_species + "_") and f.endswith(".wav")]
-                                    if len(existing_files) >= max_archive_files:
-                                        can_save = False
-                                        # Optionally log that limit is reached, but it might spam the log. We can stay quiet.
-                                
-                                if can_save:
-                                    rand_num = random.randint(100000, 999999)
-                                    new_filename = f"{safe_species}_{rand_num}.wav"
-                                    new_filepath = os.path.join(archive_dir, new_filename)
+                                if should_archive:
+                                    import random
+                                    import shutil
+                                    archive_dir = os.path.join(AUDIO_DIR, "archive")
+                                    if not os.path.exists(archive_dir):
+                                        os.makedirs(archive_dir)
                                     
-                                    try:
-                                        shutil.copy(TEMP_WAV, new_filepath)
-                                        update_log(f"Audio archiviert: {new_filename}")
-                                    except Exception as e:
-                                        update_log(f"Fehler beim Archivieren: {e}")
+                                    safe_species = species.replace(" ", "_").replace("/", "_")
+                                    max_archive_files = int(settings.get("max_archive_files", 0))
+                                    can_save = True
+                                    
+                                    if max_archive_files > 0:
+                                        existing_files = [f for f in os.listdir(archive_dir) if f.startswith(safe_species + "_") and f.endswith(".wav")]
+                                        if len(existing_files) >= max_archive_files:
+                                            can_save = False
+                                            # Optionally log that limit is reached, but it might spam the log. We can stay quiet.
+                                    
+                                    if can_save:
+                                        rand_num = random.randint(100000, 999999)
+                                        new_filename = f"{safe_species}_{rand_num}.wav"
+                                        new_filepath = os.path.join(archive_dir, new_filename)
+                                        
+                                        try:
+                                            shutil.copy(TEMP_WAV, new_filepath)
+                                            update_log(f"Audio archiviert: {new_filename}")
+                                        except Exception as e:
+                                            update_log(f"Fehler beim Archivieren: {e}")
+                    
+                    previous_detected_species = current_detected_species
                 else:
+                    previous_detected_species = set()
                     pass # print("[KI] Nichts erkannt.") # Terminal-Ausgabe deaktiviert
                 
                 self.audio_queue.task_done()
@@ -476,12 +497,16 @@ class AudioMonitor:
 
 
 # --- FLASK ROUTEN ---
+@app.context_processor
+def inject_version():
+    return dict(version="1.1")
+
 @app.route('/')
 def index():
     s = load_settings()
     icon_dir = os.path.join(app.root_path, 'static', 'bird_icons')
     available_icons = [f for f in os.listdir(icon_dir) if os.path.isfile(os.path.join(icon_dir, f))] if os.path.exists(icon_dir) else []
-    return render_template('index.html', version="1.0", s=s, available_icons=available_icons)
+    return render_template('index.html', s=s, available_icons=available_icons)
 
 @app.route('/settings')
 def settings_page():
@@ -1290,7 +1315,10 @@ def waterfall_feed():
 
 @app.route('/api/audio_level')
 def api_audio_level():
-    return jsonify({"level": latest_audio_level})
+    return jsonify({
+        "level": latest_audio_level,
+        "queue_length": latest_queue_length
+    })
 
 @app.route('/api/latest_logs')
 def api_latest_logs():

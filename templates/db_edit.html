@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>DB bearbeiten</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #121212; color: #e0e0e0; margin: 0; padding: 0; }
+        .container { max-width: 800px; margin: 20px auto; background: #1e1e1e; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
+        h1 { color: #f57c00; margin-top: 0; padding-bottom: 10px; border-bottom: 2px solid #333; }
+        .section { background: #263238; border-radius: 8px; padding: 20px; margin-bottom: 20px; border: 1px solid #37474f; }
+        .row { display: flex; flex-direction: column; margin-bottom: 15px; }
+        label { font-weight: bold; margin-bottom: 5px; }
+        button, .btn { padding: 10px 20px; border-radius: 6px; border: none; font-weight: bold; cursor: pointer; color: white; display: inline-block; text-decoration: none; text-align: center; }
+        .btn-red { background: #d32f2f; } .btn-red:hover { background: #b71c1c; }
+        .btn-gray { background: #546e7a; } .btn-gray:hover { background: #607d8b; }
+        .btn-orange { background: #f57c00; } .btn-orange:hover { background: #e65100; }
+        .btn-blue { background: #1976d2; } .btn-blue:hover { background: #1565c0; }
+        .btn-nav { margin-bottom: 20px; }
+        select { padding: 10px; border-radius: 4px; border: 1px solid #444; background: #121212; color: #fff; width: 100%; box-sizing: border-box; font-size: 1em; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="/settings" class="btn btn-gray btn-nav">&laquo; Zurück zu Einstellungen</a>
+        <h1>⚙️ DB bearbeiten</h1>
+
+        <div id="statusMessage" style="margin-top: 15px; margin-bottom: 15px; text-align: center; font-weight: bold; padding: 10px; border-radius: 5px; display: none;"></div>
+
+        <div class="section">
+            <h2>1. Vogelart komplett aus DB löschen</h2>
+            <p>Wähle eine falsch erkannte Vogelart aus und lösche alle ihre Einträge aus der Datenbank.</p>
+            <div class="row">
+                <select id="delete-species">
+                    <option value="">-- Vogelart wählen --</option>
+                    {% for species in species_list %}
+                    <option value="{{ species }}">{{ species }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <button class="btn btn-red" onclick="bulkDelete()">Aus DB löschen</button>
+        </div>
+
+        <div class="section">
+            <h2>2. Vogelart in DB umbenennen</h2>
+            <p>Wähle eine falsch erkannte Vogelart aus und benenne alle ihre Einträge in eine andere Vogelart um.</p>
+            <div class="row">
+                <label>Alte Vogelart:</label>
+                <select id="rename-old-species">
+                    <option value="">-- Alte Vogelart wählen --</option>
+                    {% for species in species_list %}
+                    <option value="{{ species }}">{{ species }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="row">
+                <label>Neue Vogelart:</label>
+                <select id="rename-new-species">
+                    <option value="">-- Neue Vogelart wählen --</option>
+                    {% for species in species_list %}
+                    <option value="{{ species }}">{{ species }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <button class="btn btn-orange" onclick="bulkRename()">In DB umbenennen</button>
+        </div>
+
+        <div class="section">
+            <h2>3. Einmalige Einträge bereinigen</h2>
+            <p>Alle Vogelarten löschen, die in der gesamten Datenbank nur genau ein einziges Mal vorkommen.</p>
+            <button class="btn btn-blue" onclick="deleteSingleOccurrences()">Einmalige Einträge löschen</button>
+        </div>
+    </div>
+
+    <script>
+        function showMessage(text, isError=false) {
+            const msg = document.getElementById('statusMessage');
+            msg.style.display = 'block';
+            msg.style.backgroundColor = isError ? 'rgba(198, 40, 40, 0.2)' : 'rgba(46, 125, 50, 0.2)';
+            msg.style.color = isError ? '#e57373' : '#81c784';
+            msg.innerText = text;
+            setTimeout(() => msg.style.display = 'none', 3000);
+        }
+
+        function bulkDelete() {
+            const species = document.getElementById('delete-species').value;
+            if (!species) {
+                showMessage("Bitte eine Vogelart auswählen.", true);
+                return;
+            }
+            if (!confirm(`Möchtest du wirklich ALLE Einträge von '${species}' endgültig löschen?`)) return;
+
+            fetch('/api/control/bulk_delete_species', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ species: species })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if(data.success) {
+                    showMessage(data.msg);
+                    setTimeout(() => location.reload(), 2000);
+                } else {
+                    showMessage("Fehler: " + data.error, true);
+                }
+            })
+            .catch(err => showMessage("Netzwerkfehler!", true));
+        }
+
+        function bulkRename() {
+            const oldSpecies = document.getElementById('rename-old-species').value;
+            const newSpecies = document.getElementById('rename-new-species').value;
+            if (!oldSpecies || !newSpecies) {
+                showMessage("Bitte beide Vogelarten auswählen.", true);
+                return;
+            }
+            if (oldSpecies === newSpecies) {
+                showMessage("Die Vogelarten müssen unterschiedlich sein.", true);
+                return;
+            }
+            if (!confirm(`Möchtest du wirklich ALLE Einträge von '${oldSpecies}' in '${newSpecies}' umbenennen?`)) return;
+
+            fetch('/api/control/bulk_rename_species', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ old_species: oldSpecies, new_species: newSpecies })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if(data.success) {
+                    showMessage(data.msg);
+                    setTimeout(() => location.reload(), 2000);
+                } else {
+                    showMessage("Fehler: " + data.error, true);
+                }
+            })
+            .catch(err => showMessage("Netzwerkfehler!", true));
+        }
+
+        function deleteSingleOccurrences() {
+            if (!confirm("Möchtest du wirklich alle Vogelarten löschen, die nur genau einmal in der Datenbank vorkommen?")) return;
+            
+            fetch('/api/control/delete_single_occurrences', { method: 'POST' })
+                .then(r => r.json())
+                .then(d => {
+                    if (d.error) showMessage("Fehler: " + d.error, true);
+                    else {
+                        showMessage(d.msg);
+                        setTimeout(() => location.reload(), 2000);
+                    }
+                })
+                .catch(e => showMessage("Netzwerkfehler: " + e, true));
+        }
+    </script>
+</body>
+</html>

@@ -1161,6 +1161,20 @@ def delete_entry_page():
     conn.close()
     return render_template('delete_entry.html', species_list=sorted(list(species_set)))
 
+@app.route('/db_edit')
+def db_edit_page():
+    species_set = set(get_bird_dictionary().values())
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    try:
+        c.execute("SELECT DISTINCT species FROM detections")
+        for row in c.fetchall():
+            species_set.add(row[0])
+    except:
+        pass
+    conn.close()
+    return render_template('db_edit.html', species_list=sorted(list(species_set)))
+
 @app.route('/api/settings/save', methods=['POST'])
 def api_save_settings():
     data = request.json
@@ -1234,6 +1248,49 @@ def api_control_delete_single_occurrences():
     finally:
         conn.close()
     return jsonify({"msg": f"{deleted_count} einzelne Vogelarten wurden gelöscht."})
+
+@app.route('/api/control/bulk_delete_species', methods=['POST'])
+def api_control_bulk_delete_species():
+    data = request.json
+    species = data.get("species")
+    if not species:
+        return jsonify({"error": "Keine Vogelart angegeben."}), 400
+        
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    deleted_count = 0
+    try:
+        c.execute("DELETE FROM detections WHERE species = ?", (species,))
+        deleted_count = c.rowcount
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        conn.close()
+    return jsonify({"success": True, "msg": f"{deleted_count} Einträge für '{species}' wurden gelöscht."})
+
+@app.route('/api/control/bulk_rename_species', methods=['POST'])
+def api_control_bulk_rename_species():
+    data = request.json
+    old_species = data.get("old_species")
+    new_species = data.get("new_species")
+    if not old_species or not new_species:
+        return jsonify({"error": "Vogelarten nicht vollständig angegeben."}), 400
+        
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    updated_count = 0
+    try:
+        c.execute("UPDATE detections SET species = ? WHERE species = ?", (new_species, old_species))
+        updated_count = c.rowcount
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        conn.close()
+    return jsonify({"success": True, "msg": f"{updated_count} Einträge wurden von '{old_species}' in '{new_species}' umbenannt."})
 
 @app.route('/api/status')
 def api_status():

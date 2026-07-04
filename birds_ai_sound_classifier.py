@@ -457,7 +457,6 @@ class AudioMonitor:
                                     should_archive = True
 
                                 if should_archive:
-                                    import random
                                     import shutil
                                     archive_dir = os.path.join(AUDIO_DIR, "archive")
                                     if not os.path.exists(archive_dir):
@@ -474,8 +473,8 @@ class AudioMonitor:
                                             # Optionally log that limit is reached, but it might spam the log. We can stay quiet.
                                     
                                     if can_save:
-                                        rand_num = random.randint(100000, 999999)
-                                        new_filename = f"{safe_species}_{rand_num}.wav"
+                                        timestamp = datetime.datetime.now().strftime("%y-%m-%d-%H-%M-%S")
+                                        new_filename = f"{safe_species}_{timestamp}.wav"
                                         new_filepath = os.path.join(archive_dir, new_filename)
                                         
                                         try:
@@ -952,6 +951,74 @@ def generate_weekly_heatmap_html(year_str=None):
 
     return html_table
 
+def create_weekly_total_chart(year_str):
+    if year_str:
+        where_clause = "WHERE timestamp IS NOT NULL AND timestamp != '' AND timestamp LIKE ?"
+        params = (f"{year_str}%",)
+    else:
+        where_clause = "WHERE timestamp IS NOT NULL AND timestamp != ''"
+        params = ()
+
+    query = f"""
+    SELECT 
+        CAST(strftime('%W', timestamp) AS INTEGER) + 1 as week_num,
+        COUNT(*) as counts
+    FROM detections
+    {where_clause}
+    GROUP BY week_num
+    ORDER BY week_num
+    """
+    
+    conn = sqlite3.connect(DB_FILE, timeout=10)
+    try:
+        grouped = pd.read_sql_query(query, conn, params=params)
+    except:
+        grouped = pd.DataFrame()
+    finally:
+        conn.close()
+
+    plt.figure(figsize=(10, 3), facecolor='#1e1e1e')
+    ax = plt.axes()
+    ax.set_facecolor('#1e1e1e')
+    ax.tick_params(colors='white')
+    for spine in ax.spines.values():
+        spine.set_color('#444')
+    
+    weeks = list(range(1, 54))
+    week_labels = [f"KW{w:02d}" for w in weeks]
+    
+    counts = [0] * 53
+    if not grouped.empty:
+        for _, row in grouped.iterrows():
+            if pd.notna(row['week_num']):
+                try:
+                    w = int(row['week_num'])
+                    if 1 <= w <= 53:
+                        counts[w-1] = int(row['counts'])
+                except:
+                    pass
+
+    plt.plot(weeks, counts, color='yellow', linewidth=2, marker='o', markersize=4)
+    plt.fill_between(weeks, counts, color='yellow', alpha=0.1)
+    
+    plt.xticks(weeks, week_labels, rotation=90, ha='center', color='white', fontsize=8)
+    
+    from matplotlib.ticker import MaxNLocator
+    ax.yaxis.set_major_locator(MaxNLocator(integer=True))
+    
+    plt.ylim(bottom=0)
+    if max(counts) == 0:
+        plt.ylim(top=10)
+    plt.yticks(color='white')
+    plt.grid(color='#444', linestyle='--', linewidth=0.5, alpha=0.5)
+    plt.tight_layout()
+    
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png', bbox_inches='tight', transparent=True)
+    plt.close()
+    buf.seek(0)
+    return base64.b64encode(buf.read()).decode('utf-8')
+
 @app.route('/weekly')
 def weekly_page():
     import datetime
@@ -963,8 +1030,11 @@ def weekly_page():
         year = today.year
         year_str = str(year)
 
+    weekly_chart = create_weekly_total_chart(year_str)
+
     return render_template('weekly.html', 
         table_content=generate_weekly_heatmap_html(year_str),
+        weekly_chart=weekly_chart,
         selected_year=year,
         prev_year=year-1,
         next_year=year+1,

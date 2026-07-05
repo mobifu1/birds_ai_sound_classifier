@@ -4,9 +4,7 @@
 <head>
     <title>Tages-Statistik (Daily)</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    {% if is_today %}
-    <meta http-equiv="refresh" content="30"> <!-- Autorefresh alle 30s nur für den heutigen Tag -->
-    {% endif %}
+    <meta http-equiv="refresh" content="300">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <style>
         .date-controls {

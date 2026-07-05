@@ -1245,6 +1245,14 @@ def db_edit_page():
     conn.close()
     return render_template('db_edit.html', species_list=sorted(list(species_set)))
 
+@app.route('/wiki')
+def wiki_page():
+    wiki_dir = os.path.join('static', 'wiki')
+    wiki_images = []
+    if os.path.exists(wiki_dir):
+        wiki_images = [f for f in os.listdir(wiki_dir) if f.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp'))]
+    return render_template('wiki.html', wiki_images=wiki_images)
+
 @app.route('/api/settings/save', methods=['POST'])
 def api_save_settings():
     data = request.json

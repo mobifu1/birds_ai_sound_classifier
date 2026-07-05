@@ -187,9 +187,9 @@
         <div class="wiki-gallery">
         {% if wiki_images %}
         {% for img in wiki_images %}
-            <div class="wiki-card" data-src="/wiki/images/{{ img }}" data-caption="{{ img }}">
+            <div class="wiki-card" data-src="/static/wiki/{{ img }}" data-caption="{{ img }}">
                 <div class="wiki-card-img-wrap">
-                    <img src="/wiki/images/{{ img }}" alt="{{ img }}" loading="lazy">
+                    <img src="/static/wiki/{{ img }}" alt="{{ img }}" loading="lazy">
                 </div>
             </div>
         {% endfor %}

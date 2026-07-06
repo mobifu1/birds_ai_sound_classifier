@@ -136,7 +136,14 @@ DEFAULT_BIRD_TRANSLATIONS = {
 def get_bird_dictionary():
     settings = load_settings()
     if "bird_dictionary" in settings:
-        return settings["bird_dictionary"]
+        raw_dict = settings["bird_dictionary"]
+        flat_dict = {}
+        for k, v in raw_dict.items():
+            if isinstance(v, dict):
+                flat_dict[k] = v.get("translation", k)
+            else:
+                flat_dict[k] = v
+        return flat_dict
     return DEFAULT_BIRD_TRANSLATIONS
 
 # Analyzer laden (lädt Modelle beim ersten Start herunter falls nicht vorhanden)
@@ -510,7 +517,8 @@ def index():
 @app.route('/settings')
 def settings_page():
     s = load_settings()
-    s["bird_dictionary"] = get_bird_dictionary()
+    if "bird_dictionary" not in s:
+        s["bird_dictionary"] = DEFAULT_BIRD_TRANSLATIONS
     
     pa = pyaudio.PyAudio()
     mics = []
@@ -911,7 +919,27 @@ def generate_weekly_heatmap_html(year_str=None):
             html_table += f'<th title="Gesamtsumme: {total_in_week}">{col}</th>'
         html_table += '</tr></thead><tbody>'
         
+        import re
         from flask import url_for
+        
+        status_map = {
+            "Standvogel": "SV",
+            "Teilzieher": "TZ",
+            "Zugvogel": "ZV",
+            "Wintergast": "WG"
+        }
+
+        settings = load_settings()
+        raw_bird_dict = settings.get("bird_dictionary", {})
+        species_meta = {}
+        for eng, data in raw_bird_dict.items():
+            if isinstance(data, dict):
+                trans = data.get("translation", eng)
+                species_meta[trans] = {
+                    "aufenthalt": data.get("aufenthalt", ""),
+                    "status": data.get("status", "")
+                }
+
         for species, row in pivot_pct.iterrows():
             img_src = url_for('static', filename=get_bird_icon(species))
             if 'Unbekannt.png' in img_src:
@@ -919,17 +947,78 @@ def generate_weekly_heatmap_html(year_str=None):
             else:
                 img_tag = f'<img src="{img_src}" class="bird-icon-small">'
 
-            html_table += f'<tr><td style="text-align:left; font-weight:bold;"><div class="species-wrapper">{img_tag}<span>{species}</span></div></td>'
+            meta = species_meta.get(species, {})
+            status_full = meta.get("status", "")
+            aufenthalt = meta.get("aufenthalt", "")
+
+            status_short = status_map.get(status_full, "")
+            display_species = f"{species} ({status_short})" if status_short else species
+
+            html_table += f'<tr><td style="text-align:left; font-weight:bold;"><div class="species-wrapper">{img_tag}<span>{display_species}</span></div></td>'
             
-            for col_name, val in row.items():
+            start_m, end_m = 0, 0
+            if aufenthalt and '-' in aufenthalt:
+                try:
+                    parts = aufenthalt.split('-')
+                    start_m = int(parts[0])
+                    end_m = int(parts[1])
+                except:
+                    pass
+            
+            in_range_list = []
+            for col_name in row.keys():
+                w_match = re.search(r"^(\d{2})<br>.*?\'(\d{2})</small>$", col_name)
+                is_in_range = False
+                if w_match and start_m and end_m:
+                    w = int(w_match.group(1))
+                    y = 2000 + int(w_match.group(2))
+                    try:
+                        month = datetime.date.fromisocalendar(y, w, 1).month
+                    except (ValueError, AttributeError):
+                        try:
+                            month = datetime.datetime.strptime(f'{y}-W{w-1}-1', "%Y-W%W-%w").month
+                        except:
+                            month = ((w - 1) * 12) // 52 + 1
+                    
+                    if start_m <= end_m:
+                        if start_m <= month <= end_m:
+                            is_in_range = True
+                    else:
+                        if month >= start_m or month <= end_m:
+                            is_in_range = True
+                in_range_list.append(is_in_range)
+                
+            for i, (col_name, val) in enumerate(row.items()):
                 absolute_count = int(pivot_counts.at[species, col_name])
                 total_in_week = int(week_totals[col_name])
+                
+                is_in_range = in_range_list[i]
                 
                 style = 'background-color: transparent;'
                 if val > 0:
                     alpha = 0.15 + (val / 50.0) * 0.85 
                     alpha = min(alpha, 1.0) 
                     style = f'background-color: rgba(76, 175, 80, {alpha});'
+                
+                if is_in_range:
+                    is_start = (i == 0) or not in_range_list[i-1]
+                    is_end = (i == len(in_range_list) - 1) or not in_range_list[i+1]
+                    
+                    shadows = []
+                    
+                    if is_start:
+                        shadows.append('inset 2px 0 0 0 rgba(255, 235, 59, 0.8)')
+                        shadows.append('inset 0 1px 0 0 rgba(255, 235, 59, 0.8)')
+                        shadows.append('inset 0 -1px 0 0 rgba(255, 235, 59, 0.8)')
+                        
+                    if is_end:
+                        shadows.append('inset -2px 0 0 0 rgba(255, 235, 59, 0.8)')
+                        if not is_start:
+                            shadows.append('inset 0 1px 0 0 rgba(255, 235, 59, 0.8)')
+                            shadows.append('inset 0 -1px 0 0 rgba(255, 235, 59, 0.8)')
+                    
+                    if shadows:
+                        style += ' box-shadow: ' + ', '.join(shadows) + ';'
                 
                 if total_in_week > 0:
                     tooltip = f"{val:.1f}% ({absolute_count} von {total_in_week} Vögeln)"

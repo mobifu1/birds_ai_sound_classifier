@@ -341,7 +341,19 @@
         const initialBirdDictionary = {{ s.get('bird_dictionary', {}) | tojson }};
         const dictContainer = document.getElementById('dictionary-container');
 
-        function addDictionaryRow(engKey, transValue) {
+        function addDictionaryRow(engKey, data) {
+            let transValue = '';
+            let aufenthalt = '';
+            let status = '';
+
+            if (typeof data === 'string') {
+                transValue = data;
+            } else if (typeof data === 'object' && data !== null) {
+                transValue = data.translation || '';
+                aufenthalt = data.aufenthalt || '';
+                status = data.status || '';
+            }
+
             const row = document.createElement('div');
             row.className = 'dict-row';
             row.style.display = 'flex';
@@ -361,6 +373,31 @@
             inputTrans.className = 'dict-val';
             inputTrans.style.flex = '1';
 
+            const inputAuf = document.createElement('input');
+            inputAuf.type = 'text';
+            inputAuf.placeholder = 'Aufenthalt (z.B. 4-10)';
+            inputAuf.value = aufenthalt;
+            inputAuf.className = 'dict-auf';
+            inputAuf.style.flex = '0.5';
+
+            const selectStatus = document.createElement('select');
+            selectStatus.className = 'dict-stat';
+            selectStatus.style.flex = '0.8';
+            selectStatus.style.padding = '10px';
+            selectStatus.style.border = '1px solid #444';
+            selectStatus.style.borderRadius = '5px';
+            selectStatus.style.background = '#1a1a1a';
+            selectStatus.style.color = '#fff';
+            
+            const options = ["", "Standvogel", "Teilzieher", "Zugvogel", "Wintergast"];
+            options.forEach(opt => {
+                const el = document.createElement('option');
+                el.value = opt;
+                el.text = opt === "" ? "Status wählen..." : opt;
+                if (opt === status) el.selected = true;
+                selectStatus.appendChild(el);
+            });
+
             const delBtn = document.createElement('button');
             delBtn.innerText = 'X';
             delBtn.className = 'btn btn-red';
@@ -371,6 +408,8 @@
 
             row.appendChild(inputEng);
             row.appendChild(inputTrans);
+            row.appendChild(inputAuf);
+            row.appendChild(selectStatus);
             row.appendChild(delBtn);
             dictContainer.appendChild(row);
         }
@@ -432,8 +471,14 @@
             document.querySelectorAll('.dict-row').forEach(row => {
                 const key = row.querySelector('.dict-key').value.trim();
                 const val = row.querySelector('.dict-val').value.trim();
+                const auf = row.querySelector('.dict-auf').value.trim();
+                const stat = row.querySelector('.dict-stat').value.trim();
                 if (key) {
-                    birdDict[key] = val;
+                    birdDict[key] = {
+                        "translation": val,
+                        "aufenthalt": auf,
+                        "status": stat
+                    };
                 }
             });
 

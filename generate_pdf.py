@@ -28,6 +28,8 @@ lines = [
     "- Audio Archivierung (Vogelarten): Liste zu archivierender Arten ('alle', 'neu', Kombinationen)",
     "- Max. Archiv-Dateien pro Art: Begrenzung der gespeicherten Aufnahmen (0 = unbegrenzt)",
     "- Vogelarten Woerterbuch: Uebersetzung von englischen zu deutschen Bezeichnungen",
+    "- Aufenthalt (Woerterbuch): Aufenthaltszeitraum in Monaten (z.B. 4-10) fuer die Wochen-Statistik",
+    "- Status (Woerterbuch): Vogel-Klassifizierung (Standvogel, Zugvogel, etc.) fuer die Wochen-Statistik",
     "",
     "Audio Filter & System:",
     "- High-Pass Filter: Herausfiltern von tiefen Stoergeraeuschen (inkl. Grenzfrequenz in Hz)",

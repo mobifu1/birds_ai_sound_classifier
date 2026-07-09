@@ -10,3 +10,5 @@ debug_log.txt
 
 *.db-shm
 *.db-wal
+birdweather.json
+birdweather_queue/

@@ -205,6 +205,27 @@
         </div>
 
         <div class="section">
+            <h2>BirdWeather Integration</h2>
+            <div style="margin-bottom: 15px;">
+                <label style="display: flex; align-items: center; cursor: pointer;">
+                    <input type="checkbox" id="birdweather_active" style="width: 20px; height: 20px; margin-right: 10px;" {% if s.get('birdweather_active', False) %}checked{% endif %}>
+                    <span style="color: #ccc;"><strong>Aktivieren:</strong> Daten an BirdWeather senden</span>
+                </label>
+            </div>
+            <div class="row">
+                <label>BirdWeather ID (Token):<br><small>Trage hier deinen BirdWeather Token ein.</small></label>
+                <div style="display: flex; gap: 10px;">
+                    <input type="text" id="birdweather_id" value="{{ s.get('birdweather_id', '') }}" placeholder="z.B. abcdef1234567890" style="flex: 1;">
+                    <button type="button" class="btn btn-blue" onclick="testBirdWeather()" style="width: auto; padding: 10px 20px; margin: 0;">Testen</button>
+                </div>
+            </div>
+            <div style="margin-top: 15px; padding: 10px; background: #2a2a2a; border-radius: 5px; font-size: 0.9em; color: #ccc;">
+                <strong>Offline-Warteschlange:</strong> {{ queue_size|default(0) }} / 500 Aufnahmen
+                <br><small>Hier warten Aufnahmen auf den Versand, falls die Internetverbindung unterbrochen war.</small>
+            </div>
+        </div>
+
+        <div class="section">
             <h2>Vogelarten Wörterbuch (Dictionary) & Archivierung</h2>
             <div style="margin-bottom: 20px;">
                 <label>Audio Archivierung (Vogelarten):<br><small>Kommaseparierte Liste von Vogelarten. 'alle' archiviert jede Erkennung. 'neu' archiviert Vogelarten, die noch nicht in der Datenbank stehen. Kombinationen (z.B. 'neu, Amsel') sind möglich.</small></label>
@@ -500,6 +521,8 @@
                 highpass_freq: parseInt(document.getElementById('highpass_freq').value),
                 nr_active: document.getElementById('nr_active').checked,
                 nr_quality: document.getElementById('nr_quality').value,
+                birdweather_active: document.getElementById('birdweather_active').checked,
+                birdweather_id: document.getElementById('birdweather_id').value,
                 bird_dictionary: birdDict
             };
 
@@ -535,6 +558,29 @@
                 container.style.display = "none";
                 localStorage.setItem("spectrogram_enabled", "false");
             }
+        }
+
+        function testBirdWeather() {
+            const token = document.getElementById('birdweather_id').value.trim();
+            if (!token) {
+                alert("Bitte trage zuerst einen BirdWeather Token ein.");
+                return;
+            }
+            
+            fetch('/api/birdweather/test', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ birdweather_id: token })
+            })
+            .then(r => r.json())
+            .then(d => {
+                if(d.success) {
+                    alert("Erfolg: " + d.msg);
+                } else {
+                    alert("Fehlgeschlagen: " + d.msg);
+                }
+            })
+            .catch(e => alert("Netzwerkfehler: " + e));
         }
 
         document.addEventListener('DOMContentLoaded', function() {

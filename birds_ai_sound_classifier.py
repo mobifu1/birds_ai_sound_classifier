@@ -18,6 +18,8 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import io
+import requests
+import soundfile as sf
 import base64
 
 from flask import Flask, render_template, jsonify, request, send_file, abort
@@ -38,6 +40,9 @@ from birdnetlib import Recording
 # --- KONFIGURATION ---
 DB_FILE = "birds_audio_stats.db"
 SETTINGS_FILE = "settings.json"
+BIRDWEATHER_FILE = "birdweather.json"
+BIRDWEATHER_QUEUE_DIR = "birdweather_queue"
+MAX_BIRDWEATHER_QUEUE = 500
 FLASK_PORT = 5001
 RECORD_SECONDS = 3
 CHUNK = 1024
@@ -45,9 +50,9 @@ FORMAT = pyaudio.paInt16
 CHANNELS = 1
 RATE = 48000 # BirdNET standard is 48kHz
 MIN_CONFIDENCE = 0.3 # Konfidenz-Schwellenwert
-AUDIO_DIR = "audio_records"
-
+AUDIO_DIR = "audio_temp"
 os.makedirs(AUDIO_DIR, exist_ok=True)
+os.makedirs(BIRDWEATHER_QUEUE_DIR, exist_ok=True)
 TEMP_WAV = os.path.join(AUDIO_DIR, "temp.wav")
 
 app = Flask(__name__)
@@ -166,6 +171,24 @@ def load_settings():
             pass
     return {}
 
+def load_birdweather_settings():
+    if os.path.exists(BIRDWEATHER_FILE):
+        try:
+            with open(BIRDWEATHER_FILE, 'r') as f:
+                return json.load(f)
+        except:
+            pass
+    return {}
+
+def save_birdweather_setting(key, value):
+    data = load_birdweather_settings()
+    data[key] = value
+    try:
+        with open(BIRDWEATHER_FILE, 'w') as f:
+            json.dump(data, f)
+    except:
+        pass
+
 def save_setting(key, value):
     data = load_settings()
     data[key] = value
@@ -212,13 +235,69 @@ class AudioMonitor:
         self.running = True
         self.record_thread = threading.Thread(target=self.loop_record, daemon=True)
         self.analyze_thread = threading.Thread(target=self.loop_analyze, daemon=True)
+        self.bw_queue_thread = threading.Thread(target=self.loop_birdweather_queue, daemon=True)
         self.record_thread.start()
         self.analyze_thread.start()
+        self.bw_queue_thread.start()
         update_log("Audio-Ueberwachung (Multi-Thread) gestartet.")
 
     def stop(self):
         self.running = False
         update_log("Audio-Ueberwachung gestoppt.")
+
+    def loop_birdweather_queue(self):
+        while self.running:
+            try:
+                time.sleep(60)
+                bw_settings = load_birdweather_settings()
+                birdweather_id = bw_settings.get("birdweather_id", "").strip()
+                if not birdweather_id or not bw_settings.get("birdweather_active", False):
+                    continue
+                
+                queue_files = sorted([f for f in os.listdir(BIRDWEATHER_QUEUE_DIR) if f.endswith('.json')])
+                for qf in queue_files:
+                    if not self.running: break
+                    base = qf[:-5]
+                    json_path = os.path.join(BIRDWEATHER_QUEUE_DIR, qf)
+                    flac_path = os.path.join(BIRDWEATHER_QUEUE_DIR, base + ".flac")
+                    if not os.path.exists(flac_path):
+                        os.remove(json_path)
+                        continue
+                    
+                    with open(json_path, 'r') as f:
+                        qdata = json.load(f)
+                    
+                    with open(flac_path, 'rb') as f:
+                        flac_data = f.read()
+                    
+                    iso_time = qdata['iso_time']
+                    soundscape_url = f'https://app.birdweather.com/api/v1/stations/{birdweather_id}/soundscapes?timestamp={iso_time}'
+                    resp = requests.post(url=soundscape_url, data=flac_data, timeout=10, headers={'Content-Type': 'audio/flac'})
+                    sdata = resp.json()
+                    
+                    if sdata.get('success'):
+                        soundscape_id = sdata['soundscape']['id']
+                        det_url = f'https://app.birdweather.com/api/v1/stations/{birdweather_id}/detections'
+                        det_data = {
+                            'timestamp': iso_time,
+                            'lat': qdata['lat'],
+                            'lon': qdata['lon'],
+                            'soundscapeId': soundscape_id,
+                            'soundscapeStartTime': 0.0,
+                            'soundscapeEndTime': float(RECORD_SECONDS),
+                            'commonName': qdata['eng_species'],
+                            'scientificName': qdata.get('scientific_name', ''),
+                            'algorithm': '2p4',
+                            'confidence': qdata['confidence']
+                        }
+                        requests.post(det_url, json=det_data, timeout=10)
+                        update_log(f"BirdWeather Queue gesendet: {qdata['eng_species']}")
+                        os.remove(json_path)
+                        os.remove(flac_path)
+                    else:
+                        raise Exception(sdata.get('message', 'Unbekannt'))
+            except Exception as e:
+                pass # Fehler (z.B. Offline) -> nächste Runde abwarten
 
     def loop_record(self):
         try:
@@ -456,6 +535,72 @@ class AudioMonitor:
 
                             save_detection(species, confidence, calculated_snr)
                             
+                            # BirdWeather Integration
+                            bw_settings = load_birdweather_settings()
+                            birdweather_id = bw_settings.get("birdweather_id", "").strip()
+                            birdweather_active = bw_settings.get("birdweather_active", False)
+                            if birdweather_active and birdweather_id:
+                                try:
+                                    data_sf, samplerate_sf = sf.read(TEMP_WAV)
+                                    buf_sf = io.BytesIO()
+                                    sf.write(buf_sf, data_sf, samplerate_sf, format='FLAC')
+                                    flac_data = buf_sf.getvalue()
+                                    
+                                    iso_time = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z")
+                                    soundscape_url = f'https://app.birdweather.com/api/v1/stations/{birdweather_id}/soundscapes?timestamp={iso_time}'
+                                    
+                                    resp = requests.post(url=soundscape_url, data=flac_data, timeout=10, headers={'Content-Type': 'audio/flac'})
+                                    sdata = resp.json()
+                                    if sdata.get('success'):
+                                        soundscape_id = sdata['soundscape']['id']
+                                        det_url = f'https://app.birdweather.com/api/v1/stations/{birdweather_id}/detections'
+                                        det_data = {
+                                            'timestamp': iso_time,
+                                            'lat': lat,
+                                            'lon': lon,
+                                            'soundscapeId': soundscape_id,
+                                            'soundscapeStartTime': 0.0,
+                                            'soundscapeEndTime': float(RECORD_SECONDS),
+                                            'commonName': eng_species,
+                                            'scientificName': best.get('scientific_name', ''),
+                                            'algorithm': '2p4',
+                                            'confidence': confidence
+                                        }
+                                        requests.post(det_url, json=det_data, timeout=10)
+                                        update_log(f"An BirdWeather gesendet: {eng_species}")
+                                    else:
+                                        raise Exception(f"API Fehler: {sdata.get('message')}")
+                                except Exception as e:
+                                    update_log(f"BirdWeather Upload verzögert ({e}), ab in Warteschlange.")
+                                    try:
+                                        ts_filename = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+                                        flac_path = os.path.join(BIRDWEATHER_QUEUE_DIR, f"{ts_filename}.flac")
+                                        json_path = os.path.join(BIRDWEATHER_QUEUE_DIR, f"{ts_filename}.json")
+                                        with open(flac_path, 'wb') as f:
+                                            f.write(flac_data)
+                                        queue_data = {
+                                            'iso_time': iso_time,
+                                            'lat': lat,
+                                            'lon': lon,
+                                            'eng_species': eng_species,
+                                            'scientific_name': best.get('scientific_name', ''),
+                                            'confidence': confidence
+                                        }
+                                        with open(json_path, 'w') as f:
+                                            json.dump(queue_data, f)
+                                        
+                                        all_json = sorted([f for f in os.listdir(BIRDWEATHER_QUEUE_DIR) if f.endswith('.json')])
+                                        if len(all_json) > MAX_BIRDWEATHER_QUEUE:
+                                            for f_to_del in all_json[:-MAX_BIRDWEATHER_QUEUE]:
+                                                base = f_to_del[:-5]
+                                                try:
+                                                    os.remove(os.path.join(BIRDWEATHER_QUEUE_DIR, base + ".json"))
+                                                    os.remove(os.path.join(BIRDWEATHER_QUEUE_DIR, base + ".flac"))
+                                                except:
+                                                    pass
+                                    except Exception as qe:
+                                        update_log(f"Fehler Warteschlange: {qe}")
+                            
                             archive_species_str = settings.get("archive_species", "")
                             if archive_species_str:
                                 archive_list = [s.strip().lower() for s in archive_species_str.split(',') if s.strip()]
@@ -505,7 +650,7 @@ class AudioMonitor:
 # --- FLASK ROUTEN ---
 @app.context_processor
 def inject_version():
-    return dict(version="1.1")
+    return dict(version="1.2")
 
 @app.route('/')
 def index():
@@ -517,8 +662,15 @@ def index():
 @app.route('/settings')
 def settings_page():
     s = load_settings()
+    bw = load_birdweather_settings()
+    s['birdweather_id'] = bw.get('birdweather_id', '')
+    s['birdweather_active'] = bw.get('birdweather_active', False)
     if "bird_dictionary" not in s:
         s["bird_dictionary"] = DEFAULT_BIRD_TRANSLATIONS
+    
+    queue_size = 0
+    if os.path.exists(BIRDWEATHER_QUEUE_DIR):
+        queue_size = len([f for f in os.listdir(BIRDWEATHER_QUEUE_DIR) if f.endswith('.json')])
     
     pa = pyaudio.PyAudio()
     mics = []
@@ -536,7 +688,7 @@ def settings_page():
         except Exception:
             pass
     pa.terminate()
-    return render_template('settings.html', s=s, mics=mics)
+    return render_template('settings.html', s=s, mics=mics, queue_size=queue_size)
 
 def create_chart(title, labels, values):
     height = max(6, len(labels) * 0.4)
@@ -1345,6 +1497,10 @@ def wiki_page():
 @app.route('/api/settings/save', methods=['POST'])
 def api_save_settings():
     data = request.json
+    if "birdweather_id" in data:
+        save_birdweather_setting("birdweather_id", data.get("birdweather_id", ""))
+    if "birdweather_active" in data:
+        save_birdweather_setting("birdweather_active", bool(data.get("birdweather_active", False)))
     save_setting("threshold", data.get("threshold", 30))
     save_setting("min_snr", data.get("min_snr", 0.0))
     save_setting("gps_lat", data.get("gps_lat", 51.165691))
@@ -1373,6 +1529,27 @@ def api_save_settings():
     if "bird_dictionary" in data:
         save_setting("bird_dictionary", data.get("bird_dictionary", {}))
     return jsonify({"msg": "Einstellungen gespeichert!"})
+
+@app.route('/api/birdweather/test', methods=['POST'])
+def api_birdweather_test():
+    data = request.json
+    token = data.get("birdweather_id", "").strip()
+    if not token:
+        return jsonify({"success": False, "msg": "Kein Token angegeben."})
+    try:
+        url = f"https://app.birdweather.com/api/v1/stations/{token}"
+        r = requests.get(url, timeout=10)
+        try:
+            resp_data = r.json()
+        except:
+            resp_data = {}
+        
+        if r.status_code == 200 or resp_data.get("success"):
+            return jsonify({"success": True, "msg": "Verbindung erfolgreich! Token ist gültig."})
+        else:
+            return jsonify({"success": False, "msg": f"Zugriff verweigert oder ungültiger Token. Meldung: {resp_data.get('message', 'Unbekannt')}"})
+    except Exception as e:
+        return jsonify({"success": False, "msg": f"Fehler bei der Verbindung: {e}"})
 
 @app.route('/api/control/apply_dictionary', methods=['POST'])
 def api_control_apply_dictionary():
@@ -1525,7 +1702,7 @@ def generate_waterfall_stream():
         data = latest_waterfall_data.copy()
         mapped = cmap(data)
         img_data = (mapped[:, :, :3] * 255).astype(np.uint8)
-        img = Image.fromarray(img_data, mode='RGB')
+        img = Image.fromarray(img_data)
         buf = io.BytesIO()
         img.save(buf, format='JPEG', quality=80)
         frame = buf.getvalue()

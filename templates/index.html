@@ -125,6 +125,9 @@
                             </div>
                         </div>
                     </div>
+                    <div id="radar-last-detection" style="position: absolute; top: 10px; right: 10px; z-index: 20; color: rgba(255, 255, 255, 0.25); font-family: 'Inter', sans-serif; font-size: 11px; pointer-events: none; display: none;">
+                        Letzte Erkennung: <span id="radar-last-time"></span>
+                    </div>
                     <svg id="radar-lines" style="position: absolute; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none;"></svg>
                     
                     <div id="radar-center" class="radar-center-glow" style="position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 70px; height: 70px; background: #1b5e20; border: 3px solid #4CAF50; border-radius: 50%; display: flex; align-items: center; justify-content: center; z-index: 10; box-shadow: 0 0 20px rgba(76, 175, 80, 0.6);">
@@ -367,6 +370,24 @@
                         recordDiv.style.display = 'flex';
                     } else {
                         recordDiv.style.display = 'none';
+                    }
+                    
+                    if (data.seconds_since_latest !== undefined && data.seconds_since_latest !== null) {
+                        let sec = data.seconds_since_latest;
+                        let timeStr = "";
+                        if (sec < 60) {
+                            timeStr = sec + "s";
+                        } else if (sec < 3600) {
+                            timeStr = Math.floor(sec / 60) + "min";
+                        } else {
+                            let h = Math.floor(sec / 3600);
+                            let m = Math.floor((sec % 3600) / 60);
+                            timeStr = h + "h " + m + "min";
+                        }
+                        document.getElementById('radar-last-time').innerText = timeStr;
+                        document.getElementById('radar-last-detection').style.display = 'block';
+                    } else {
+                        document.getElementById('radar-last-detection').style.display = 'none';
                     }
                 });
                 

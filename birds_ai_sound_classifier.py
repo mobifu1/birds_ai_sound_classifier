@@ -1849,10 +1849,22 @@ def api_top_species():
         })
 
     
-    c.execute("SELECT species, rowid FROM detections ORDER BY timestamp DESC LIMIT 1")
+    c.execute("SELECT species, rowid, timestamp FROM detections ORDER BY timestamp DESC LIMIT 1")
     last = c.fetchone()
     latest_species = last[0] if last else None
     latest_id = last[1] if last else None
+    
+    seconds_since_latest = None
+    if last and last[2]:
+        try:
+            # Handle potential fractional seconds or different formats
+            ts_str = last[2].split(".")[0]
+            ts = datetime.datetime.strptime(ts_str, "%Y-%m-%d %H:%M:%S")
+            diff = (datetime.datetime.now() - ts).total_seconds()
+            seconds_since_latest = max(0, int(diff))
+        except Exception as e:
+            print(f"Error parsing timestamp {last[2]}: {e}")
+            pass
     
     c.execute(f"SELECT COUNT(DISTINCT species) FROM detections WHERE date(timestamp) = date('now', 'localtime') AND timestamp >= datetime('now', '-{radar_time_range} hours', 'localtime')")
     unique_count = c.fetchone()[0]
@@ -1877,6 +1889,7 @@ def api_top_species():
         "latest_id": latest_id, 
         "unique_species_count": unique_count, 
         "last_hour_count": last_hour_count,
+        "seconds_since_latest": seconds_since_latest,
         "new_record_species": new_record_species
     })
 

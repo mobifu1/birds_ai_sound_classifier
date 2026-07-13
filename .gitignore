@@ -12,3 +12,4 @@ debug_log.txt
 *.db-wal
 birdweather.json
 birdweather_queue/
+blocklist-log.txt

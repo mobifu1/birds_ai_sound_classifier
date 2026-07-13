@@ -515,7 +515,21 @@ class AudioMonitor:
                     
                     current_detected_species = set()
                     
-                    if confidence >= min_conf and calculated_snr > min_snr_val:
+                    full_bird_dict = settings.get("bird_dictionary", {})
+                    is_blocklisted = False
+                    if eng_species in full_bird_dict and isinstance(full_bird_dict[eng_species], dict):
+                        is_blocklisted = full_bird_dict[eng_species].get("blocklist", False)
+                        
+                    if is_blocklisted:
+                        try:
+                            with open("blocklist-log.txt", "a", encoding="utf-8") as f:
+                                ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                                f.write(f"{ts}, {species}, {confidence*100:.0f}%, {calculated_snr:.1f} dB, {lat}, {lon}\n")
+                        except Exception as e:
+                            pass
+                        update_log(f"Ignoriert (Blocklist): {species}")
+                        previous_detected_species = set()
+                    elif confidence >= min_conf and calculated_snr > min_snr_val:
                         current_detected_species.add(species)
                         
                         if species not in previous_detected_species:
@@ -650,7 +664,7 @@ class AudioMonitor:
 # --- FLASK ROUTEN ---
 @app.context_processor
 def inject_version():
-    return dict(version="1.2")
+    return dict(version="1.2.1")
 
 @app.route('/')
 def index():
@@ -1871,6 +1885,9 @@ def api_top_species():
     
     c.execute("SELECT COUNT(*) FROM detections WHERE timestamp >= datetime('now', '-1 hours', 'localtime')")
     last_hour_count = c.fetchone()[0]
+    c.execute("SELECT COUNT(*) FROM detections WHERE timestamp >= datetime('now', '-24 hours', 'localtime')")
+    last_24h_count = c.fetchone()[0]
+    
     c.execute("""
         SELECT species
         FROM detections
@@ -1889,6 +1906,7 @@ def api_top_species():
         "latest_id": latest_id, 
         "unique_species_count": unique_count, 
         "last_hour_count": last_hour_count,
+        "last_24h_count": last_24h_count,
         "seconds_since_latest": seconds_since_latest,
         "new_record_species": new_record_species
     })

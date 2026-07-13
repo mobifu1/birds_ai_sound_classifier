@@ -366,6 +366,7 @@
             let transValue = '';
             let aufenthalt = '';
             let status = '';
+            let blocklist = false;
 
             if (typeof data === 'string') {
                 transValue = data;
@@ -373,6 +374,7 @@
                 transValue = data.translation || '';
                 aufenthalt = data.aufenthalt || '';
                 status = data.status || '';
+                blocklist = data.blocklist || false;
             }
 
             const row = document.createElement('div');
@@ -419,6 +421,22 @@
                 selectStatus.appendChild(el);
             });
 
+            const labelBlocklist = document.createElement('label');
+            labelBlocklist.style.display = 'flex';
+            labelBlocklist.style.alignItems = 'center';
+            labelBlocklist.style.gap = '5px';
+            labelBlocklist.style.margin = '0';
+            labelBlocklist.style.color = '#F44336';
+            labelBlocklist.style.fontSize = '0.9rem';
+            
+            const inputBlocklist = document.createElement('input');
+            inputBlocklist.type = 'checkbox';
+            inputBlocklist.className = 'dict-bl';
+            inputBlocklist.checked = blocklist;
+            
+            labelBlocklist.appendChild(inputBlocklist);
+            labelBlocklist.appendChild(document.createTextNode('Blocklist'));
+
             const delBtn = document.createElement('button');
             delBtn.innerText = 'X';
             delBtn.className = 'btn btn-red';
@@ -431,6 +449,7 @@
             row.appendChild(inputTrans);
             row.appendChild(inputAuf);
             row.appendChild(selectStatus);
+            row.appendChild(labelBlocklist);
             row.appendChild(delBtn);
             dictContainer.appendChild(row);
         }
@@ -494,11 +513,13 @@
                 const val = row.querySelector('.dict-val').value.trim();
                 const auf = row.querySelector('.dict-auf').value.trim();
                 const stat = row.querySelector('.dict-stat').value.trim();
+                const bl = row.querySelector('.dict-bl').checked;
                 if (key) {
                     birdDict[key] = {
                         "translation": val,
                         "aufenthalt": auf,
-                        "status": stat
+                        "status": stat,
+                        "blocklist": bl
                     };
                 }
             });

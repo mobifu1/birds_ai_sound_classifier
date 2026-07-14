@@ -520,6 +520,14 @@ class AudioMonitor:
                     if eng_species in full_bird_dict and isinstance(full_bird_dict[eng_species], dict):
                         is_blocklisted = full_bird_dict[eng_species].get("blocklist", False)
                         
+                        ind_conf_val = full_bird_dict[eng_species].get("ind_conf")
+                        if ind_conf_val is not None and str(ind_conf_val).strip() != "":
+                            try:
+                                min_conf = float(ind_conf_val) / 100.0
+                            except (ValueError, TypeError):
+                                pass
+
+                        
                     if is_blocklisted:
                         try:
                             with open("blocklist-log.txt", "a", encoding="utf-8") as f:
@@ -664,7 +672,7 @@ class AudioMonitor:
 # --- FLASK ROUTEN ---
 @app.context_processor
 def inject_version():
-    return dict(version="1.2.1")
+    return dict(version="1.2.2")
 
 @app.route('/')
 def index():

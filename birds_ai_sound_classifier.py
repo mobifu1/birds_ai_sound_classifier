@@ -529,13 +529,14 @@ class AudioMonitor:
 
                         
                     if is_blocklisted:
-                        try:
-                            with open("blocklist-log.txt", "a", encoding="utf-8") as f:
-                                ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                                f.write(f"{ts}, {species}, {confidence*100:.0f}%, {calculated_snr:.1f} dB, {lat}, {lon}\n")
-                        except Exception as e:
-                            pass
-                        update_log(f"Ignoriert (Blocklist): {species}")
+                        if confidence >= min_conf and calculated_snr > min_snr_val:
+                            try:
+                                with open("blocklist-log.txt", "a", encoding="utf-8") as f:
+                                    ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                                    f.write(f"{ts}, {species}, {confidence*100:.0f}%, {calculated_snr:.1f} dB, {lat}, {lon}\n")
+                            except Exception as e:
+                                pass
+                            update_log(f"Ignoriert (Blocklist): {species}")
                         previous_detected_species = set()
                     elif confidence >= min_conf and calculated_snr > min_snr_val:
                         current_detected_species.add(species)

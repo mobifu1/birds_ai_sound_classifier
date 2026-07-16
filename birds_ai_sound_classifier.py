@@ -22,7 +22,7 @@ import requests
 import soundfile as sf
 import base64
 
-from flask import Flask, render_template, jsonify, request, send_file, abort
+from flask import Flask, render_template, jsonify, request, send_file, abort, send_from_directory
 from waitress import serve
 import librosa
 import librosa.display
@@ -399,8 +399,135 @@ class AudioMonitor:
         except Exception as e:
             update_log(f"Fehler im Aufnahme-Thread: {e}")
 
+    def _commit_detection(self, det):
+        species = det['species']
+        confidence = det['confidence']
+        calculated_snr = det['snr']
+        is_new_species = det['is_new_species']
+        raw_data = det['raw_data']
+        eng_species = det['eng_species']
+        best = det['best']
+        lat = det['lat']
+        lon = det['lon']
+        settings = det['settings']
+        
+        update_log(f"Erkannt: {species} ({confidence:.0%}) | SNR: {calculated_snr:.1f}dB")
+        
+        save_detection(species, confidence, calculated_snr)
+        
+        temp_commit_wav = "temp_commit.wav"
+        try:
+            wf = wave.open(temp_commit_wav, 'wb')
+            wf.setnchannels(CHANNELS)
+            wf.setsampwidth(self.pa.get_sample_size(FORMAT))
+            wf.setframerate(RATE)
+            wf.writeframes(raw_data)
+            wf.close()
+        except Exception as e:
+            update_log(f"Fehler beim Speichern der temporären Audio-Datei: {e}")
+            return
+            
+        bw_settings = load_birdweather_settings()
+        birdweather_id = bw_settings.get("birdweather_id", "").strip()
+        birdweather_active = bw_settings.get("birdweather_active", False)
+        if birdweather_active and birdweather_id:
+            try:
+                data_sf, samplerate_sf = sf.read(temp_commit_wav)
+                buf_sf = io.BytesIO()
+                sf.write(buf_sf, data_sf, samplerate_sf, format='FLAC')
+                flac_data = buf_sf.getvalue()
+                
+                iso_time = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z")
+                soundscape_url = f'https://app.birdweather.com/api/v1/stations/{birdweather_id}/soundscapes?timestamp={iso_time}'
+                
+                resp = requests.post(url=soundscape_url, data=flac_data, timeout=10, headers={'Content-Type': 'audio/flac'})
+                sdata = resp.json()
+                if sdata.get('success'):
+                    soundscape_id = sdata['soundscape']['id']
+                    det_url = f'https://app.birdweather.com/api/v1/stations/{birdweather_id}/detections'
+                    det_data = {
+                        'timestamp': iso_time,
+                        'lat': lat,
+                        'lon': lon,
+                        'soundscapeId': soundscape_id,
+                        'soundscapeStartTime': 0.0,
+                        'soundscapeEndTime': float(RECORD_SECONDS),
+                        'commonName': eng_species,
+                        'scientificName': best.get('scientific_name', ''),
+                        'algorithm': '2p4',
+                        'confidence': confidence
+                    }
+                    requests.post(det_url, json=det_data, timeout=10)
+                    update_log(f"An BirdWeather gesendet: {eng_species}")
+                else:
+                    raise Exception(f"API Fehler: {sdata.get('message')}")
+            except Exception as e:
+                update_log(f"BirdWeather Upload verzögert ({e}), ab in Warteschlange.")
+                try:
+                    ts_filename = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+                    flac_path = os.path.join(BIRDWEATHER_QUEUE_DIR, f"{ts_filename}.flac")
+                    json_path = os.path.join(BIRDWEATHER_QUEUE_DIR, f"{ts_filename}.json")
+                    with open(flac_path, 'wb') as f:
+                        f.write(flac_data)
+                    queue_data = {
+                        'iso_time': iso_time,
+                        'lat': lat,
+                        'lon': lon,
+                        'eng_species': eng_species,
+                        'scientific_name': best.get('scientific_name', ''),
+                        'confidence': confidence
+                    }
+                    with open(json_path, 'w') as f:
+                        json.dump(queue_data, f)
+                    
+                    all_json = sorted([f for f in os.listdir(BIRDWEATHER_QUEUE_DIR) if f.endswith('.json')])
+                    if len(all_json) > MAX_BIRDWEATHER_QUEUE:
+                        for f_to_del in all_json[:-MAX_BIRDWEATHER_QUEUE]:
+                            base = f_to_del[:-5]
+                            try:
+                                os.remove(os.path.join(BIRDWEATHER_QUEUE_DIR, base + ".json"))
+                                os.remove(os.path.join(BIRDWEATHER_QUEUE_DIR, base + ".flac"))
+                            except:
+                                pass
+                except Exception as qe:
+                    update_log(f"Fehler Warteschlange: {qe}")
+        
+        archive_species_str = settings.get("archive_species", "")
+        if archive_species_str:
+            archive_list = [s.strip().lower() for s in archive_species_str.split(',') if s.strip()]
+            should_archive = species.lower() in archive_list or "*" in archive_list or "alle" in archive_list
+            if not should_archive and "neu" in archive_list and is_new_species:
+                should_archive = True
+
+            if should_archive:
+                import shutil
+                archive_dir = os.path.join(AUDIO_DIR, "archive")
+                if not os.path.exists(archive_dir):
+                    os.makedirs(archive_dir)
+                
+                safe_species = species.replace(" ", "_").replace("/", "_")
+                max_archive_files = int(settings.get("max_archive_files", 0))
+                can_save = True
+                
+                if max_archive_files > 0:
+                    existing_files = [f for f in os.listdir(archive_dir) if f.startswith(safe_species + "_") and f.endswith(".wav")]
+                    if len(existing_files) >= max_archive_files:
+                        can_save = False
+                
+                if can_save:
+                    timestamp = datetime.datetime.now().strftime("%y-%m-%d-%H-%M-%S")
+                    new_filename = f"{safe_species}_{timestamp}.wav"
+                    new_filepath = os.path.join(archive_dir, new_filename)
+                    
+                    try:
+                        shutil.copy(temp_commit_wav, new_filepath)
+                        update_log(f"Audio archiviert: {new_filename}")
+                    except Exception as e:
+                        update_log(f"Fehler beim Archivieren: {e}")
+
     def loop_analyze(self):
         previous_detected_species = set()
+        pending_detection = None
         while self.running:
             try:
                 # Wartet auf neues Audio-Paket (max 1 Sekunde, um while-Bedingung regelmäßig zu prüfen)
@@ -537,131 +664,80 @@ class AudioMonitor:
                             except Exception as e:
                                 pass
                             update_log(f"Ignoriert (Blocklist): {species}")
-                        previous_detected_species = set()
+                            
+                        # If a bird is blocklisted, we shouldn't have a pending detection of it.
+                        # Clear it just in case.
+                        if pending_detection is not None and pending_detection['species'] == species:
+                            pending_detection = None
+                            
+                        # Ensure we don't carry over unrelated pending detections silently
+                        if pending_detection is not None:
+                            self._commit_detection(pending_detection)
+                            previous_detected_species.add(pending_detection['species'])
+                            pending_detection = None
+                            
                     elif confidence >= min_conf and calculated_snr > min_snr_val:
                         current_detected_species.add(species)
                         
-                        if species not in previous_detected_species:
-                            update_log(f"Erkannt: {species} ({confidence:.0%}) | SNR: {calculated_snr:.1f}dB")
-                            
-                            # Check if species is new before saving
-                            is_new_species = False
-                            try:
-                                conn_check = sqlite3.connect(DB_FILE)
-                                c_check = conn_check.cursor()
-                                c_check.execute("SELECT COUNT(*) FROM detections WHERE species = ?", (species,))
-                                if c_check.fetchone()[0] == 0:
-                                    is_new_species = True
-                                conn_check.close()
-                            except Exception as e:
-                                print(f"Fehler bei DB-Check für neue Art: {e}")
+                        is_new_species = False
+                        try:
+                            conn_check = sqlite3.connect(DB_FILE)
+                            c_check = conn_check.cursor()
+                            c_check.execute("SELECT COUNT(*) FROM detections WHERE species = ?", (species,))
+                            if c_check.fetchone()[0] == 0:
+                                is_new_species = True
+                            conn_check.close()
+                        except Exception as e:
+                            print(f"Fehler bei DB-Check für neue Art: {e}")
 
-                            save_detection(species, confidence, calculated_snr)
-                            
-                            # BirdWeather Integration
-                            bw_settings = load_birdweather_settings()
-                            birdweather_id = bw_settings.get("birdweather_id", "").strip()
-                            birdweather_active = bw_settings.get("birdweather_active", False)
-                            if birdweather_active and birdweather_id:
-                                try:
-                                    data_sf, samplerate_sf = sf.read(TEMP_WAV)
-                                    buf_sf = io.BytesIO()
-                                    sf.write(buf_sf, data_sf, samplerate_sf, format='FLAC')
-                                    flac_data = buf_sf.getvalue()
-                                    
-                                    iso_time = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z")
-                                    soundscape_url = f'https://app.birdweather.com/api/v1/stations/{birdweather_id}/soundscapes?timestamp={iso_time}'
-                                    
-                                    resp = requests.post(url=soundscape_url, data=flac_data, timeout=10, headers={'Content-Type': 'audio/flac'})
-                                    sdata = resp.json()
-                                    if sdata.get('success'):
-                                        soundscape_id = sdata['soundscape']['id']
-                                        det_url = f'https://app.birdweather.com/api/v1/stations/{birdweather_id}/detections'
-                                        det_data = {
-                                            'timestamp': iso_time,
-                                            'lat': lat,
-                                            'lon': lon,
-                                            'soundscapeId': soundscape_id,
-                                            'soundscapeStartTime': 0.0,
-                                            'soundscapeEndTime': float(RECORD_SECONDS),
-                                            'commonName': eng_species,
-                                            'scientificName': best.get('scientific_name', ''),
-                                            'algorithm': '2p4',
-                                            'confidence': confidence
-                                        }
-                                        requests.post(det_url, json=det_data, timeout=10)
-                                        update_log(f"An BirdWeather gesendet: {eng_species}")
-                                    else:
-                                        raise Exception(f"API Fehler: {sdata.get('message')}")
-                                except Exception as e:
-                                    update_log(f"BirdWeather Upload verzögert ({e}), ab in Warteschlange.")
-                                    try:
-                                        ts_filename = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-                                        flac_path = os.path.join(BIRDWEATHER_QUEUE_DIR, f"{ts_filename}.flac")
-                                        json_path = os.path.join(BIRDWEATHER_QUEUE_DIR, f"{ts_filename}.json")
-                                        with open(flac_path, 'wb') as f:
-                                            f.write(flac_data)
-                                        queue_data = {
-                                            'iso_time': iso_time,
-                                            'lat': lat,
-                                            'lon': lon,
-                                            'eng_species': eng_species,
-                                            'scientific_name': best.get('scientific_name', ''),
-                                            'confidence': confidence
-                                        }
-                                        with open(json_path, 'w') as f:
-                                            json.dump(queue_data, f)
-                                        
-                                        all_json = sorted([f for f in os.listdir(BIRDWEATHER_QUEUE_DIR) if f.endswith('.json')])
-                                        if len(all_json) > MAX_BIRDWEATHER_QUEUE:
-                                            for f_to_del in all_json[:-MAX_BIRDWEATHER_QUEUE]:
-                                                base = f_to_del[:-5]
-                                                try:
-                                                    os.remove(os.path.join(BIRDWEATHER_QUEUE_DIR, base + ".json"))
-                                                    os.remove(os.path.join(BIRDWEATHER_QUEUE_DIR, base + ".flac"))
-                                                except:
-                                                    pass
-                                    except Exception as qe:
-                                        update_log(f"Fehler Warteschlange: {qe}")
-                            
-                            archive_species_str = settings.get("archive_species", "")
-                            if archive_species_str:
-                                archive_list = [s.strip().lower() for s in archive_species_str.split(',') if s.strip()]
-                                should_archive = species.lower() in archive_list or "*" in archive_list or "alle" in archive_list
-                                if not should_archive and "neu" in archive_list and is_new_species:
-                                    should_archive = True
+                        current_det_data = {
+                            'species': species,
+                            'confidence': confidence,
+                            'snr': calculated_snr,
+                            'is_new_species': is_new_species,
+                            'raw_data': raw_data,
+                            'eng_species': eng_species,
+                            'best': best,
+                            'lat': lat,
+                            'lon': lon,
+                            'settings': settings
+                        }
 
-                                if should_archive:
-                                    import shutil
-                                    archive_dir = os.path.join(AUDIO_DIR, "archive")
-                                    if not os.path.exists(archive_dir):
-                                        os.makedirs(archive_dir)
-                                    
-                                    safe_species = species.replace(" ", "_").replace("/", "_")
-                                    max_archive_files = int(settings.get("max_archive_files", 0))
-                                    can_save = True
-                                    
-                                    if max_archive_files > 0:
-                                        existing_files = [f for f in os.listdir(archive_dir) if f.startswith(safe_species + "_") and f.endswith(".wav")]
-                                        if len(existing_files) >= max_archive_files:
-                                            can_save = False
-                                            # Optionally log that limit is reached, but it might spam the log. We can stay quiet.
-                                    
-                                    if can_save:
-                                        timestamp = datetime.datetime.now().strftime("%y-%m-%d-%H-%M-%S")
-                                        new_filename = f"{safe_species}_{timestamp}.wav"
-                                        new_filepath = os.path.join(archive_dir, new_filename)
-                                        
-                                        try:
-                                            shutil.copy(TEMP_WAV, new_filepath)
-                                            update_log(f"Audio archiviert: {new_filename}")
-                                        except Exception as e:
-                                            update_log(f"Fehler beim Archivieren: {e}")
+                        if pending_detection is not None and pending_detection['species'] == species:
+                            if confidence > pending_detection['confidence']:
+                                self._commit_detection(current_det_data)
+                            else:
+                                self._commit_detection(pending_detection)
+                            previous_detected_species.add(species)
+                            pending_detection = None
+                        elif species in previous_detected_species:
+                            pass
+                        else:
+                            if pending_detection is not None:
+                                self._commit_detection(pending_detection)
+                                previous_detected_species.add(pending_detection['species'])
+                            pending_detection = current_det_data
+                            
+                    else:
+                        # Detection was below threshold or blocklisted
+                        if pending_detection is not None:
+                            self._commit_detection(pending_detection)
+                            previous_detected_species.add(pending_detection['species'])
+                            pending_detection = None
+                        
+                    # Maintain streak only for species in current chunk
+                    new_prev = set()
+                    for sp in current_detected_species:
+                        if sp in previous_detected_species:
+                            new_prev.add(sp)
+                    previous_detected_species = new_prev
                     
-                    previous_detected_species = current_detected_species
                 else:
+                    if pending_detection is not None:
+                        self._commit_detection(pending_detection)
+                        previous_detected_species.add(pending_detection['species'])
+                        pending_detection = None
                     previous_detected_species = set()
-                    pass # print("[KI] Nichts erkannt.") # Terminal-Ausgabe deaktiviert
                 
                 self.audio_queue.task_done()
 
@@ -673,7 +749,12 @@ class AudioMonitor:
 # --- FLASK ROUTEN ---
 @app.context_processor
 def inject_version():
-    return dict(version="1.2.2")
+    return dict(version="1.2.3")
+
+@app.route('/favicon.ico')
+def favicon():
+    return send_from_directory(os.path.join(app.root_path, 'static'),
+                               'feather.ico', mimetype='image/vnd.microsoft.icon')
 
 @app.route('/')
 def index():

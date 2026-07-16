@@ -39,9 +39,7 @@ lines = [
     "- Mikrofon auswaehlen: Auswahl des Audio-Eingabegeraets",
     "- Alarm-Ton aktivieren: Akustisches Signal bei jeder neuen Erkennung",
     "",
-    "Audio-Erfassung & Auswertung (System-Intern):",
-    "- Aufnahmetakt: Alle 1,5 Sek. wird ein 3-Sekunden-Audiofenster analysiert.",
-    "- Deduplizierung: Durchgehender Gesang in ueberlappenden Fenstern zaehlt 1x."
+    "Audio-Erfassung & Auswertung (System-Intern):"
 ]
 
 for line in lines:
@@ -51,6 +49,10 @@ for line in lines:
         pdf.set_font("Arial", size=12)
     else:
         pdf.cell(0, 8, txt=line, ln=1)
+
+description_text = "Die Soundanalyse wertet die Umgebungsgeraeusche in 3-Sekunden-Fenstern aus, die sich um jeweils 1,5 Sekunden ueberschneiden (Overlapping). Wird ein Vogel positiv erkannt, erfolgt die Speicherung nicht mehr sofort. Stattdessen wird die Erkennung zunaechst fuer genau ein Fenster (1,5 Sekunden) zurueckgehalten. In dieser Zeit wird das naechste, ueberlappende Audio-Fenster analysiert. Da sich der Vogelruf oft erst im zweiten Fenster in der zeitlichen Mitte befindet, liefert dieses haeufig einen besseren Konfidenzwert. Die KI vergleicht dann beide Erkennungen und speichert nur das Fenster mit der hoeheren Konfidenz in der Datenbank und im Archiv ab. Anschliessend greift ein automatischer Spam-Schutz fuer diese Vogelart. Fortlaufende, direkte Folge-Erkennungen desselben Vogels werden ignoriert, um die Datenbank nicht mit unzaehligen Eintraegen desselben Rufs zu ueberfluten.\n\nWie funktioniert der Spam-Schutz im Detail? Sobald eine Vogelart erfolgreich mit der hoechsten Konfidenz aus zwei ueberlappenden Fenstern gespeichert wurde, merkt sich das System diesen Vogel als 'aktiv rufend'. Solange dieser Vogel in den unmittelbar folgenden 3-Sekunden-Fenstern weiterhin ununterbrochen erkannt wird (auch wenn die Konfidenz schwankt), wird er ignoriert und nicht erneut in die Datenbank geschrieben. Erst wenn in einem Fenster der Vogel nicht mehr erkannt wird oder die Konfidenz unter den eingestellten Schwellenwert (Threshold) faellt, gilt die durchgehende Erkennungs-Serie als beendet. Der Spam-Schutz fuer diese Vogelart wird dann zurueckgesetzt. Taucht der Vogel in einem spaeteren Fenster wieder auf, wird dies als komplett neuer, eigenstaendiger Ruf gewertet und der gesamte Prozess (inklusive 1-Fenster-Verzoegerung) beginnt von vorn."
+
+pdf.multi_cell(0, 6, txt=description_text)
 
 pdf.output("Einstellungen_Beschreibung.pdf")
 print("PDF erfolgreich erstellt!")

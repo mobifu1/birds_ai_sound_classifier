@@ -1661,18 +1661,45 @@ def api_control_apply_dictionary():
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
     updated_count = 0
+    renamed_files_count = 0
     try:
+        archive_dir = os.path.join(AUDIO_DIR, "archive")
+        if os.path.exists(archive_dir):
+            archive_files = os.listdir(archive_dir)
+        else:
+            archive_files = []
+
         for eng, trans in bird_dict.items():
             if eng != trans and trans.strip():
+                # DB Update
                 c.execute("UPDATE detections SET species = ? WHERE species = ?", (trans, eng))
                 updated_count += c.rowcount
+                
+                # Archive Renaming
+                safe_eng = eng.replace(" ", "_").replace("/", "_")
+                safe_trans = trans.replace(" ", "_").replace("/", "_")
+                prefix = f"{safe_eng}_"
+                new_prefix = f"{safe_trans}_"
+                
+                for f in archive_files:
+                    if f.startswith(prefix) and f.endswith(".wav"):
+                        old_path = os.path.join(archive_dir, f)
+                        new_name = f.replace(prefix, new_prefix, 1)
+                        new_path = os.path.join(archive_dir, new_name)
+                        try:
+                            os.rename(old_path, new_path)
+                            renamed_files_count += 1
+                        except Exception as e:
+                            print(f"Fehler beim Umbenennen von {f}: {e}")
+                            
+        # Re-list files if needed for subsequent operations, but not strictly necessary here.
         conn.commit()
     except Exception as e:
         conn.rollback()
         return jsonify({"error": str(e)}), 500
     finally:
         conn.close()
-    return jsonify({"msg": f"Wörterbuch angewendet. {updated_count} Einträge wurden aktualisiert."})
+    return jsonify({"msg": f"Wörterbuch angewendet. {updated_count} DB-Einträge und {renamed_files_count} Dateien aktualisiert."})
 
 @app.route('/api/control/delete_single_occurrences', methods=['POST'])
 def api_control_delete_single_occurrences():

@@ -1,2 +1,7 @@
 pip install -r requirements.txt
 python -m pip install -r requirements.txt
+
+pip install --upgrade tensorflow
+
+winget install ffmpeg
+conda install -c conda-forge ffmpeg

@@ -1,13 +1,30 @@
 <!DOCTYPE html>
 <html>
-
 <head>
     <title>Vogel-Verhaltens-Vorhersage (AI)</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="refresh" content="300">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .bingo-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin-top: 15px;
+        }
+        .bingo-cell {
+            background: #263238;
+            border: 2px solid #4fc3f7;
+            border-radius: 8px;
+            padding: 15px 5px;
+            text-align: center;
+            font-weight: bold;
+            font-size: 0.9em;
+            color: #eceff1;
+        }
+    </style>
 </head>
-
 <body>
     <div class="container">
         <div class="header-container">
@@ -29,141 +46,125 @@
         </form>
 
         <div class="metrics-grid">
-            <!-- 1. Rush Hour -->
+            <!-- 1. KI-Tagesbericht -->
             <div class="metric-card">
-                <h3>1. Rush-Hour Vorhersage</h3>
-                <p>Wann ist der größte Andrang am Futterhaus zu erwarten?</p>
-                {% if rush_hour_chart %}
+                <h3>1. Tagesbericht</h3>
+                <p>Zusammenfassung der aktuellen Aktivität am Futterhaus.</p>
+                <div style="background: #1e1e1e; padding: 15px; border-radius: 5px; border-left: 4px solid #4fc3f7; font-size: 1.1em;">
+                    {{ tagesbericht }}
+                </div>
+            </div>
+
+            <!-- 2. Rush Hour -->
+            <div class="metric-card">
+                <h3>2. Rush-Hour Vorhersage</h3>
+                <p>Wann ist historisch gesehen der größte Andrang?</p>
                 <div style="font-size: 1.2em; color: #81d4fa; margin-bottom: 15px;">
-                    Beste Zeit für Nachschub: <strong>Vor {{ busiest_hour }}:00 Uhr</strong>
+                    Historische Rush-Hour: <strong>{{ busiest_hour }}:00 Uhr</strong>
                 </div>
-                <div class="chart-container">
-                    <img src="data:image/png;base64,{{ rush_hour_chart }}" alt="Rush Hour Chart">
+                <div class="chart-container" style="position: relative; height:300px; width:100%">
+                    <canvas id="rushHourChart"></canvas>
                 </div>
-                {% else %}
-                <p>Nicht genug Daten für eine Vorhersage.</p>
-                {% endif %}
             </div>
 
-            <!-- 2. Species Probability -->
+            <!-- 3. Arten-Wahrscheinlichkeit -->
             <div class="metric-card">
-                <h3>2. Arten-Wahrscheinlichkeit</h3>
-                <p>Wer kommt voraussichtlich bis um <strong>{{ next_hour }}:00 Uhr</strong> vorbei?</p>
-                {% if prob_chart %}
-                <ul>
-                    {% for sp, prob in probs.items() %}
-                    {% if prob > 5 %}
-                    <li>{{ sp }}: <strong>{{ "%.1f"|format(prob) }}%</strong></li>
-                    {% endif %}
+                <h3>3. Arten-Wahrscheinlichkeit</h3>
+                <p>Wer kommt voraussichtlich um <strong>{{ next_hour }}:00 Uhr</strong> vorbei?</p>
+                <div class="chart-container" style="position: relative; height:300px; width:100%">
+                    <canvas id="probChart"></canvas>
+                </div>
+            </div>
+
+            <!-- 4. Seltenheits-Radar -->
+            <div class="metric-card">
+                <h3>4. Seltenheits-Radar</h3>
+                <p>Gibt es eine Chance auf seltene Besucher?</p>
+                <div style="background: #1e1e1e; padding: 15px; border-radius: 5px; border-left: 4px solid #ff5252;">
+                    {{ selten_text }}
+                </div>
+            </div>
+
+            <!-- 5. Zugvogel-Tracker -->
+            <div class="metric-card">
+                <h3>5. Zugvogel-Tracker</h3>
+                <p>Aktivität von bekannten Sommer-/Wintergästen.</p>
+                <div style="background: #1e1e1e; padding: 15px; border-radius: 5px; border-left: 4px solid #69f0ae;">
+                    {{ zugvogel_text }}
+                </div>
+            </div>
+
+            <!-- 6. Vogel-Bingo -->
+            <div class="metric-card">
+                <h3>6. Tages-Bingo</h3>
+                <p>Ihre tägliche Challenge: Entdecken Sie diese 9 Arten heute!</p>
+                <div class="bingo-grid">
+                    {% for bird in bingo_birds %}
+                    <div class="bingo-cell">{{ bird }}</div>
                     {% endfor %}
-                </ul>
-                <div class="chart-container">
-                    <img src="data:image/png;base64,{{ prob_chart }}" alt="Probability Chart">
-                </div>
-                {% else %}
-                <p>Zu dieser Uhrzeit gab es noch keine Sichtungen in den letzten {{ days }} Tagen.</p>
-                {% endif %}
-            </div>
-
-            <!-- 3. Weather Integration -->
-            <div class="metric-card">
-                <h3>3. Wetter-Verknüpfung</h3>
-                <p>Korrelation von Futterverhalten und Wetter ({{ weather_config.get('Service-Name', 'Service') }} API).
-                </p>
-                <div style="background: #1e1e1e; padding: 10px; border-radius: 5px; border-left: 4px solid #4fc3f7;">
-                    {{ weather_data_html|safe }}
-                    {{ weather_text|safe }}
-                </div>
-            </div>
-
-            <!-- 4. Disturbance Analysis -->
-            <div class="metric-card">
-                <h3>4. Störereignisse</h3>
-                <p>Verhaltensänderung nach Auftauchen von z.B. Elstern, Raubtieren oder Katzen.</p>
-                <div style="background: #1e1e1e; padding: 10px; border-radius: 5px; border-left: 4px solid #ff5252;">
-                    {{ disturbance_text|safe }}
-                </div>
-            </div>
-
-            <!-- 5. Arten-Diversifikation -->
-            <div class="metric-card">
-                <h3>5. Arten-Diversifikation</h3>
-                <p>Messung und Trend der Vielfalt an Vogelarten am Futterhaus.</p>
-                <div
-                    style="background: #1e1e1e; padding: 10px; border-radius: 5px; border-left: 4px solid #69f0ae; margin-bottom: 10px;">
-                    {{ diversification_text|safe }}
-                </div>
-                <div style="font-size: 1.1em; color: #e0e0e0;">
-                    Trend (im Zeitverlauf): <strong>{{ diversification_trend|safe }}</strong>
-                </div>
-            </div>
-
-            <!-- 6. Absolute Besucher -->
-            <div class="metric-card">
-                <h3>6. Absolute Besucher</h3>
-                <p>Messung und Trend der absoluten Futterhaus-Besuche (alle Vögel).</p>
-                <div
-                    style="background: #1e1e1e; padding: 10px; border-radius: 5px; border-left: 4px solid #b388ff; margin-bottom: 10px;">
-                    {{ absolute_visitors_text|safe }}
-                </div>
-                <div style="font-size: 1.1em; color: #e0e0e0;">
-                    Trend (im Zeitverlauf): <strong>{{ absolute_visitors_trend|safe }}</strong>
-                </div>
-            </div>
-
-            <!-- 7. Anomalien und Auffälligkeiten -->
-            <div class="metric-card">
-                <h3>7. Anomalien &amp; Auffälligkeiten</h3>
-                <p>Erkennung von starken Abweichungen im Verhalten im Vergleich zu vergangenen Besuchen.</p>
-                <div
-                    style="background: #1e1e1e; padding: 10px; border-radius: 5px; border-left: 4px solid #ff9100; margin-bottom: 10px;">
-                    {{ anomaly_text|safe }}
-                </div>
-            </div>
-
-            <!-- 8. Wochenvorhersage Besucher -->
-            <div class="metric-card">
-                <h3>8. Wochenvorhersage Besucher</h3>
-                <p>Erwartete Besucher am Futterhaus für die aktuelle Woche auf Basis des eingestellten Analysezeitraums.</p>
-                <div style="font-size: 0.9em; color: #aaa; margin-bottom: 10px;">
-                    📅 <strong>{{ weekly_kw_label }}</strong>
-                </div>
-                {% if weekly_chart %}
-                <div style="background: #1e1e1e; padding: 10px; border-radius: 5px; border-left: 4px solid #ce93d8; margin-bottom: 12px; font-size: 0.95em;">
-                    {{ weekly_summary|safe }}
-                </div>
-                <div class="chart-container">
-                    <img src="data:image/png;base64,{{ weekly_chart }}" alt="Wochenvorhersage Chart">
-                </div>
-                <div style="font-size: 0.8em; color: #777; margin-top: 8px;">
-                    🔵 Ist-Werte &nbsp;|&nbsp; 🟣 Prognose (Ø Wochentag aus {{ days }}-Tage-Zeitraum) &nbsp;|&nbsp; <span style="color:#ff9800;">▸</span> Heute
-                </div>
-                {% else %}
-                <div style="background: #1e1e1e; padding: 10px; border-radius: 5px; border-left: 4px solid #ce93d8;">
-                    {{ weekly_summary|safe }}
-                </div>
-                {% endif %}
-            </div>
-
-            <!-- 9. Beste Beobachtungszeit pro Art -->
-            <div class="metric-card">
-                <h3>9. Beste Beobachtungszeit pro Art</h3>
-                <p>Wann ist die ideale Zeit, um eine bestimmte Vogelart am Futterhaus zu beobachten? (Basis: letzte {{ days }} Tage)</p>
-                <div style="background: #1e1e1e; padding: 10px; border-radius: 5px; border-left: 4px solid #fff176;">
-                    {{ best_observation_time_table|safe }}
-                </div>
-                <div style="font-size: 0.8em; color: #777; margin-top: 8px;">
-                    🟡 Hauptpeak &nbsp;|&nbsp; Bei zwei Zeiten: beide Stunden liegen nahe beieinander &nbsp;|&nbsp; Ges. = Gesamtsichtungen im Zeitraum
                 </div>
             </div>
         </div>
-
-
 
         <div class="footer">
             {{ version }}
         </div>
     </div>
-</body>
 
+    <script>
+        // Set Chart.js Defaults for dark theme
+        Chart.defaults.color = '#eceff1';
+        Chart.defaults.font.family = 'Segoe UI, Tahoma, Geneva, Verdana, sans-serif';
+
+        // Rush Hour Chart
+        const rushCtx = document.getElementById('rushHourChart').getContext('2d');
+        new Chart(rushCtx, {
+            type: 'bar',
+            data: {
+                labels: {{ rush_hour_labels|safe }},
+                datasets: [{
+                    label: 'Sichtungen pro Stunde',
+                    data: {{ rush_hour_data|safe }},
+                    backgroundColor: '#81d4fa',
+                    borderRadius: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false }
+                },
+                scales: {
+                    y: { beginAtZero: true, grid: { color: '#37474f' } },
+                    x: { grid: { display: false } }
+                }
+            }
+        });
+
+        // Probability Chart
+        const probCtx = document.getElementById('probChart').getContext('2d');
+        new Chart(probCtx, {
+            type: 'doughnut',
+            data: {
+                labels: {{ prob_labels|safe }},
+                datasets: [{
+                    data: {{ prob_data|safe }},
+                    backgroundColor: [
+                        '#ffb74d', '#4fc3f7', '#81c784', '#e57373', '#ba68c8',
+                        '#fff176', '#aed581', '#4dd0e1', '#f06292', '#7986cb'
+                    ],
+                    borderWidth: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'right', labels: { color: '#eceff1' } }
+                }
+            }
+        });
+    </script>
+</body>
 </html>

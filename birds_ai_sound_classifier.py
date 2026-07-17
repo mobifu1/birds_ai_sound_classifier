@@ -749,7 +749,7 @@ class AudioMonitor:
 # --- FLASK ROUTEN ---
 @app.context_processor
 def inject_version():
-    return dict(version="1.2.3")
+    return dict(version="1.2.4")
 
 @app.route('/favicon.ico')
 def favicon():
@@ -1598,6 +1598,99 @@ def wiki_page():
     if os.path.exists(wiki_dir):
         wiki_images = [f for f in os.listdir(wiki_dir) if f.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp'))]
     return render_template('wiki.html', wiki_images=wiki_images)
+
+@app.route('/prediction')
+def prediction_page():
+    import random
+    from collections import Counter
+    import datetime
+
+    try:
+        days = int(request.args.get('days', 7))
+    except ValueError:
+        days = 7
+
+    end_date = datetime.datetime.now()
+    start_date = end_date - datetime.timedelta(days=days)
+    
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    
+    # All detections in timeframe
+    c.execute("SELECT species, timestamp FROM detections WHERE timestamp >= ?", (start_date.strftime('%Y-%m-%d %H:%M:%S'),))
+    rows = c.fetchall()
+    
+    # 1. Rush-Hour
+    hours = [int(row[1][11:13]) for row in rows if len(row[1]) >= 13]
+    hour_counts = Counter(hours)
+    rush_hour_labels = [f"{h:02d}:00" for h in range(24)]
+    rush_hour_data = [hour_counts.get(h, 0) for h in range(24)]
+    busiest_hour = max(hour_counts, key=hour_counts.get) if hour_counts else 12
+    
+    # 2. Arten-Wahrscheinlichkeit for next hour
+    next_h = (end_date.hour + 1) % 24
+    next_h_species = [row[0] for row in rows if len(row[1]) >= 13 and int(row[1][11:13]) == next_h]
+    next_h_counts = Counter(next_h_species)
+    total_next_h = sum(next_h_counts.values())
+    probs = {}
+    if total_next_h > 0:
+        probs = {s: round((c / total_next_h) * 100, 1) for s, c in next_h_counts.most_common(10)}
+    prob_labels = list(probs.keys())
+    prob_data = list(probs.values())
+    
+    # 3. Seltenheits-Radar
+    c.execute("SELECT species, COUNT(*) as cnt FROM detections GROUP BY species ORDER BY cnt ASC")
+    all_counts = c.fetchall()
+    total_det = sum([x[1] for x in all_counts])
+    rare_species = [x[0] for x in all_counts if x[1] < max(5, total_det * 0.01)]
+    recent_rare = [s for s in rare_species if s in [r[0] for r in rows]]
+    if recent_rare:
+        selten_text = f"Die Chance auf seltene Besucher ist gut! In letzter Zeit wurden gesichtet: {', '.join(set(recent_rare[:3]))}."
+    else:
+        if rare_species:
+            selten_text = f"Heute ist es ruhig bei den seltenen Arten. Vielleicht lässt sich ja trotzdem bald wieder ein {random.choice(rare_species)} blicken."
+        else:
+            selten_text = "Bisher noch nicht genug Daten für seltene Arten."
+            
+    # 4. Zugvogel-Tracker
+    migratory_birds = ["Mauersegler", "Nachtigall", "Kuckuck", "Rauchschwalbe", "Mehlschwalbe", "Fitis", "Zilpzalp", "Kranich", "Weißstorch"]
+    detected_migratory = set([r[0] for r in rows if r[0] in migratory_birds])
+    if detected_migratory:
+        zugvogel_text = f"Zugvögel sind aktiv! Gesichtet wurden: {', '.join(detected_migratory)}."
+    else:
+        zugvogel_text = "Momentan gibt es wenig Aktivität von typischen Zugvögeln am Mikrofon."
+        
+    # 5. Tagesbericht (Regelbasiert)
+    if total_next_h > 20:
+        bericht = f"Es ist ordentlich was los! Für die nächste Stunde (um {next_h:02d}:00 Uhr) erwarten wir rege Aktivität."
+    elif total_next_h > 5:
+        bericht = f"Normale Aktivität erwartet. Schauen Sie gegen {busiest_hour:02d}:00 Uhr rein, da ist historisch gesehen die Rush-Hour."
+    else:
+        bericht = "Aktuell ist es eher ruhig. Das ist normal für diese Tageszeit."
+        
+    # 6. Vogel-Bingo
+    unique_species = list(set([r[0] for r in rows]))
+    if len(unique_species) >= 9:
+        bingo_birds = random.sample(unique_species, 9)
+    else:
+        c.execute("SELECT DISTINCT species FROM detections LIMIT 9")
+        fallback = [x[0] for x in c.fetchall()]
+        bingo_birds = fallback + ["?"] * (9 - len(fallback))
+        
+    conn.close()
+    
+    return render_template('prediction.html',
+                           days=days,
+                           rush_hour_labels=rush_hour_labels,
+                           rush_hour_data=rush_hour_data,
+                           busiest_hour=busiest_hour,
+                           prob_labels=prob_labels,
+                           prob_data=prob_data,
+                           next_hour=next_h,
+                           selten_text=selten_text,
+                           zugvogel_text=zugvogel_text,
+                           tagesbericht=bericht,
+                           bingo_birds=bingo_birds[:9])
 
 @app.route('/api/settings/save', methods=['POST'])
 def api_save_settings():

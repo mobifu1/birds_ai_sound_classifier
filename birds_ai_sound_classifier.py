@@ -1046,7 +1046,8 @@ def generate_daily_heatmap_html(date_str):
             else:
                 img_tag = f'<img src="{img_src}" class="bird-icon-small">'
 
-            html_table += f'<tr><td style="text-align:left; font-weight:bold;"><div class="species-wrapper">{img_tag}<span>{species}</span></div></td>'
+            total_species_count = int(pivot_counts.loc[species].sum())
+            html_table += f'<tr><td style="text-align:left; font-weight:bold;"><div class="species-wrapper">{img_tag}<span>{species} ({total_species_count})</span></div></td>'
             
             for col_name, val in row.items():
                 absolute_count = int(pivot_counts.at[species, col_name])

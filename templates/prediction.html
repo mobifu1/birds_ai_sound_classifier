@@ -7,21 +7,42 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        .bingo-grid {
+        .anomaly-grid {
             display: grid;
-            grid-template-columns: repeat(3, 1fr);
+            grid-template-columns: 1fr;
             gap: 10px;
             margin-top: 15px;
         }
-        .bingo-cell {
+        .anomaly-card {
             background: #263238;
-            border: 2px solid #4fc3f7;
-            border-radius: 8px;
-            padding: 15px 5px;
-            text-align: center;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        .anomaly-card.influx {
+            border-left: 4px solid #ff5252;
+        }
+        .anomaly-card.missing {
+            border-left: 4px solid #9e9e9e;
+        }
+        .anomaly-title {
             font-weight: bold;
+        }
+        .anomaly-title.influx {
+            color: #ff5252;
+        }
+        .anomaly-title.missing {
+            color: #9e9e9e;
+        }
+        .anomaly-desc {
             font-size: 0.9em;
             color: #eceff1;
+        }
+        .anomaly-empty {
+            background: #263238;
+            padding: 15px;
+            border-radius: 5px;
+            text-align: center;
+            color: #b0bec5;
         }
     </style>
 </head>
@@ -94,13 +115,16 @@
                 </div>
             </div>
 
-            <!-- 6. Vogel-Bingo -->
+            <!-- 6. Anomaliekarte -->
             <div class="metric-card">
-                <h3>6. Tages-Bingo</h3>
-                <p>Ihre tägliche Challenge: Entdecken Sie diese 9 Arten heute!</p>
-                <div class="bingo-grid">
-                    {% for bird in bingo_birds %}
-                    <div class="bingo-cell">{{ bird }}</div>
+                <h3>6. Anomaliekarte</h3>
+                <p>Plötzliches Verschwinden oder Massenansturm in den letzten 24 Stunden.</p>
+                <div class="anomaly-grid">
+                    {% for anomaly in anomalies %}
+                    <div class="anomaly-card {{ anomaly.status }}">
+                        <div class="anomaly-title {{ anomaly.status }}">{{ anomaly.title }}: {{ anomaly.species }}</div>
+                        <div class="anomaly-desc">{{ anomaly.desc }}</div>
+                    </div>
                     {% endfor %}
                 </div>
             </div>

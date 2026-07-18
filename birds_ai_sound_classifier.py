@@ -1668,14 +1668,44 @@ def prediction_page():
     else:
         bericht = "Aktuell ist es eher ruhig. Das ist normal für diese Tageszeit."
         
-    # 6. Vogel-Bingo
-    unique_species = list(set([r[0] for r in rows]))
-    if len(unique_species) >= 9:
-        bingo_birds = random.sample(unique_species, 9)
-    else:
-        c.execute("SELECT DISTINCT species FROM detections LIMIT 9")
-        fallback = [x[0] for x in c.fetchall()]
-        bingo_birds = fallback + ["?"] * (9 - len(fallback))
+    # 6. Anomaliekarte
+    baseline_days = max(14, days)
+    baseline_start = end_date - datetime.timedelta(days=baseline_days)
+    recent_start = end_date - datetime.timedelta(days=1)
+    
+    c.execute("SELECT species, COUNT(*) FROM detections WHERE timestamp >= ? AND timestamp < ? GROUP BY species", 
+              (baseline_start.strftime('%Y-%m-%d %H:%M:%S'), recent_start.strftime('%Y-%m-%d %H:%M:%S')))
+    hist_counts = {row[0]: row[1] for row in c.fetchall()}
+    
+    c.execute("SELECT species, COUNT(*) FROM detections WHERE timestamp >= ? GROUP BY species", 
+              (recent_start.strftime('%Y-%m-%d %H:%M:%S'),))
+    recent_counts = {row[0]: row[1] for row in c.fetchall()}
+    
+    anomalies = []
+    hist_days = baseline_days - 1
+    if hist_days <= 0: hist_days = 1
+    
+    all_species_anomaly = set(list(hist_counts.keys()) + list(recent_counts.keys()))
+    for s in all_species_anomaly:
+        avg_daily = hist_counts.get(s, 0) / hist_days
+        current = recent_counts.get(s, 0)
+        
+        if current >= 5 and current > avg_daily * 3:
+            anomalies.append({
+                'species': s,
+                'status': 'influx',
+                'title': 'Massenansturm',
+                'desc': f'Ungewöhnlich viele Sichtungen ({current} in 24h, normal sind {avg_daily:.1f}/Tag).'
+            })
+        elif avg_daily >= 3 and current == 0:
+            anomalies.append({
+                'species': s,
+                'status': 'missing',
+                'title': 'Verschwunden',
+                'desc': f'Heute noch nicht gesichtet (normal sind {avg_daily:.1f}/Tag).'
+            })
+            
+    anomalies = sorted(anomalies, key=lambda x: x['status'])[:9] # max 9 anzeigen
         
     conn.close()
     
@@ -1690,7 +1720,7 @@ def prediction_page():
                            selten_text=selten_text,
                            zugvogel_text=zugvogel_text,
                            tagesbericht=bericht,
-                           bingo_birds=bingo_birds[:9])
+                           anomalies=anomalies)
 
 @app.route('/api/settings/save', methods=['POST'])
 def api_save_settings():

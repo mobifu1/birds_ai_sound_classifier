@@ -70,7 +70,7 @@
             <!-- 1. KI-Tagesbericht -->
             <div class="metric-card">
                 <h3>1. Tagesbericht</h3>
-                <p>Zusammenfassung der aktuellen Aktivität am Futterhaus.</p>
+                <p>Zusammenfassung der aktuell erfassten Vogelrufe.</p>
                 <div style="background: #1e1e1e; padding: 15px; border-radius: 5px; border-left: 4px solid #4fc3f7; font-size: 1.1em;">
                     {{ tagesbericht }}
                 </div>
@@ -79,7 +79,7 @@
             <!-- 2. Rush Hour -->
             <div class="metric-card">
                 <h3>2. Rush-Hour Vorhersage</h3>
-                <p>Wann ist historisch gesehen der größte Andrang?</p>
+                <p>Wann ist historisch gesehen die höchste akustische Aktivität?</p>
                 <div style="font-size: 1.2em; color: #81d4fa; margin-bottom: 15px;">
                     Historische Rush-Hour: <strong>{{ busiest_hour }}:00 Uhr</strong>
                 </div>
@@ -91,7 +91,7 @@
             <!-- 3. Arten-Wahrscheinlichkeit -->
             <div class="metric-card">
                 <h3>3. Arten-Wahrscheinlichkeit</h3>
-                <p>Wer kommt voraussichtlich um <strong>{{ next_hour }}:00 Uhr</strong> vorbei?</p>
+                <p>Welche Arten sind voraussichtlich um <strong>{{ next_hour }}:00 Uhr</strong> zu hören?</p>
                 <div class="chart-container" style="position: relative; height:300px; width:100%">
                     <canvas id="probChart"></canvas>
                 </div>
@@ -100,7 +100,7 @@
             <!-- 4. Seltenheits-Radar -->
             <div class="metric-card">
                 <h3>4. Seltenheits-Radar</h3>
-                <p>Gibt es eine Chance auf seltene Besucher?</p>
+                <p>Gibt es eine Chance, Rufe von seltenen Arten zu erfassen?</p>
                 <div style="background: #1e1e1e; padding: 15px; border-radius: 5px; border-left: 4px solid #ff5252;">
                     {{ selten_text }}
                 </div>
@@ -109,7 +109,7 @@
             <!-- 5. Zugvogel-Tracker -->
             <div class="metric-card">
                 <h3>5. Zugvogel-Tracker</h3>
-                <p>Aktivität von bekannten Sommer-/Wintergästen.</p>
+                <p>Akustische Aktivität von bekannten Sommer-/Wintergästen.</p>
                 <div style="background: #1e1e1e; padding: 15px; border-radius: 5px; border-left: 4px solid #69f0ae;">
                     {{ zugvogel_text }}
                 </div>
@@ -118,7 +118,7 @@
             <!-- 6. Anomaliekarte -->
             <div class="metric-card">
                 <h3>6. Anomaliekarte</h3>
-                <p>Plötzliches Verschwinden oder Massenansturm in den letzten 24 Stunden.</p>
+                <p>Auffällige Zu- oder Abnahmen der erfassten Rufe {% if days == 1 %}in den letzten 24 Stunden{% else %}in den letzten {{ days }} Tagen{% endif %}.</p>
                 <div class="anomaly-grid">
                     {% for anomaly in anomalies %}
                     <div class="anomaly-card {{ anomaly.status }}">
@@ -147,7 +147,7 @@
             data: {
                 labels: {{ rush_hour_labels|safe }},
                 datasets: [{
-                    label: 'Sichtungen pro Stunde',
+                    label: 'Erfasste Rufe pro Stunde',
                     data: {{ rush_hour_data|safe }},
                     backgroundColor: '#81d4fa',
                     borderRadius: 4

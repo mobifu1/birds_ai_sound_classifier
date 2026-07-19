@@ -1661,12 +1661,34 @@ def prediction_page():
         zugvogel_text = "Momentan gibt es wenig Aktivität von typischen Zugvögeln am Mikrofon."
         
     # 5. Tagesbericht (Regelbasiert)
-    if total_next_h > 20:
-        bericht = f"Es ist ordentlich was los! Für die nächste Stunde (um {next_h:02d}:00 Uhr) erwarten wir rege Aktivität."
-    elif total_next_h > 5:
-        bericht = f"Normale Aktivität erwartet. Schauen Sie gegen {busiest_hour:02d}:00 Uhr rein, da ist historisch gesehen die Rush-Hour."
+    if total_next_h >= 750:
+        berichte_high = [
+            f"Vogelkonzert vom Feinsten! Für die nächste Stunde (um {next_h:02d}:00 Uhr) erwarten wir über {total_next_h} erfasste Rufe.",
+            f"Es ist richtig was los! Wir rechnen um {next_h:02d}:00 Uhr mit extrem hoher akustischer Aktivität.",
+            f"Ein wahres Stimmenmeer! Die nächste Stunde verspricht sehr viele Aufzeichnungen."
+        ]
+        bericht = random.choice(berichte_high)
+    elif total_next_h >= 350:
+        berichte_med_high = [
+            f"Gute akustische Aktivität! Wir erwarten um {next_h:02d}:00 Uhr rege Rufaktivität.",
+            f"Es wird musikalisch: Für die nächste Stunde deuten die Daten auf viele Vogelstimmen hin.",
+            f"Reger Flugverkehr am Mikrofon: Um die {total_next_h} Rufe werden in der nächsten Stunde erwartet."
+        ]
+        bericht = random.choice(berichte_med_high)
+    elif total_next_h >= 100:
+        berichte_med = [
+            f"Normale Rufaktivität erwartet. Schauen Sie mal um {busiest_hour:02d}:00 Uhr rein, da ist historisch gesehen am meisten zu hören.",
+            f"Gelegentliche Rufe sind in der nächsten Stunde zu erwarten. Die höchste Aktivität gibt es meist gegen {busiest_hour:02d}:00 Uhr.",
+            f"Gemütliche Stimmung. Wir erwarten eine durchschnittliche Anzahl an Aufzeichnungen."
+        ]
+        bericht = random.choice(berichte_med)
     else:
-        bericht = "Aktuell ist es eher ruhig. Das ist normal für diese Tageszeit."
+        berichte_low = [
+            "Aktuell ist es eher ruhig. Wenig bis keine Rufe in der nächsten Stunde erwartet.",
+            "Stille am Mikrofon. Das ist für diese Tageszeit aber nicht ungewöhnlich.",
+            "Kaum akustische Aktivität prognostiziert. Eine gute Zeit, um die Aufnahmen der letzten Rush-Hour durchzuhören."
+        ]
+        bericht = random.choice(berichte_low)
         
     # 6. Anomaliekarte
     baseline_days = max(14, days)

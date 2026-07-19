@@ -171,6 +171,7 @@
         let previousLatestId = null;
         
         const alarmActive = {{ s.get('alarm_active', False) | tojson }};
+        const clickSoundActive = {{ s.get('click_sound_active', False) | tojson }};
         const archiveSpeciesStr = {{ s.get('archive_species', '') | tojson }};
         const archiveSpeciesList = archiveSpeciesStr.split(',').map(s => s.trim().toLowerCase()).filter(s => s.length > 0);
 
@@ -221,6 +222,36 @@
             osc.stop(ctx.currentTime + 0.5);
         }
 
+        function playClickSound() {
+            if (!globalAudioCtx) {
+                initAudio();
+            }
+            if (!globalAudioCtx) return;
+            
+            if (globalAudioCtx.state === 'suspended') {
+                globalAudioCtx.resume();
+            }
+
+            const ctx = globalAudioCtx;
+            const osc = ctx.createOscillator();
+            const gainNode = ctx.createGain();
+            
+            // "Click" sound using a short high-frequency burst
+            osc.type = 'square';
+            osc.frequency.setValueAtTime(1000, ctx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(100, ctx.currentTime + 0.05);
+            
+            gainNode.gain.setValueAtTime(0, ctx.currentTime);
+            gainNode.gain.linearRampToValueAtTime(0.3, ctx.currentTime + 0.01);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.05);
+            
+            osc.connect(gainNode);
+            gainNode.connect(ctx.destination);
+            
+            osc.start();
+            osc.stop(ctx.currentTime + 0.05);
+        }
+
         function updateRadar(topDetections, latestSpecies, latestId) {
             const container = document.getElementById('radar-container');
             const nodesContainer = document.getElementById('radar-nodes');
@@ -255,6 +286,10 @@
                 isNewLatest = true;
                 previousLatestId = latestId;
                 previousLatestSpecies = latestSpecies;
+                
+                if (clickSoundActive) {
+                    playClickSound();
+                }
                 
                 if (alarmActive && latestSpecies) {
                     const speciesLower = latestSpecies.toLowerCase();

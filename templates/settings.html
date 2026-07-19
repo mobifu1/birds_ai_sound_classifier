@@ -243,6 +243,12 @@
                     <span style="color: #ccc;"><strong>Alarm Sound:</strong> Spiele einen kurzen Ton ab, wenn eine Vogelart aus der Archivierungsliste aktuell erkannt wird.</span>
                 </label>
             </div>
+            <div style="margin-bottom: 20px;">
+                <label style="display: flex; align-items: center; cursor: pointer;">
+                    <input type="checkbox" id="click_sound_active" style="width: 20px; height: 20px; margin-right: 10px;" {% if s.get('click_sound_active', False) %}checked{% endif %}>
+                    <span style="color: #ccc;"><strong>Klick-Ton:</strong> Spiele einen sehr kurzen Klick-Ton ab, wenn eine beliebige Vogelart erkannt wird.</span>
+                </label>
+            </div>
             <p style="font-size: 0.9rem; color: #ccc;">Wörterbuch für Vogelarten. Ordnet englischen Begriffen einen Namen für die Anzeige und für die Icon-Suche zu. Das gesuchte Icon muss exakt wie die Übersetzung heißen (z.B. <code>Amsel.png</code>). Groß-/Kleinschreibung wird ignoriert.</p>
             <div style="display: flex; gap: 10px; margin-bottom: 5px; font-weight: bold; font-size: 0.9rem; color: #ccc; padding-right: 50px;">
                 <div style="flex: 1;">Englischer Begriff</div>
@@ -557,6 +563,7 @@
                 archive_species: document.getElementById('archive_species').value,
                 max_archive_files: parseInt(document.getElementById('max_archive_files').value) || 0,
                 alarm_active: document.getElementById('alarm_active').checked,
+                click_sound_active: document.getElementById('click_sound_active').checked,
                 highpass_active: document.getElementById('highpass_active').checked,
                 highpass_freq: parseInt(document.getElementById('highpass_freq').value),
                 nr_active: document.getElementById('nr_active').checked,

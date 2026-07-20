@@ -749,7 +749,7 @@ class AudioMonitor:
 # --- FLASK ROUTEN ---
 @app.context_processor
 def inject_version():
-    return dict(version="1.2.4")
+    return dict(version="1.2.5")
 
 @app.route('/favicon.ico')
 def favicon():

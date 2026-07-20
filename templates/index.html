@@ -201,7 +201,7 @@
             
             // If still suspended (no user interaction yet), browser will likely block this.
             if (globalAudioCtx.state === 'suspended') {
-                globalAudioCtx.resume();
+                globalAudioCtx.resume().catch(() => {});
             }
 
             const ctx = globalAudioCtx;
@@ -219,6 +219,11 @@
             osc.connect(gainNode);
             gainNode.connect(ctx.destination);
             
+            osc.onended = function() {
+                osc.disconnect();
+                gainNode.disconnect();
+            };
+            
             osc.start(now);
             osc.stop(now + 0.5);
         }
@@ -230,7 +235,7 @@
             if (!globalAudioCtx) return;
             
             if (globalAudioCtx.state === 'suspended') {
-                globalAudioCtx.resume();
+                globalAudioCtx.resume().catch(() => {});
             }
 
             const ctx = globalAudioCtx;
@@ -249,6 +254,11 @@
             
             osc.connect(gainNode);
             gainNode.connect(ctx.destination);
+            
+            osc.onended = function() {
+                osc.disconnect();
+                gainNode.disconnect();
+            };
             
             osc.start(now);
             osc.stop(now + 0.05);

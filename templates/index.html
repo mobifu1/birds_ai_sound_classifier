@@ -97,6 +97,8 @@
 </head>
 <body>
 
+    <button id="audio-unlock-btn" title="Klicken, um die Audiowiedergabe für den Browser freizuschalten" style="position: fixed; top: 10px; right: 10px; background: rgba(20, 20, 20, 0.6); color: #888; border: 1px solid #444; border-radius: 4px; padding: 4px 8px; font-size: 11px; cursor: pointer; z-index: 9999; transition: opacity 0.3s ease;">🔇 Ton aktivieren</button>
+
     <div class="container" style="max-width: 1000px; margin: 20px auto; padding: 0 15px;">
         <div class="header-container">
             <h1 style="display: flex; align-items: center; justify-content: center;"><img src="{{ url_for('static', filename='feather.png') }}" alt="Feather" style="height: 1.2em; margin-right: 15px;">Birds AI Sound Classifier V{{ version }}</h1>
@@ -190,8 +192,19 @@
         }
 
         // Initialize AudioContext on first user interaction to bypass browser autoplay blocks
-        document.addEventListener('click', initAudio, { once: true });
-        document.addEventListener('touchstart', initAudio, { once: true });
+        const audioBtn = document.getElementById('audio-unlock-btn');
+        
+        function handleFirstInteraction() {
+            initAudio();
+            if (globalAudioCtx && globalAudioCtx.state === 'running') {
+                if(audioBtn) audioBtn.style.display = 'none';
+                document.removeEventListener('click', handleFirstInteraction);
+                document.removeEventListener('touchstart', handleFirstInteraction);
+            }
+        }
+        
+        document.addEventListener('click', handleFirstInteraction);
+        document.addEventListener('touchstart', handleFirstInteraction);
 
         function playAlarmSound() {
             if (!globalAudioCtx) {

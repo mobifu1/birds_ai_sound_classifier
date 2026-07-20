@@ -527,7 +527,7 @@ class AudioMonitor:
 
     def loop_analyze(self):
         previous_detected_species = set()
-        pending_detection = None
+        pending_detections = {}
         while self.running:
             try:
                 # Wartet auf neues Audio-Paket (max 1 Sekunde, um while-Bedingung regelmäßig zu prüfen)
@@ -618,112 +618,95 @@ class AudioMonitor:
                 
                 # Ergebnisse verarbeiten
                 if recording.detections:
-                    for det in recording.detections:
-                        eng_spec = det['common_name']
-                        conf = float(det['confidence'])
-                        spec_de = bird_dict.get(eng_spec, eng_spec)
-                        # print(f"[KI] {spec_de}: {conf:.0%}") # Terminal-Ausgabe deaktiviert
-                    
-                    best = recording.detections[0] # höchste Konfidenz
-                    eng_species = best['common_name']
-                    
-                    # Zeitbasierte Plausibilitätskorrektur: Sperber (tagaktiv) -> Waldohreule (nachtaktiv)
-                    # Bettelrufe von jungen Waldohreulen werden nachts oft fälschlich als Sperber erkannt.
-                    current_hour = datetime.datetime.now().hour
-                    if eng_species == "Eurasian Sparrowhawk" and (current_hour >= 21 or current_hour <= 4):
-                        eng_species = "Long-eared Owl"
-                        update_log("INFO: Sperber in der Nacht erkannt -> Automatisch korrigiert zu Waldohreule")
-
-                    species = bird_dict.get(eng_species, eng_species)
-                    confidence = float(best['confidence'])
-                    
-                    min_conf = float(settings.get("threshold", MIN_CONFIDENCE * 100)) / 100.0
-                    min_snr_val = float(settings.get("min_snr", 0.0))
-                    
                     current_detected_species = set()
                     
-                    full_bird_dict = settings.get("bird_dictionary", {})
-                    is_blocklisted = False
-                    if eng_species in full_bird_dict and isinstance(full_bird_dict[eng_species], dict):
-                        is_blocklisted = full_bird_dict[eng_species].get("blocklist", False)
+                    for best in recording.detections:
+                        eng_species = best['common_name']
                         
-                        ind_conf_val = full_bird_dict[eng_species].get("ind_conf")
-                        if ind_conf_val is not None and str(ind_conf_val).strip() != "":
-                            try:
-                                min_conf = float(ind_conf_val) / 100.0
-                            except (ValueError, TypeError):
-                                pass
+                        # Zeitbasierte Plausibilitätskorrektur: Sperber (tagaktiv) -> Waldohreule (nachtaktiv)
+                        # Bettelrufe von jungen Waldohreulen werden nachts oft fälschlich als Sperber erkannt.
+                        current_hour = datetime.datetime.now().hour
+                        if eng_species == "Eurasian Sparrowhawk" and (current_hour >= 21 or current_hour <= 4):
+                            eng_species = "Long-eared Owl"
+                            update_log("INFO: Sperber in der Nacht erkannt -> Automatisch korrigiert zu Waldohreule")
 
+                        species = bird_dict.get(eng_species, eng_species)
+                        confidence = float(best['confidence'])
                         
-                    if is_blocklisted:
-                        if confidence >= min_conf and calculated_snr > min_snr_val:
+                        min_conf = float(settings.get("threshold", MIN_CONFIDENCE * 100)) / 100.0
+                        min_snr_val = float(settings.get("min_snr", 0.0))
+                        
+                        full_bird_dict = settings.get("bird_dictionary", {})
+                        is_blocklisted = False
+                        if eng_species in full_bird_dict and isinstance(full_bird_dict[eng_species], dict):
+                            is_blocklisted = full_bird_dict[eng_species].get("blocklist", False)
+                            
+                            ind_conf_val = full_bird_dict[eng_species].get("ind_conf")
+                            if ind_conf_val is not None and str(ind_conf_val).strip() != "":
+                                try:
+                                    min_conf = float(ind_conf_val) / 100.0
+                                except (ValueError, TypeError):
+                                    pass
+
+                        if is_blocklisted:
+                            if confidence >= min_conf and calculated_snr > min_snr_val:
+                                try:
+                                    with open("blocklist-log.txt", "a", encoding="utf-8") as f:
+                                        ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                                        f.write(f"{ts}, {species}, {confidence*100:.0f}%, {calculated_snr:.1f} dB, {lat}, {lon}\n")
+                                except Exception as e:
+                                    pass
+                                update_log(f"Ignoriert (Blocklist): {species}")
+                                
+                            # If a bird is blocklisted, remove pending
+                            if species in pending_detections:
+                                del pending_detections[species]
+                                
+                        elif confidence >= min_conf and calculated_snr > min_snr_val:
+                            current_detected_species.add(species)
+                            
+                            is_new_species = False
                             try:
-                                with open("blocklist-log.txt", "a", encoding="utf-8") as f:
-                                    ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                                    f.write(f"{ts}, {species}, {confidence*100:.0f}%, {calculated_snr:.1f} dB, {lat}, {lon}\n")
+                                conn_check = sqlite3.connect(DB_FILE)
+                                c_check = conn_check.cursor()
+                                c_check.execute("SELECT COUNT(*) FROM detections WHERE species = ?", (species,))
+                                if c_check.fetchone()[0] == 0:
+                                    is_new_species = True
+                                conn_check.close()
                             except Exception as e:
+                                print(f"Fehler bei DB-Check für neue Art: {e}")
+
+                            current_det_data = {
+                                'species': species,
+                                'confidence': confidence,
+                                'snr': calculated_snr,
+                                'is_new_species': is_new_species,
+                                'raw_data': raw_data,
+                                'eng_species': eng_species,
+                                'best': best,
+                                'lat': lat,
+                                'lon': lon,
+                                'settings': settings
+                            }
+
+                            if species in pending_detections:
+                                if confidence > pending_detections[species]['confidence']:
+                                    self._commit_detection(current_det_data)
+                                else:
+                                    self._commit_detection(pending_detections[species])
+                                previous_detected_species.add(species)
+                                del pending_detections[species]
+                            elif species in previous_detected_species:
                                 pass
-                            update_log(f"Ignoriert (Blocklist): {species}")
-                            
-                        # If a bird is blocklisted, we shouldn't have a pending detection of it.
-                        # Clear it just in case.
-                        if pending_detection is not None and pending_detection['species'] == species:
-                            pending_detection = None
-                            
-                        # Ensure we don't carry over unrelated pending detections silently
-                        if pending_detection is not None:
-                            self._commit_detection(pending_detection)
-                            previous_detected_species.add(pending_detection['species'])
-                            pending_detection = None
-                            
-                    elif confidence >= min_conf and calculated_snr > min_snr_val:
-                        current_detected_species.add(species)
-                        
-                        is_new_species = False
-                        try:
-                            conn_check = sqlite3.connect(DB_FILE)
-                            c_check = conn_check.cursor()
-                            c_check.execute("SELECT COUNT(*) FROM detections WHERE species = ?", (species,))
-                            if c_check.fetchone()[0] == 0:
-                                is_new_species = True
-                            conn_check.close()
-                        except Exception as e:
-                            print(f"Fehler bei DB-Check für neue Art: {e}")
-
-                        current_det_data = {
-                            'species': species,
-                            'confidence': confidence,
-                            'snr': calculated_snr,
-                            'is_new_species': is_new_species,
-                            'raw_data': raw_data,
-                            'eng_species': eng_species,
-                            'best': best,
-                            'lat': lat,
-                            'lon': lon,
-                            'settings': settings
-                        }
-
-                        if pending_detection is not None and pending_detection['species'] == species:
-                            if confidence > pending_detection['confidence']:
-                                self._commit_detection(current_det_data)
                             else:
-                                self._commit_detection(pending_detection)
-                            previous_detected_species.add(species)
-                            pending_detection = None
-                        elif species in previous_detected_species:
-                            pass
-                        else:
-                            if pending_detection is not None:
-                                self._commit_detection(pending_detection)
-                                previous_detected_species.add(pending_detection['species'])
-                            pending_detection = current_det_data
-                            
-                    else:
-                        # Detection was below threshold or blocklisted
-                        if pending_detection is not None:
-                            self._commit_detection(pending_detection)
-                            previous_detected_species.add(pending_detection['species'])
-                            pending_detection = None
+                                pending_detections[species] = current_det_data
+
+                    # Commit pending detections that are not in current chunk (they stopped singing or dropped below threshold)
+                    for sp in list(pending_detections.keys()):
+                        if sp not in current_detected_species:
+                            self._commit_detection(pending_detections[sp])
+                            previous_detected_species.add(sp)
+                            del pending_detections[sp]
                         
                     # Maintain streak only for species in current chunk
                     new_prev = set()
@@ -733,11 +716,12 @@ class AudioMonitor:
                     previous_detected_species = new_prev
                     
                 else:
-                    if pending_detection is not None:
-                        self._commit_detection(pending_detection)
-                        previous_detected_species.add(pending_detection['species'])
-                        pending_detection = None
-                    previous_detected_species = set()
+                    # Keine Erkennung in diesem Chunk, alle verbleibenden pendings speichern
+                    for sp in list(pending_detections.keys()):
+                        self._commit_detection(pending_detections[sp])
+                        previous_detected_species.add(sp)
+                    pending_detections.clear()
+                    previous_detected_species.clear()
                 
                 self.audio_queue.task_done()
 

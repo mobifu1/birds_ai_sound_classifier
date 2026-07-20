@@ -733,7 +733,7 @@ class AudioMonitor:
 # --- FLASK ROUTEN ---
 @app.context_processor
 def inject_version():
-    return dict(version="1.2.5")
+    return dict(version="1.2.6")
 
 @app.route('/favicon.ico')
 def favicon():
@@ -746,6 +746,10 @@ def index():
     icon_dir = os.path.join(app.root_path, 'static', 'bird_icons')
     available_icons = [f for f in os.listdir(icon_dir) if os.path.isfile(os.path.join(icon_dir, f))] if os.path.exists(icon_dir) else []
     return render_template('index.html', s=s, available_icons=available_icons)
+
+@app.route('/manual_pdf')
+def manual_pdf():
+    return send_from_directory(os.getcwd(), 'Einstellungen_Beschreibung.pdf')
 
 @app.route('/settings')
 def settings_page():

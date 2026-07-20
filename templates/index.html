@@ -97,7 +97,9 @@
 </head>
 <body>
 
+    {% if s.get('click_sound_active', False) %}
     <button id="audio-unlock-btn" title="Klicken, um die Audiowiedergabe für den Browser freizuschalten" style="position: fixed; top: 10px; right: 10px; background: rgba(20, 20, 20, 0.6); color: #888; border: 1px solid #444; border-radius: 4px; padding: 4px 8px; font-size: 11px; cursor: pointer; z-index: 9999; transition: opacity 0.3s ease;">🔇 Ton aktivieren</button>
+    {% endif %}
 
     <div class="container" style="max-width: 1000px; margin: 20px auto; padding: 0 15px;">
         <div class="header-container">

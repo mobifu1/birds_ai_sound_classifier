@@ -602,8 +602,10 @@ class AudioMonitor:
                 # BirdNET Klassifizierung
                 settings = load_settings()
                 bird_dict = get_bird_dictionary()
-                lat = float(settings.get("gps_lat", 51.165691))
-                lon = float(settings.get("gps_lon", 10.451526))
+                lat_val = settings.get("gps_lat")
+                lat = float(lat_val) if lat_val is not None else -1.0
+                lon_val = settings.get("gps_lon")
+                lon = float(lon_val) if lon_val is not None else -1.0
                 
                 recording = Recording(
                     analyzer,
@@ -613,6 +615,41 @@ class AudioMonitor:
                     date=datetime.datetime.now(),
                     min_conf=MIN_CONFIDENCE
                 )
+
+                # Check for forced species in bird_dictionary
+                full_bird_dict = settings.get("bird_dictionary", {})
+                forced_species = []
+                for eng_name, props in full_bird_dict.items():
+                    if isinstance(props, dict) and props.get("force_active", False):
+                        forced_species.append(eng_name)
+
+                if lat != -1.0 and lon != -1.0 and forced_species:
+                    try:
+                        # Get geographical list from analyzer
+                        with open(os.devnull, 'w') as f, contextlib.redirect_stdout(f):
+                            pred_list = analyzer.return_predicted_species_list(lat, lon, recording.week_48)
+                        # Ensure forced species are included (using full names matching analyzer labels)
+                        custom_list = list(pred_list) if pred_list else []
+                        for f_sp in forced_species:
+                            # Search for the forced species common name in the model's labels list
+                            full_label = next((l for l in analyzer.labels if l.endswith(f"_{f_sp}")), None)
+                            if full_label:
+                                if full_label not in custom_list:
+                                    custom_list.append(full_label)
+                            else:
+                                update_log(f"Warnung: Konnte '{f_sp}' nicht in der Model-Datenbank finden.")
+                        analyzer.custom_species_list = custom_list
+                        analyzer.has_custom_species_list = True
+                        recording.lat = None
+                        recording.lon = None
+                    except Exception as e:
+                        update_log(f"Fehler bei force_active: {e}")
+                        analyzer.custom_species_list = []
+                        analyzer.has_custom_species_list = False
+                else:
+                    analyzer.custom_species_list = []
+                    analyzer.has_custom_species_list = False
+
                 with open(os.devnull, 'w') as f, contextlib.redirect_stdout(f):
                     recording.analyze()
                 
@@ -1741,8 +1778,8 @@ def api_save_settings():
         save_birdweather_setting("birdweather_active", bool(data.get("birdweather_active", False)))
     save_setting("threshold", data.get("threshold", 30))
     save_setting("min_snr", data.get("min_snr", 0.0))
-    save_setting("gps_lat", data.get("gps_lat", 51.165691))
-    save_setting("gps_lon", data.get("gps_lon", 10.451526))
+    save_setting("gps_lat", data.get("gps_lat"))
+    save_setting("gps_lon", data.get("gps_lon"))
     save_setting("radar_zoom", data.get("radar_zoom", 1.0))
     save_setting("radar_max_birds", data.get("radar_max_birds", 10))
     save_setting("radar_time_range", data.get("radar_time_range", 24))

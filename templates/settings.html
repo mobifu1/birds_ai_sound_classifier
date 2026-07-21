@@ -171,12 +171,12 @@
 
         <div class="row">
             <label>GPS Breitengrad (Latitude):<br><small>Relevant für lokale Vogelarten-Filterung durch BirdNET</small></label>
-            <input type="number" id="gps_lat" value="{{ s.get('gps_lat', 51.165691) }}" step="0.000001">
+            <input type="text" id="gps_lat" value="{% if s.get('gps_lat') is none %}None{% else %}{{ s.get('gps_lat', 51.165691) }}{% endif %}">
         </div>
 
         <div class="row">
             <label>GPS Längengrad (Longitude):</label>
-            <input type="number" id="gps_lon" value="{{ s.get('gps_lon', 10.451526) }}" step="0.000001">
+            <input type="text" id="gps_lon" value="{% if s.get('gps_lon') is none %}None{% else %}{{ s.get('gps_lon', 10.451526) }}{% endif %}">
         </div>
 
         <div class="row">
@@ -257,6 +257,7 @@
                 <div style="flex: 0.5;">Aufenthalt</div>
                 <div style="flex: 0.8;">Status</div>
                 <div style="flex: 0.5;" title="Individuelle Konfidenz in %. Überschreibt das globale Limit.">Konf. (%)</div>
+                <div style="width: 70px;" title="Vogelart trotz GPS-Filter erzwingen">Force</div>
                 <div style="width: 90px;">Blocked</div>
             </div>
             <div id="dictionary-container" style="display: flex; flex-direction: column; gap: 10px;">
@@ -382,6 +383,7 @@
             let aufenthalt = '';
             let status = '';
             let blocklist = false;
+            let forceActive = false;
             let indConf = '';
 
             if (typeof data === 'string') {
@@ -391,6 +393,7 @@
                 aufenthalt = data.aufenthalt || '';
                 status = data.status || '';
                 blocklist = data.blocklist || false;
+                forceActive = data.force_active || false;
                 indConf = data.ind_conf !== undefined && data.ind_conf !== null ? data.ind_conf : '';
             }
 
@@ -443,6 +446,22 @@
             inputIndConf.min = '0';
             inputIndConf.max = '100';
 
+            const labelForceActive = document.createElement('label');
+            labelForceActive.style.display = 'flex';
+            labelForceActive.style.alignItems = 'center';
+            labelForceActive.style.justifyContent = 'center';
+            labelForceActive.style.margin = '0';
+            labelForceActive.style.color = '#2196F3';
+            labelForceActive.style.fontSize = '0.9rem';
+            labelForceActive.style.width = '70px';
+            
+            const inputForceActive = document.createElement('input');
+            inputForceActive.type = 'checkbox';
+            inputForceActive.className = 'dict-fa';
+            inputForceActive.checked = forceActive;
+            
+            labelForceActive.appendChild(inputForceActive);
+
             const labelBlocklist = document.createElement('label');
             labelBlocklist.style.display = 'flex';
             labelBlocklist.style.alignItems = 'center';
@@ -459,6 +478,18 @@
             
             labelBlocklist.appendChild(inputBlocklist);
 
+            inputForceActive.onchange = function() {
+                if (this.checked) {
+                    inputBlocklist.checked = false;
+                }
+            };
+            
+            inputBlocklist.onchange = function() {
+                if (this.checked) {
+                    inputForceActive.checked = false;
+                }
+            };
+
             const delBtn = document.createElement('button');
             delBtn.innerText = 'X';
             delBtn.className = 'btn btn-red';
@@ -472,6 +503,7 @@
             row.appendChild(inputAuf);
             row.appendChild(selectStatus);
             row.appendChild(inputIndConf);
+            row.appendChild(labelForceActive);
             row.appendChild(labelBlocklist);
             row.appendChild(delBtn);
             dictContainer.appendChild(row);
@@ -537,6 +569,7 @@
                 const auf = row.querySelector('.dict-auf').value.trim();
                 const stat = row.querySelector('.dict-stat').value.trim();
                 const bl = row.querySelector('.dict-bl').checked;
+                const fa = row.querySelector('.dict-fa').checked;
                 const indConfStr = row.querySelector('.dict-ind-conf').value.trim();
                 const indConf = indConfStr !== '' ? parseInt(indConfStr) : null;
                 if (key) {
@@ -545,6 +578,7 @@
                         "aufenthalt": auf,
                         "status": stat,
                         "blocklist": bl,
+                        "force_active": fa,
                         "ind_conf": indConf
                     };
                 }
@@ -553,8 +587,18 @@
             const data = {
                 threshold: parseInt(document.getElementById('threshold').value),
                 min_snr: parseFloat(document.getElementById('min_snr').value),
-                gps_lat: parseFloat(document.getElementById('gps_lat').value),
-                gps_lon: parseFloat(document.getElementById('gps_lon').value),
+                gps_lat: (function() {
+                    const v = document.getElementById('gps_lat').value.trim().toLowerCase();
+                    if (v === '' || v === 'none') return null;
+                    const p = parseFloat(document.getElementById('gps_lat').value.replace(',', '.'));
+                    return isNaN(p) ? null : p;
+                })(),
+                gps_lon: (function() {
+                    const v = document.getElementById('gps_lon').value.trim().toLowerCase();
+                    if (v === '' || v === 'none') return null;
+                    const p = parseFloat(document.getElementById('gps_lon').value.replace(',', '.'));
+                    return isNaN(p) ? null : p;
+                })(),
                 radar_zoom: parseFloat(document.getElementById('radar_zoom').value),
                 radar_max_birds: parseInt(document.getElementById('radar_max_birds').value),
                 radar_time_range: parseInt(document.getElementById('radar_time_range').value),

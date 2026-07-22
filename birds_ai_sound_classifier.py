@@ -1372,8 +1372,8 @@ def create_weekly_total_chart(year_str):
                 except:
                     pass
 
-    line1 = ax1.plot(weeks, counts, color='yellow', linewidth=2, marker='o', markersize=4, label='Rufe (Gesamt)')
-    ax1.fill_between(weeks, counts, color='yellow', alpha=0.1)
+    line1 = ax1.plot(weeks, counts, color='#e5c07b', linewidth=2, marker='o', markersize=4, label='Rufe (Gesamt)')
+    ax1.fill_between(weeks, counts, color='#e5c07b', alpha=0.1)
     
     ax1.set_xticks(weeks)
     ax1.set_xticklabels(week_labels, rotation=90, ha='center', color='white', fontsize=8)
@@ -1386,8 +1386,8 @@ def create_weekly_total_chart(year_str):
         ax1.set_ylim(top=10)
     
     ax2 = ax1.twinx()
-    line2 = ax2.plot(weeks, species_counts, color='cyan', linewidth=2, marker='s', markersize=4, label='Arten (Diversifikation)')
-    ax2.fill_between(weeks, species_counts, color='cyan', alpha=0.1)
+    line2 = ax2.plot(weeks, species_counts, color='#56b6c2', linewidth=2, marker='s', markersize=4, label='Arten (Diversifikation)')
+    ax2.fill_between(weeks, species_counts, color='#56b6c2', alpha=0.1)
     ax2.yaxis.set_major_locator(MaxNLocator(integer=True))
     ax2.set_ylim(bottom=0)
     if max(species_counts) == 0:

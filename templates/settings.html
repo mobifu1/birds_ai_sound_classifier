@@ -251,6 +251,9 @@
                 </label>
             </div>
             <p style="font-size: 0.9rem; color: #ccc;">Wörterbuch für Vogelarten. Ordnet englischen Begriffen einen Namen für die Anzeige und für die Icon-Suche zu. Das gesuchte Icon muss exakt wie die Übersetzung heißen (z.B. <code>Amsel.png</code>). Groß-/Kleinschreibung wird ignoriert.</p>
+            <div style="margin-bottom: 15px;">
+                <input type="text" id="dict-search" placeholder="🔍 Wörterbuch durchsuchen (Englisch oder Deutsch)..." oninput="filterDictionary()" style="width: 100%; padding: 10px; border: 1px solid #4CAF50; border-radius: 5px; background: #1a1a1a; color: #fff; box-sizing: border-box; font-size: 1rem;">
+            </div>
             <div style="display: flex; gap: 10px; margin-bottom: 5px; font-weight: bold; font-size: 0.9rem; color: #ccc; padding-right: 50px;">
                 <div style="flex: 1;">Englischer Begriff</div>
                 <div style="flex: 1;">Übersetzung</div>
@@ -524,6 +527,33 @@
                     })
                     .catch(e => alert("Fehler bei der Anfrage: " + e));
             }
+        }
+
+        function filterDictionary() {
+            const searchTerm = document.getElementById('dict-search').value.toLowerCase();
+            const rows = document.querySelectorAll('.dict-row');
+            
+            rows.forEach(row => {
+                const engKey = row.querySelector('.dict-key').value.toLowerCase();
+                const transVal = row.querySelector('.dict-val').value.toLowerCase();
+                
+                if (engKey.includes(searchTerm) || transVal.includes(searchTerm)) {
+                    row.style.display = 'flex';
+                    if (searchTerm.length > 0) {
+                        row.style.backgroundColor = '#2c402c';
+                        row.style.borderRadius = '5px';
+                        row.style.padding = '5px';
+                        row.style.margin = '-5px';
+                    } else {
+                        row.style.backgroundColor = 'transparent';
+                        row.style.borderRadius = '0';
+                        row.style.padding = '0';
+                        row.style.margin = '0';
+                    }
+                } else {
+                    row.style.display = 'none';
+                }
+            });
         }
 
         function checkModelUpdate() {

@@ -1333,7 +1333,8 @@ def create_weekly_total_chart(year_str):
     query = f"""
     SELECT 
         CAST(strftime('%W', timestamp) AS INTEGER) + 1 as week_num,
-        COUNT(*) as counts
+        COUNT(*) as counts,
+        COUNT(DISTINCT common_name) as unique_species
     FROM detections
     {where_clause}
     GROUP BY week_num
@@ -1348,17 +1349,17 @@ def create_weekly_total_chart(year_str):
     finally:
         conn.close()
 
-    plt.figure(figsize=(10, 3), facecolor='#1e1e1e')
-    ax = plt.axes()
-    ax.set_facecolor('#1e1e1e')
-    ax.tick_params(colors='white')
-    for spine in ax.spines.values():
+    fig, ax1 = plt.subplots(figsize=(10, 3), facecolor='#1e1e1e')
+    ax1.set_facecolor('#1e1e1e')
+    ax1.tick_params(colors='white')
+    for spine in ax1.spines.values():
         spine.set_color('#444')
     
     weeks = list(range(1, 54))
     week_labels = [f"KW{w:02d}" for w in weeks]
     
     counts = [0] * 53
+    species_counts = [0] * 53
     if not grouped.empty:
         for _, row in grouped.iterrows():
             if pd.notna(row['week_num']):
@@ -1366,22 +1367,40 @@ def create_weekly_total_chart(year_str):
                     w = int(row['week_num'])
                     if 1 <= w <= 53:
                         counts[w-1] = int(row['counts'])
+                        if 'unique_species' in row:
+                            species_counts[w-1] = int(row['unique_species'])
                 except:
                     pass
 
-    plt.plot(weeks, counts, color='yellow', linewidth=2, marker='o', markersize=4)
-    plt.fill_between(weeks, counts, color='yellow', alpha=0.1)
+    line1 = ax1.plot(weeks, counts, color='yellow', linewidth=2, marker='o', markersize=4, label='Rufe (Gesamt)')
+    ax1.fill_between(weeks, counts, color='yellow', alpha=0.1)
     
-    plt.xticks(weeks, week_labels, rotation=90, ha='center', color='white', fontsize=8)
+    ax1.set_xticks(weeks)
+    ax1.set_xticklabels(week_labels, rotation=90, ha='center', color='white', fontsize=8)
     
     from matplotlib.ticker import MaxNLocator
-    ax.yaxis.set_major_locator(MaxNLocator(integer=True))
+    ax1.yaxis.set_major_locator(MaxNLocator(integer=True))
     
-    plt.ylim(bottom=0)
+    ax1.set_ylim(bottom=0)
     if max(counts) == 0:
-        plt.ylim(top=10)
-    plt.yticks(color='white')
-    plt.grid(color='#444', linestyle='--', linewidth=0.5, alpha=0.5)
+        ax1.set_ylim(top=10)
+    
+    ax2 = ax1.twinx()
+    line2 = ax2.plot(weeks, species_counts, color='cyan', linewidth=2, marker='s', markersize=4, label='Arten (Diversifikation)')
+    ax2.fill_between(weeks, species_counts, color='cyan', alpha=0.1)
+    ax2.yaxis.set_major_locator(MaxNLocator(integer=True))
+    ax2.set_ylim(bottom=0)
+    if max(species_counts) == 0:
+        ax2.set_ylim(top=10)
+    ax2.tick_params(colors='white')
+    for spine in ax2.spines.values():
+        spine.set_color('#444')
+
+    lines = line1 + line2
+    labels = [l.get_label() for l in lines]
+    ax1.legend(lines, labels, loc='upper left', facecolor='#263238', edgecolor='#444', labelcolor='white')
+
+    ax1.grid(color='#444', linestyle='--', linewidth=0.5, alpha=0.5)
     plt.tight_layout()
     
     buf = io.BytesIO()

@@ -1334,7 +1334,7 @@ def create_weekly_total_chart(year_str):
     SELECT 
         CAST(strftime('%W', timestamp) AS INTEGER) + 1 as week_num,
         COUNT(*) as counts,
-        COUNT(DISTINCT common_name) as unique_species
+        COUNT(DISTINCT species) as unique_species
     FROM detections
     {where_clause}
     GROUP BY week_num

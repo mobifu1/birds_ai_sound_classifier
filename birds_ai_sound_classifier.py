@@ -947,12 +947,14 @@ def create_daily_total_chart(date_str):
     query = f"""
     SELECT 
         strftime('%H', timestamp) as hour_sort,
-        COUNT(*) as counts
+        COUNT(*) as counts,
+        COUNT(DISTINCT species) as unique_species
     FROM detections
     WHERE timestamp LIKE '{date_str}%'
     GROUP BY hour_sort
     ORDER BY hour_sort
     """
+    
     conn = sqlite3.connect(DB_FILE, timeout=10)
     try:
         grouped = pd.read_sql_query(query, conn)
@@ -961,40 +963,57 @@ def create_daily_total_chart(date_str):
     finally:
         conn.close()
 
-    plt.figure(figsize=(10, 3), facecolor='#1e1e1e')
-    ax = plt.axes()
-    ax.set_facecolor('#1e1e1e')
-    ax.tick_params(colors='white')
-    for spine in ax.spines.values():
+    fig, ax1 = plt.subplots(figsize=(10, 3), facecolor='#1e1e1e')
+    ax1.set_facecolor('#1e1e1e')
+    ax1.tick_params(colors='white')
+    for spine in ax1.spines.values():
         spine.set_color('#444')
     
     hours = list(range(24))
     hour_labels = [f"{h:02d}:00" for h in hours]
     
     counts = [0] * 24
+    species_counts = [0] * 24
     if not grouped.empty:
         for _, row in grouped.iterrows():
             if pd.notna(row['hour_sort']):
                 try:
                     h = int(row['hour_sort'])
                     counts[h] = int(row['counts'])
+                    if 'unique_species' in row:
+                        species_counts[h] = int(row['unique_species'])
                 except:
                     pass
 
-    plt.plot(hours, counts, color='yellow', linewidth=2, marker='o', markersize=4)
-    plt.fill_between(hours, counts, color='yellow', alpha=0.1)
+    line1 = ax1.plot(hours, counts, color='#e5c07b', linewidth=2, marker='o', markersize=4, label='Rufe (Gesamt)')
+    ax1.fill_between(hours, counts, color='#e5c07b', alpha=0.1)
     
-    plt.xticks(hours, hour_labels, rotation=45, ha='right', color='white')
+    ax1.set_xticks(hours)
+    ax1.set_xticklabels(hour_labels, rotation=45, ha='right', color='white')
     
-    # Force integer labels on Y axis
     from matplotlib.ticker import MaxNLocator
-    ax.yaxis.set_major_locator(MaxNLocator(integer=True))
+    ax1.yaxis.set_major_locator(MaxNLocator(integer=True))
     
-    plt.ylim(bottom=0)
+    ax1.set_ylim(bottom=0)
     if max(counts) == 0:
-        plt.ylim(top=10)
-    plt.yticks(color='white')
-    plt.grid(color='#444', linestyle='--', linewidth=0.5, alpha=0.5)
+        ax1.set_ylim(top=10)
+    
+    ax2 = ax1.twinx()
+    line2 = ax2.plot(hours, species_counts, color='#56b6c2', linewidth=2, marker='s', markersize=4, label='Arten (Diversifikation)')
+    ax2.fill_between(hours, species_counts, color='#56b6c2', alpha=0.1)
+    ax2.yaxis.set_major_locator(MaxNLocator(integer=True))
+    ax2.set_ylim(bottom=0)
+    if max(species_counts) == 0:
+        ax2.set_ylim(top=10)
+    ax2.tick_params(colors='white')
+    for spine in ax2.spines.values():
+        spine.set_color('#444')
+
+    lines = line1 + line2
+    labels = [l.get_label() for l in lines]
+    ax1.legend(lines, labels, loc='upper left', facecolor='#263238', edgecolor='#444', labelcolor='white')
+
+    ax1.grid(color='#444', linestyle='--', linewidth=0.5, alpha=0.5)
     plt.tight_layout()
     
     buf = io.BytesIO()

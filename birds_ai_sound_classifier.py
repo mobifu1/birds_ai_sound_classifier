@@ -623,41 +623,30 @@ class AudioMonitor:
                     if isinstance(props, dict) and props.get("force_active", False):
                         forced_species.append(eng_name)
 
-                if lat != -1.0 and lon != -1.0 and forced_species:
-                    try:
-                        # Get geographical list from analyzer
-                        with open(os.devnull, 'w') as f, contextlib.redirect_stdout(f):
-                            pred_list = analyzer.return_predicted_species_list(lat, lon, recording.week_48)
-                        # Ensure forced species are included (using full names matching analyzer labels)
-                        custom_list = list(pred_list) if pred_list else []
-                        for f_sp in forced_species:
-                            # Search for the forced species common name in the model's labels list
-                            full_label = next((l for l in analyzer.labels if l.endswith(f"_{f_sp}")), None)
-                            if full_label:
-                                if full_label not in custom_list:
-                                    custom_list.append(full_label)
-                            else:
-                                update_log(f"Warnung: Konnte '{f_sp}' nicht in der Model-Datenbank finden.")
-                        analyzer.custom_species_list = custom_list
-                        analyzer.has_custom_species_list = True
-                        recording.lat = None
-                        recording.lon = None
-                    except Exception as e:
-                        update_log(f"Fehler bei force_active: {e}")
-                        analyzer.custom_species_list = []
-                        analyzer.has_custom_species_list = False
-                else:
-                    analyzer.custom_species_list = []
-                    analyzer.has_custom_species_list = False
-
                 with open(os.devnull, 'w') as f, contextlib.redirect_stdout(f):
                     recording.analyze()
                 
                 # Ergebnisse verarbeiten
-                if recording.detections:
+                valid_detections = recording.detections.copy() if recording.detections else []
+                
+                # Manuell die Forced Species aus der ungefilterten Liste hinzufügen
+                if forced_species and hasattr(recording, 'detection_list'):
+                    allowed_labels = {d['label'] for d in valid_detections}
+                    
+                    for raw_d in recording.detection_list:
+                        if raw_d.common_name in forced_species and raw_d.confidence >= recording.minimum_confidence:
+                            if raw_d.label not in allowed_labels:
+                                try:
+                                    forced_dict = recording.return_detection_dict(raw_d)
+                                    valid_detections.append(forced_dict)
+                                    allowed_labels.add(raw_d.label)
+                                except Exception as e:
+                                    update_log(f"Fehler beim manuellen Hinzufügen von Force-Species: {e}")
+
+                if valid_detections:
                     current_detected_species = set()
                     
-                    for best in recording.detections:
+                    for best in valid_detections:
                         eng_species = best['common_name']
                         
                         # Zeitbasierte Plausibilitätskorrektur: Sperber (tagaktiv) -> Waldohreule (nachtaktiv)

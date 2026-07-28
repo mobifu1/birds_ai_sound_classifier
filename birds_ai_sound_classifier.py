@@ -333,6 +333,15 @@ class AudioMonitor:
                     except:
                         hpf_active = False
 
+                lpf_active = current_settings.get("lowpass_active", False)
+                if lpf_active:
+                    try:
+                        lpf_cutoff = float(current_settings.get("lowpass_freq", 12000))
+                        b_lpf, a_lpf = signal.butter(4, lpf_cutoff / (0.5 * RATE), btype='low', analog=False)
+                        zi_lpf = signal.lfilter_zi(b_lpf, a_lpf) * 0.0
+                    except:
+                        lpf_active = False
+
                 for i in range(chunk_step_needed):
                     if not self.running:
                         break
@@ -341,13 +350,14 @@ class AudioMonitor:
                     
                     try:
                         audio_chunk = np.frombuffer(data, dtype=np.int16)
+                        audio_chunk_proc = audio_chunk
                         if hpf_active:
-                            audio_chunk_hp, zi = signal.lfilter(b, a, audio_chunk, zi=zi)
-                            chunk_amp = int(np.max(np.abs(audio_chunk_hp)))
-                            vis_audio = audio_chunk_hp.astype(np.float32)
-                        else:
-                            chunk_amp = int(np.max(np.abs(audio_chunk)))
-                            vis_audio = audio_chunk.astype(np.float32)
+                            audio_chunk_proc, zi = signal.lfilter(b, a, audio_chunk_proc, zi=zi)
+                        if lpf_active:
+                            audio_chunk_proc, zi_lpf = signal.lfilter(b_lpf, a_lpf, audio_chunk_proc, zi=zi_lpf)
+                        
+                        chunk_amp = int(np.max(np.abs(audio_chunk_proc)))
+                        vis_audio = audio_chunk_proc.astype(np.float32)
                         
                         global latest_audio_level
                         latest_audio_level = chunk_amp
@@ -538,18 +548,34 @@ class AudioMonitor:
                 except queue.Empty:
                     continue
                 
-                # Highpass filter
+                # Filters
                 settings = load_settings()
+                
+                audio_data_proc = np.frombuffer(raw_data, dtype=np.int16).astype(np.float32)
+                processed = False
+                
                 if settings.get("highpass_active", False):
                     try:
                         cutoff = float(settings.get("highpass_freq", 150))
                         if 0 < cutoff < RATE / 2:
-                            audio_data_hp = np.frombuffer(raw_data, dtype=np.int16).astype(np.float32)
-                            b, a = signal.butter(4, cutoff / (0.5 * RATE), btype='high', analog=False)
-                            audio_data_hp = signal.filtfilt(b, a, audio_data_hp)
-                            raw_data = np.clip(audio_data_hp, -32768, 32767).astype(np.int16).tobytes()
+                            b_hp, a_hp = signal.butter(4, cutoff / (0.5 * RATE), btype='high', analog=False)
+                            audio_data_proc = signal.filtfilt(b_hp, a_hp, audio_data_proc)
+                            processed = True
                     except Exception as e:
                         print(f"Fehler bei Highpass Filter: {e}")
+
+                if settings.get("lowpass_active", False):
+                    try:
+                        lpf_cutoff = float(settings.get("lowpass_freq", 12000))
+                        if 0 < lpf_cutoff < RATE / 2:
+                            b_lpf_2, a_lpf_2 = signal.butter(4, lpf_cutoff / (0.5 * RATE), btype='low', analog=False)
+                            audio_data_proc = signal.filtfilt(b_lpf_2, a_lpf_2, audio_data_proc)
+                            processed = True
+                    except Exception as e:
+                        print(f"Fehler bei Lowpass Filter: {e}")
+                        
+                if processed:
+                    raw_data = np.clip(audio_data_proc, -32768, 32767).astype(np.int16).tobytes()
 
                 # Noise Reduction (using noisereduce)
                 if settings.get("nr_active", False):
@@ -759,7 +785,7 @@ class AudioMonitor:
 # --- FLASK ROUTEN ---
 @app.context_processor
 def inject_version():
-    return dict(version="1.2.7")
+    return dict(version="1.2.8")
 
 @app.route('/favicon.ico')
 def favicon():
@@ -1826,6 +1852,10 @@ def api_save_settings():
         save_setting("highpass_active", bool(data.get("highpass_active", False)))
     if "highpass_freq" in data:
         save_setting("highpass_freq", int(data.get("highpass_freq", 1000)))
+    if "lowpass_active" in data:
+        save_setting("lowpass_active", bool(data.get("lowpass_active", False)))
+    if "lowpass_freq" in data:
+        save_setting("lowpass_freq", int(data.get("lowpass_freq", 12000)))
     if "nr_active" in data:
         save_setting("nr_active", bool(data.get("nr_active", False)))
     if "nr_quality" in data:

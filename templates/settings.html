@@ -71,6 +71,18 @@
                 </div>
 
                 <div style="margin-top: 20px;">
+                    <label style="font-size: 0.9rem; color: #ccc;">Audio Low-Pass Filter:</label>
+                    <div style="display: flex; gap: 10px; align-items: center; margin-top: 5px;">
+                        <label style="display: flex; align-items: center; cursor: pointer; margin: 0; color: #ccc;">
+                            <input type="checkbox" id="lowpass_active" style="width: 18px; height: 18px; margin-right: 8px;" {% if s.get('lowpass_active', False) %}checked{% endif %}>
+                            Aktiv
+                        </label>
+                        <input type="number" id="lowpass_freq" value="{{ s.get('lowpass_freq', 12000) }}" min="10" max="20000" style="width: 100px; padding: 5px; background: #1a1a1a; color: #fff; border: 1px solid #444; border-radius: 4px;">
+                        <span style="color: #ccc; font-size: 0.9rem;">Hz</span>
+                    </div>
+                </div>
+
+                <div style="margin-top: 20px;">
                     <label style="font-size: 0.9rem; color: #ccc;">Digitale Rauschunterdrückung:</label>
                     <div style="display: flex; gap: 10px; align-items: center; margin-top: 5px;">
                         <label style="display: flex; align-items: center; cursor: pointer; margin: 0; color: #ccc;">
@@ -108,7 +120,8 @@
                     </label>
                 </div>
                 <div style="background: #000; padding: 10px; border-radius: 5px; text-align: center;" id="spectrogram-container">
-                    <img id="live-spectrogram-img" src="/api/waterfall_feed" style="max-width: 100%; height: auto; border: 1px solid #444;" alt="Live Spektrogramm">
+                    <img id="live-spectrogram-img" src="/api/waterfall_feed" style="width: 100%; max-width: 100%; height: auto; border: 1px solid #444; display: block; box-sizing: border-box;" alt="Live Spektrogramm">
+                    <div id="spectrogram-scale" style="position: relative; width: 100%; height: 20px; margin-top: 5px; color: #aaa; font-size: 0.7rem; font-family: sans-serif;"></div>
                 </div>
             </div>
         </div>
@@ -641,6 +654,8 @@
                 click_sound_active: document.getElementById('click_sound_active').checked,
                 highpass_active: document.getElementById('highpass_active').checked,
                 highpass_freq: parseInt(document.getElementById('highpass_freq').value),
+                lowpass_active: document.getElementById('lowpass_active').checked,
+                lowpass_freq: parseInt(document.getElementById('lowpass_freq').value),
                 nr_active: document.getElementById('nr_active').checked,
                 nr_quality: document.getElementById('nr_quality').value,
                 birdweather_active: document.getElementById('birdweather_active').checked,
@@ -706,6 +721,29 @@
         }
 
         document.addEventListener('DOMContentLoaded', function() {
+            const scaleContainer = document.getElementById('spectrogram-scale');
+            if (scaleContainer) {
+                for (let i = 0; i <= 20; i++) {
+                    const mark = document.createElement('div');
+                    mark.style.position = 'absolute';
+                    mark.style.left = (i / 20 * 100) + '%';
+                    mark.style.top = '0';
+                    mark.style.height = '4px';
+                    mark.style.width = '1px';
+                    mark.style.backgroundColor = '#666';
+                    
+                    const label = document.createElement('div');
+                    label.style.position = 'absolute';
+                    label.style.left = (i / 20 * 100) + '%';
+                    label.style.transform = 'translateX(-50%)';
+                    label.style.top = '6px';
+                    label.innerText = i === 20 ? '20kHz' : i;
+                    
+                    scaleContainer.appendChild(mark);
+                    scaleContainer.appendChild(label);
+                }
+            }
+
             const enabled = localStorage.getItem("spectrogram_enabled");
             if (enabled === "false") {
                 const cb = document.getElementById('toggle-spectrogram');

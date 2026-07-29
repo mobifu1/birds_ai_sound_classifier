@@ -2079,6 +2079,59 @@ def check_model_update():
     except Exception as e:
         return jsonify({"success": False, "error": str(e)})
 
+@app.route('/api/check_app_update')
+def check_app_update():
+    current_version = "1.2.8"
+    try:
+        import urllib.request
+        import json
+        req = urllib.request.Request(
+            'https://api.github.com/repos/mobifu1/birds_ai_sound_classifier/tags',
+            headers={'User-Agent': 'Mozilla/5.0'}
+        )
+        with urllib.request.urlopen(req, timeout=5) as response:
+            data = json.loads(response.read().decode())
+            if not data:
+                return jsonify({"success": False, "error": "Keine Tags/Versionen auf GitHub gefunden."})
+                
+            latest_version = data[0].get('name', '')
+            html_url = f"https://github.com/mobifu1/birds_ai_sound_classifier/releases/tag/{latest_version}"
+            
+            cur_norm = current_version.lower().replace('v', '').strip()
+            lat_norm = latest_version.lower().replace('v', '').strip()
+            
+            is_newer = False
+            if lat_norm and cur_norm:
+                try:
+                    lat_parts = [int(x) for x in lat_norm.split('.')]
+                    cur_parts = [int(x) for x in cur_norm.split('.')]
+                    
+                    # Pad lists if lengths differ
+                    while len(lat_parts) < max(len(lat_parts), len(cur_parts)): lat_parts.append(0)
+                    while len(cur_parts) < max(len(lat_parts), len(cur_parts)): cur_parts.append(0)
+                        
+                    for l, c in zip(lat_parts, cur_parts):
+                        if l > c:
+                            is_newer = True
+                            break
+                        elif l < c:
+                            is_newer = False
+                            break
+                except ValueError:
+                    # Fallback
+                    if lat_norm != cur_norm and lat_norm > cur_norm:
+                        is_newer = True
+                
+            return jsonify({
+                "success": True,
+                "current_version": current_version,
+                "latest_version": latest_version,
+                "is_newer": is_newer,
+                "download_url": html_url
+            })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)})
+
 from flask import Response
 import matplotlib.cm as cm
 from PIL import Image

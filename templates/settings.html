@@ -155,12 +155,13 @@
                 <button class="btn btn-red" onclick="stopMonitor()">Stoppen</button>
                 <button class="btn btn-orange" onclick="dbSync()">Datenbank sortieren</button>
                 <button class="btn btn-blue" onclick="dbBackup()">DB Backup erstellen</button>
-                <button class="btn btn-red" disabled style="opacity: 0.5; cursor: not-allowed;" onclick="dbReset()">DB Reset (Alles löschen)</button>
+                <button class="btn btn-blue" id="btn-check-app-update" onclick="checkAppUpdate()">Software Updates (GitHub)</button>
                 <a href="/manual_entry" class="btn btn-blue" style="text-decoration: none;">➕ Manueller Eintrag</a>
                 <a href="/delete_entry" class="btn btn-blue" style="text-decoration: none;">✏️ Eintrag bearbeiten/löschen</a>
                 <a href="/db_edit" class="btn btn-red" style="text-decoration: none;">⚙️ DB bearbeiten</a>
                 <a href="/manual_pdf" target="_blank" class="btn btn-blue" style="text-decoration: none;">❓ Hilfe</a>
             </div>
+            <div id="app-update-result" style="margin-top: 15px; display: none; padding: 10px; border-radius: 5px;"></div>
             <div class="control-row" style="margin-top: 15px; border-top: 1px solid #444; padding-top: 15px;">
                 <div style="display: flex; align-items: center; gap: 10px; width: 100%;">
                     <label style="margin: 0; color: #ccc;">Exportiere Wochen-Statistik als CSV für das Jahr:</label>
@@ -376,10 +377,39 @@
             fetch('/api/control/dbbackup', { method: 'POST' }).then(r => r.json()).then(d => alert(d.msg));
         }
 
-        function dbReset() {
-            if (confirm("Wirklich ALLES löschen? Die gesamte Datenbank wird geleert!")) {
-                fetch('/api/control/dbreset', { method: 'POST' }).then(r => r.json()).then(d => alert(d.msg));
-            }
+        function checkAppUpdate() {
+            const btn = document.getElementById('btn-check-app-update');
+            const resDiv = document.getElementById('app-update-result');
+            btn.disabled = true;
+            btn.innerText = "Prüfe...";
+            resDiv.style.display = 'none';
+
+            fetch('/api/check_app_update')
+                .then(r => r.json())
+                .then(data => {
+                    btn.disabled = false;
+                    btn.innerText = "Software Updates (GitHub)";
+                    resDiv.style.display = 'block';
+                    if (!data.success) {
+                        resDiv.style.background = '#F44336';
+                        resDiv.innerHTML = "Fehler bei der Prüfung: " + data.error;
+                    } else {
+                        if (data.is_newer) {
+                            resDiv.style.background = '#f57c00';
+                            resDiv.innerHTML = `<strong>Neue Software-Version verfügbar!</strong> (Aktuell: ${data.current_version}, Neu: ${data.latest_version})<br><br><a href="${data.download_url}" target="_blank" style="color: #fff; text-decoration: underline; font-weight: bold;">Hier klicken um zur GitHub Release-Seite zu gelangen</a>`;
+                        } else {
+                            resDiv.style.background = '#4CAF50';
+                            resDiv.innerHTML = `Die Software ist auf dem neuesten Stand! (Aktuell: ${data.current_version})`;
+                        }
+                    }
+                })
+                .catch(e => {
+                    btn.disabled = false;
+                    btn.innerText = "Software Updates (GitHub)";
+                    resDiv.style.display = 'block';
+                    resDiv.style.background = '#F44336';
+                    resDiv.innerHTML = "Netzwerkfehler: " + e;
+                });
         }
 
         function exportWeeklyCSV() {

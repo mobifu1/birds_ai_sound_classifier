@@ -161,10 +161,8 @@ def get_bird_dictionary():
         return flat_dict
     return DEFAULT_BIRD_TRANSLATIONS
 
-# Analyzer laden (lädt Modelle beim ersten Start herunter falls nicht vorhanden)
-print("Initialisiere BirdNET Analyzer...")
-analyzer = Analyzer()
-print("OK: BirdNET Analyzer bereit.")
+# Analyzer laden (wird im Hintergrundprozess initialisiert)
+analyzer = None
 
 def update_log(msg):
     ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -2131,6 +2129,12 @@ def api_live_audio():
 
 def run_audio_process(running_event, log_q, shared_al, shared_ql, shared_wf):
     global log_queue_global, shared_audio_level_global, shared_queue_length_global, shared_waterfall_global
+    global analyzer
+    
+    print("Initialisiere BirdNET Analyzer...")
+    analyzer = Analyzer()
+    print("OK: BirdNET Analyzer bereit.")
+    
     log_queue_global = log_q
     shared_audio_level_global = shared_al
     shared_queue_length_global = shared_ql

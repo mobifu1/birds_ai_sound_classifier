@@ -2,6 +2,7 @@ import os
 import time
 import contextlib
 import threading
+import multiprocessing as mp
 import sqlite3
 import datetime
 import pyaudio
@@ -55,11 +56,20 @@ os.makedirs(AUDIO_DIR, exist_ok=True)
 os.makedirs(BIRDWEATHER_QUEUE_DIR, exist_ok=True)
 TEMP_WAV = os.path.join(AUDIO_DIR, "temp.wav")
 
+
 app = Flask(__name__)
 log_messages = deque(maxlen=100)
 latest_audio_level = 0
 latest_queue_length = 0
 
+# --- MULTIPROCESSING GLOBALS ---
+log_queue_global = None
+shared_audio_level_global = None
+shared_queue_length_global = None
+shared_waterfall_global = None
+monitor_running_event = None
+monitor_process = None
+# -------------------------------
 WATERFALL_HEIGHT = 150
 MAX_FREQ = 20000
 freq_resolution = RATE / CHUNK
@@ -160,7 +170,13 @@ def update_log(msg):
     ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     formatted = f"[{ts}] {msg}"
     # print(formatted) # Terminal-Ausgabe deaktiviert für Dauerbetrieb
-    log_messages.appendleft(formatted)
+    if log_queue_global is not None:
+        try:
+            log_queue_global.put(formatted, block=False)
+        except:
+            pass
+    else:
+        log_messages.appendleft(formatted)
 
 def load_settings():
     if os.path.exists(SETTINGS_FILE):
@@ -359,8 +375,11 @@ class AudioMonitor:
                         chunk_amp = int(np.max(np.abs(audio_chunk_proc)))
                         vis_audio = audio_chunk_proc.astype(np.float32)
                         
-                        global latest_audio_level
-                        latest_audio_level = chunk_amp
+                        if shared_audio_level_global is not None:
+                            shared_audio_level_global.value = chunk_amp
+                        else:
+                            global latest_audio_level
+                            latest_audio_level = chunk_amp
 
                         # Waterfall processing
                         global latest_waterfall_data, max_bin
@@ -384,6 +403,10 @@ class AudioMonitor:
                         fft_norm = np.clip((fft_mag_cropped - min_db) / (max_db - min_db), 0, 1)
                         latest_waterfall_data = np.roll(latest_waterfall_data, 1, axis=0)
                         latest_waterfall_data[0, :] = fft_norm
+                        if shared_waterfall_global is not None:
+                            with shared_waterfall_global.get_lock():
+                                np_shared = np.frombuffer(shared_waterfall_global.get_obj(), dtype=np.float32)
+                                np_shared[:] = latest_waterfall_data.flatten()
                     except:
                         pass
 
@@ -401,8 +424,11 @@ class AudioMonitor:
                             pass
                     self.audio_queue.put(raw_data)
                     
-                    global latest_queue_length
-                    latest_queue_length = self.audio_queue.qsize()
+                    if shared_queue_length_global is not None:
+                        shared_queue_length_global.value = self.audio_queue.qsize()
+                    else:
+                        global latest_queue_length
+                        latest_queue_length = self.audio_queue.qsize()
 
             stream.stop_stream()
             stream.close()
@@ -543,8 +569,11 @@ class AudioMonitor:
                 # Wartet auf neues Audio-Paket (max 1 Sekunde, um while-Bedingung regelmäßig zu prüfen)
                 try:
                     raw_data = self.audio_queue.get(timeout=1.0)
-                    global latest_queue_length
-                    latest_queue_length = self.audio_queue.qsize()
+                    if shared_queue_length_global is not None:
+                        shared_queue_length_global.value = self.audio_queue.qsize()
+                    else:
+                        global latest_queue_length
+                        latest_queue_length = self.audio_queue.qsize()
                 except queue.Empty:
                     continue
                 
@@ -2012,7 +2041,7 @@ def api_status():
     conn.close()
 
     return jsonify({
-        "status": "Online (Mikrofon aktiv)" if monitor.running else "Offline (Gestoppt)",
+        "status": "Online (Mikrofon aktiv)" if (monitor_running_event.is_set() if monitor_running_event else False) else "Offline (Gestoppt)",
         "total_detections": total_count,
         "today_detections": today_count
     })
@@ -2057,10 +2086,15 @@ import matplotlib.cm as cm
 from PIL import Image
 
 def generate_waterfall_stream():
+    import matplotlib.cm as cm
     cmap = matplotlib.colormaps['viridis']
     while True:
-        global latest_waterfall_data
-        data = latest_waterfall_data.copy()
+        if shared_waterfall_global is not None:
+            with shared_waterfall_global.get_lock():
+                data = np.frombuffer(shared_waterfall_global.get_obj(), dtype=np.float32).reshape((WATERFALL_HEIGHT, max_bin)).copy()
+        else:
+            global latest_waterfall_data
+            data = latest_waterfall_data.copy()
         mapped = cmap(data)
         img_data = (mapped[:, :, :3] * 255).astype(np.uint8)
         img = Image.fromarray(img_data)
@@ -2077,9 +2111,11 @@ def waterfall_feed():
 
 @app.route('/api/audio_level')
 def api_audio_level():
+    lvl = shared_audio_level_global.value if shared_audio_level_global is not None else latest_audio_level
+    ql = shared_queue_length_global.value if shared_queue_length_global is not None else latest_queue_length
     return jsonify({
-        "level": latest_audio_level,
-        "queue_length": latest_queue_length
+        "level": lvl,
+        "queue_length": ql
     })
 
 @app.route('/api/latest_logs')
@@ -2092,18 +2128,43 @@ def api_live_audio():
         return send_file(TEMP_WAV, mimetype="audio/wav")
     return abort(404)
 
+
+def run_audio_process(running_event, log_q, shared_al, shared_ql, shared_wf):
+    global log_queue_global, shared_audio_level_global, shared_queue_length_global, shared_waterfall_global
+    log_queue_global = log_q
+    shared_audio_level_global = shared_al
+    shared_queue_length_global = shared_ql
+    shared_waterfall_global = shared_wf
+    
+    monitor = AudioMonitor()
+    
+    update_log("Audio-Prozess gestartet. Warte auf Start-Signal...")
+    
+    was_running = False
+    
+    while True:
+        is_set = running_event.is_set()
+        if is_set and not was_running:
+            monitor.start()
+            was_running = True
+        elif not is_set and was_running:
+            monitor.stop()
+            was_running = False
+            
+        time.sleep(0.5)
+
 # --- CONTROL ROUTEN ---
 @app.route('/api/control/start', methods=['POST'])
 def api_control_start():
-    if not monitor.running:
-        monitor.start()
+    if monitor_running_event:
+        monitor_running_event.set()
         return jsonify({"msg": "Gestartet"})
-    return jsonify({"error": "Läuft bereits"})
+    return jsonify({"error": "Process event not initialized"})
 
 @app.route('/api/control/stop', methods=['POST'])
 def api_control_stop():
-    if monitor.running:
-        monitor.stop()
+    if monitor_running_event:
+        monitor_running_event.clear()
     return jsonify({"msg": "Gestoppt"})
 
 @app.route('/api/control/dbsync', methods=['POST'])
@@ -2375,14 +2436,52 @@ def export_weekly_csv():
         headers={"Content-disposition": f"attachment; filename={filename}"}
     )
 
+def log_reader_thread():
+    while True:
+        if log_queue_global is not None:
+            try:
+                # get_nowait can throw queue.Empty from stdlib queue, but log_queue_global is multiprocessing.Queue
+                # so we can use queue.Empty (since queue is imported)
+                msg = log_queue_global.get(timeout=1.0)
+                log_messages.appendleft(msg)
+            except queue.Empty:
+                pass
+        else:
+            time.sleep(1)
+
 if __name__ == '__main__':
+    mp.freeze_support()
     init_db()
-    monitor = AudioMonitor()
-    monitor.start()
+    
+    # Initialize shared multiprocessing variables
+    log_queue_global = mp.Queue()
+    shared_audio_level_global = mp.Value('i', 0)
+    shared_queue_length_global = mp.Value('i', 0)
+    shared_waterfall_global = mp.Array('f', WATERFALL_HEIGHT * max_bin)
+    monitor_running_event = mp.Event()
+    
+    # Start log reader thread
+    t = threading.Thread(target=log_reader_thread, daemon=True)
+    t.start()
+    
+    # Start audio process
+    monitor_process = mp.Process(target=run_audio_process, args=(
+        monitor_running_event, 
+        log_queue_global, 
+        shared_audio_level_global, 
+        shared_queue_length_global, 
+        shared_waterfall_global
+    ))
+    monitor_process.daemon = True
+    monitor_process.start()
+    
+    # Automatically start monitoring
+    monitor_running_event.set()
     
     print(f"Starte Webserver auf http://127.0.0.1:{FLASK_PORT}")
     try:
         serve(app, host='0.0.0.0', port=FLASK_PORT)
     except KeyboardInterrupt:
-        monitor.stop()
+        monitor_running_event.clear()
+        monitor_process.join(timeout=2)
         print("Server beendet.")

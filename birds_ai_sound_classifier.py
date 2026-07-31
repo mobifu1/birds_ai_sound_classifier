@@ -1524,6 +1524,94 @@ def create_species_polar_chart(species, hourly_counts):
     plt.close()
     return f"data:image/png;base64,{img_base64}"
 
+@app.route('/territory')
+def territory_page():
+    import struct
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    
+    # Einstellungen laden (für Persistenz)
+    current_settings = load_settings()
+    
+    # 1. Parameter aus dem Request holen (falls der Nutzer auf "Anwenden" geklickt hat)
+    custom_threshold_str = request.args.get('threshold')
+    custom_min_calls_str = request.args.get('min_calls')
+    
+    if custom_threshold_str is not None:
+        threshold = float(custom_threshold_str)
+        save_setting("territory_threshold", threshold)
+    else:
+        threshold = float(current_settings.get("territory_threshold", 25.0))
+        
+    if custom_min_calls_str is not None:
+        min_calls = int(custom_min_calls_str)
+        save_setting("territory_min_calls", min_calls)
+    else:
+        min_calls = int(current_settings.get("territory_min_calls", 20))
+    
+    # 2. Alle Erkennungen abrufen und im Python-Code aggregieren
+    c.execute("SELECT species, snr FROM detections WHERE species != 'IGNORED_LOW_CONFIDENCE'")
+    rows = c.fetchall()
+    conn.close()
+    
+    species_calls = {}
+    
+    for row in rows:
+        sp = row[0]
+        snr_val = row[1]
+        
+        # SNR parsen (manche Werte wurden evtl. binär von numpy/sqlite gespeichert)
+        if isinstance(snr_val, bytes):
+            if len(snr_val) == 8:
+                snr_val = struct.unpack('d', snr_val)[0]
+            elif len(snr_val) == 4:
+                snr_val = struct.unpack('f', snr_val)[0]
+            else:
+                snr_val = 0.0
+        elif snr_val is None:
+            snr_val = 0.0
+        else:
+            snr_val = float(snr_val)
+            
+        if sp not in species_calls:
+            species_calls[sp] = []
+        species_calls[sp].append(snr_val)
+        
+        if snr_val > 0:
+            pass # Wir sammeln all_snrs nicht mehr für min/max Berechnung
+            
+    residents = []     # > 66%
+    commuters = []     # 33% - 66%
+    transients = []    # < 33%
+    
+    for sp, snrs in species_calls.items():
+        total = len(snrs)
+        if total >= min_calls:
+            high = sum(1 for s in snrs if s >= threshold)
+            pct = (high / total) * 100.0 if total > 0 else 0
+            
+            entry = {'species': sp, 'total': total, 'high': high, 'percent': round(pct, 1)}
+            
+            if pct > 66:
+                residents.append(entry)
+            elif pct >= 33:
+                commuters.append(entry)
+            else:
+                transients.append(entry)
+                
+    # Sortieren nach Prozent absteigend
+    residents.sort(key=lambda x: x['percent'], reverse=True)
+    commuters.sort(key=lambda x: x['percent'], reverse=True)
+    transients.sort(key=lambda x: x['percent'], reverse=True)
+    
+    categories = {
+        'residents': residents,
+        'commuters': commuters,
+        'transients': transients
+    }
+    
+    return render_template('territory.html', threshold=round(threshold, 1), min_calls=min_calls, categories=categories)
+
 @app.route('/species')
 def species_page():
     species_set = set(get_bird_dictionary().values())

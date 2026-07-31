@@ -35,6 +35,7 @@ lines = [
     "",
     "Audio Filter & System:",
     "- High-Pass Filter: Herausfiltern von tiefen Stoergeraeuschen (inkl. Grenzfrequenz in Hz)",
+    "- Low-Pass Filter: Herausfiltern von hohen Stoergeraeuschen (inkl. Grenzfrequenz in Hz)",
     "- Noise Reduction: Rauschunterdrueckung aktivieren und Qualitaet einstellen",
     "- Mikrofon auswaehlen: Auswahl des Audio-Eingabegeraets",
     "- Alarm-Ton aktivieren: Akustisches Signal bei jeder neuen Erkennung",

@@ -812,7 +812,7 @@ class AudioMonitor:
 # --- FLASK ROUTEN ---
 @app.context_processor
 def inject_version():
-    return dict(version="1.2.8")
+    return dict(version="1.2.9")
 
 @app.route('/favicon.ico')
 def favicon():
@@ -2081,7 +2081,7 @@ def check_model_update():
 
 @app.route('/api/check_app_update')
 def check_app_update():
-    current_version = "1.2.8"
+    current_version = "1.2.9"
     try:
         import urllib.request
         import json

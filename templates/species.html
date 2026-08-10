@@ -96,6 +96,40 @@
             <p style="color: #ff9800; font-weight:bold;">Für {{ selected_species }} sind keine ausreichenden Daten zur Chart-Erstellung vorhanden.</p>
             {% endif %}
 
+            {% if confusion_report %}
+            <div style="margin-top: 30px; background: #263238; padding: 15px; border-radius: 8px; border: 1px solid #37474f;">
+                <h3 style="margin-top: 0;">Confusion-Report</h3>
+                <p style="color: #aaa; margin-bottom: 15px;">
+                    Zeitliche Nachbarschaft: Häufigste Arten, die im Zeitraum von &plusmn;20 Sekunden um die Erkennung von <strong>{{ selected_species }}</strong> registriert wurden.
+                </p>
+                <table style="width: 100%; border-collapse: collapse; text-align: left; color: white;">
+                    <thead>
+                        <tr style="border-bottom: 1px solid #546e7a;">
+                            <th style="padding: 10px;">Vogelart</th>
+                            <th style="padding: 10px;">Gemeinsame Auftritte</th>
+                            <th style="padding: 10px;">Korrelation (bezogen auf {{ selected_species }})</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in confusion_report %}
+                        <tr style="border-bottom: 1px solid #37474f;">
+                            <td style="padding: 10px;">{{ row.species }}</td>
+                            <td style="padding: 10px;">{{ row.count }}</td>
+                            <td style="padding: 10px; width: 50%;">
+                                <div style="display: flex; align-items: center; gap: 10px;">
+                                    <div style="width: 100%; background: #37474f; border-radius: 4px; overflow: hidden; height: 10px;">
+                                        <div style="width: {{ row.percent }}%; background: #4caf50; height: 100%;"></div>
+                                    </div>
+                                    <span style="min-width: 50px; text-align: right;">{{ row.percent }}%</span>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% endif %}
+
             {% if wav_files %}
             <div style="margin-top: 30px; background: #263238; padding: 15px; border-radius: 8px; border: 1px solid #37474f;">
                 <h3 style="margin-top: 0;">Archivierte Audioaufnahmen</h3>

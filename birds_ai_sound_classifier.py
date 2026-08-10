@@ -222,6 +222,7 @@ def init_db():
         c.execute('ALTER TABLE detections ADD COLUMN snr REAL DEFAULT 0.0')
     except sqlite3.OperationalError:
         pass # Spalte existiert bereits
+    c.execute('CREATE INDEX IF NOT EXISTS idx_timestamp ON detections(timestamp)')
     conn.commit()
     conn.close()
 
@@ -812,7 +813,7 @@ class AudioMonitor:
 # --- FLASK ROUTEN ---
 @app.context_processor
 def inject_version():
-    return dict(version="1.2.9")
+    return dict(version="1.3.0")
 
 @app.route('/favicon.ico')
 def favicon():
@@ -1631,6 +1632,7 @@ def species_page():
     chart_url = None
     total_count = 0
     wav_files = []
+    confusion_report = []
     if selected_species:
         c.execute("SELECT strftime('%H', timestamp) as hour, COUNT(*) FROM detections WHERE species = ? GROUP BY hour", (selected_species,))
         rows = c.fetchall()
@@ -1651,6 +1653,31 @@ def species_page():
                         pass
             chart_url = create_species_polar_chart(selected_species, hourly_counts)
             
+            try:
+                c.execute('CREATE INDEX IF NOT EXISTS idx_timestamp ON detections(timestamp)')
+                query = """
+                    SELECT d2.species, COUNT(DISTINCT d1.id) as co_occurrences
+                    FROM detections d1
+                    JOIN detections d2 
+                      ON d2.timestamp BETWEEN datetime(d1.timestamp, '-20 seconds') AND datetime(d1.timestamp, '+20 seconds')
+                    WHERE d1.species = ? 
+                      AND d2.species != ? 
+                      AND d2.species != 'IGNORED_LOW_CONFIDENCE'
+                    GROUP BY d2.species
+                    ORDER BY co_occurrences DESC
+                    LIMIT 10
+                """
+                c.execute(query, (selected_species, selected_species))
+                for row in c.fetchall():
+                    conf_percent = round((row[1] / total_count) * 100, 1)
+                    confusion_report.append({
+                        'species': row[0],
+                        'count': row[1],
+                        'percent': conf_percent
+                    })
+            except Exception as e:
+                print(f"Error confusion report: {e}")
+            
         archive_path = os.path.join(AUDIO_DIR, "archive")
         if os.path.exists(archive_path):
             prefix = selected_species + "_"
@@ -1664,7 +1691,8 @@ def species_page():
         selected_species=selected_species,
         chart_url=chart_url,
         total_count=total_count,
-        wav_files=wav_files
+        wav_files=wav_files,
+        confusion_report=confusion_report
     )
 
 @app.route('/api/archive/audio/<filename>')
@@ -2169,7 +2197,7 @@ def check_model_update():
 
 @app.route('/api/check_app_update')
 def check_app_update():
-    current_version = "1.2.9"
+    current_version = "1.3.0"
     try:
         import urllib.request
         import json

@@ -1656,9 +1656,9 @@ def species_page():
             try:
                 c.execute('CREATE INDEX IF NOT EXISTS idx_timestamp ON detections(timestamp)')
                 query = """
-                    SELECT d2.species, COUNT(DISTINCT d1.id) as co_occurrences
+                    SELECT d2.species, COUNT(DISTINCT d1.rowid) as co_occurrences
                     FROM detections d1
-                    JOIN detections d2 
+                    CROSS JOIN detections d2 
                       ON d2.timestamp BETWEEN datetime(d1.timestamp, '-20 seconds') AND datetime(d1.timestamp, '+20 seconds')
                     WHERE d1.species = ? 
                       AND d2.species != ? 

@@ -1733,12 +1733,16 @@ def serve_archive_spectrogram(filename):
         
         from flask import make_response
         response = make_response(send_file(buf, mimetype='image/png'))
+        trans = (ax.transScale + ax.transLimits).inverted()
+        import json
+        ymap = [round(float(trans.transform((0.5, yr))[1]), 1) for yr in np.linspace(0, 1, 101)]
         response.headers['X-Plot-Left'] = str(pos.x0)
         response.headers['X-Plot-Bottom'] = str(pos.y0)
         response.headers['X-Plot-Width'] = str(pos.width)
         response.headers['X-Plot-Height'] = str(pos.height)
         response.headers['X-Audio-Duration'] = str(duration)
-        response.headers['Access-Control-Expose-Headers'] = 'X-Plot-Left, X-Plot-Bottom, X-Plot-Width, X-Plot-Height, X-Audio-Duration'
+        response.headers['X-Plot-YMap'] = json.dumps(ymap)
+        response.headers['Access-Control-Expose-Headers'] = 'X-Plot-Left, X-Plot-Bottom, X-Plot-Width, X-Plot-Height, X-Audio-Duration, X-Plot-YMap'
         return response
     except Exception as e:
         print(f"Error generating spectrogram: {e}")
@@ -1798,12 +1802,16 @@ def serve_archive_phase_spectrogram(filename):
         
         from flask import make_response
         response = make_response(send_file(buf, mimetype='image/png'))
+        trans = (ax.transScale + ax.transLimits).inverted()
+        import json
+        ymap = [round(float(trans.transform((0.5, yr))[1]), 1) for yr in np.linspace(0, 1, 101)]
         response.headers['X-Plot-Left'] = str(pos.x0)
         response.headers['X-Plot-Bottom'] = str(pos.y0)
         response.headers['X-Plot-Width'] = str(pos.width)
         response.headers['X-Plot-Height'] = str(pos.height)
         response.headers['X-Audio-Duration'] = str(duration)
-        response.headers['Access-Control-Expose-Headers'] = 'X-Plot-Left, X-Plot-Bottom, X-Plot-Width, X-Plot-Height, X-Audio-Duration'
+        response.headers['X-Plot-YMap'] = json.dumps(ymap)
+        response.headers['Access-Control-Expose-Headers'] = 'X-Plot-Left, X-Plot-Bottom, X-Plot-Width, X-Plot-Height, X-Audio-Duration, X-Plot-YMap'
         return response
     except Exception as e:
         print(f"Error generating phase spectrogram: {e}")

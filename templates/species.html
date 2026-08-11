@@ -176,18 +176,9 @@
                 
                 // Globals for interaction
                 let plotLeft = 0, plotBottom = 0, plotWidth = 1, plotHeight = 1, audioDuration = 0;
+                let plotYMap = [];
                 let clickState = 0; // 0=none, 1=first point, 2=second point
                 let firstClickData = null;
-
-                // Slaney Mel-Skala umrechnung
-                function hzToMel(hz) {
-                    const min_log_hz = 1000.0, min_log_mel = 15.0, logstep = 0.06875177742055627;
-                    return (hz >= min_log_hz) ? min_log_mel + Math.log(hz / min_log_hz) / logstep : hz / (200.0 / 3.0);
-                }
-                function melToHz(mel) {
-                    const min_log_hz = 1000.0, min_log_mel = 15.0, logstep = 0.06875177742055627;
-                    return (mel >= min_log_mel) ? min_log_hz * Math.exp(logstep * (mel - min_log_mel)) : mel * (200.0 / 3.0);
-                }
 
                 function fetchSpectrogram(url) {
                     var img = document.getElementById('spectrogram-img');
@@ -205,6 +196,8 @@
                             plotWidth = parseFloat(response.headers.get('X-Plot-Width')) || 0.775;
                             plotHeight = parseFloat(response.headers.get('X-Plot-Height')) || 0.77;
                             audioDuration = parseFloat(response.headers.get('X-Audio-Duration')) || 0;
+                            let ymapStr = response.headers.get('X-Plot-YMap');
+                            plotYMap = ymapStr ? JSON.parse(ymapStr) : [];
                             return response.blob();
                         })
                         .then(blob => {
@@ -357,18 +350,16 @@
                     let clickTime = xRel * audioDuration;
                     
                     let clickFreqText = "";
-                    if (currentSpectrumMode === 'freq') {
-                        let maxMel = hzToMel(20000);
-                        let clickMel = yRel * maxMel;
-                        let clickFreq = melToHz(clickMel);
-                        clickFreqText = Math.round(clickFreq) + " Hz";
-                    } else {
-                        // For Phase, yRel is directly linear to Mel scale 0..20000 (wait, same as freq!)
-                        let maxMel = hzToMel(20000);
-                        let clickMel = yRel * maxMel;
-                        let clickFreq = melToHz(clickMel);
-                        clickFreqText = Math.round(clickFreq) + " Hz";
+                    let clickFreq = 0;
+                    if (plotYMap && plotYMap.length > 0) {
+                        let idx = yRel * (plotYMap.length - 1);
+                        let i = Math.floor(idx);
+                        let frac = idx - i;
+                        if (i < 0) clickFreq = plotYMap[0];
+                        else if (i >= plotYMap.length - 1) clickFreq = plotYMap[plotYMap.length - 1];
+                        else clickFreq = plotYMap[i] + frac * (plotYMap[i+1] - plotYMap[i]);
                     }
+                    clickFreqText = Math.round(clickFreq) + " Hz";
 
                     if (clickState === 0) {
                         firstClickData = { x: offsetX, y: offsetY, time: clickTime, freq: clickFreqText };

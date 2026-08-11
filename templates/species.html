@@ -145,8 +145,20 @@
                 
                 <div id="spectrogram-container" style="display: none; text-align: center; margin-top: 20px;">
                     <h4 id="spectrogram-title" style="color: #81d4fa; margin-bottom: 15px;"></h4>
-                    <div id="loading-text" style="color: #aaa; margin-bottom: 10px; font-style: italic;">Spectrogramm wird generiert (kann einige Sekunden dauern)...</div>
-                    <img id="spectrogram-img" src="" alt="Spectrogramm" style="max-width: 100%; border-radius: 8px; border: 1px solid #333; margin-bottom: 15px; display: none;" onload="document.getElementById('loading-text').style.display='none'; this.style.display='inline';">
+                    
+                    <div style="margin-bottom: 15px; display: flex; justify-content: center; gap: 10px;">
+                        <button id="btn-freq" onclick="switchSpectrum('freq')" style="padding: 6px 12px; background: #4caf50; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; transition: background 0.2s;">Frequenzspektrum</button>
+                        <button id="btn-phase" onclick="switchSpectrum('phase')" style="padding: 6px 12px; background: #37474f; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; transition: background 0.2s;">Phasenstabilität</button>
+                    </div>
+
+                    <div id="loading-text" style="color: #aaa; margin-bottom: 10px; font-style: italic;">Spektrum wird generiert (kann einige Sekunden dauern)...</div>
+                    <div id="image-wrapper" style="position: relative; display: inline-block; max-width: 100%;">
+                        <img id="spectrogram-img" src="" alt="Spectrogramm" style="max-width: 100%; border-radius: 8px; border: 1px solid #333; margin-bottom: 15px; display: none;" onload="document.getElementById('loading-text').style.display='none'; this.style.display='block';">
+                        <div id="markers-container" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; overflow: hidden; border-radius: 8px;"></div>
+                    </div>
+                    <br>
+                    <div id="loading-text-waveform" style="color: #aaa; margin-bottom: 10px; font-style: italic; display: none;">Amplitudenspektrum wird generiert...</div>
+                    <img id="waveform-img" src="" alt="Amplitudenspektrum" style="max-width: 100%; border-radius: 8px; border: 1px solid #333; margin-bottom: 15px; display: none;" onload="document.getElementById('loading-text-waveform').style.display='none'; this.style.display='inline';">
                     <br>
                     <audio id="audio-player" controls style="width: 100%; max-width: 600px; margin-top: 10px;">
                         <source id="audio-source" src="" type="audio/wav">
@@ -160,21 +172,78 @@
 
             <script>
                 var currentSelectedWav = null;
+                var currentSpectrumMode = 'freq';
+                
+                // Globals for interaction
+                let plotLeft = 0, plotBottom = 0, plotWidth = 1, plotHeight = 1, audioDuration = 0;
+                let clickState = 0; // 0=none, 1=first point, 2=second point
+                let firstClickData = null;
+
+                // Slaney Mel-Skala umrechnung
+                function hzToMel(hz) {
+                    const min_log_hz = 1000.0, min_log_mel = 15.0, logstep = 0.06875177742055627;
+                    return (hz >= min_log_hz) ? min_log_mel + Math.log(hz / min_log_hz) / logstep : hz / (200.0 / 3.0);
+                }
+                function melToHz(mel) {
+                    const min_log_hz = 1000.0, min_log_mel = 15.0, logstep = 0.06875177742055627;
+                    return (mel >= min_log_mel) ? min_log_hz * Math.exp(logstep * (mel - min_log_mel)) : mel * (200.0 / 3.0);
+                }
+
+                function fetchSpectrogram(url) {
+                    var img = document.getElementById('spectrogram-img');
+                    var loadingText = document.getElementById('loading-text');
+                    
+                    img.style.display = 'none';
+                    loadingText.style.display = 'block';
+                    resetMarkers();
+                    
+                    fetch(url)
+                        .then(response => {
+                            if (!response.ok) throw new Error("Netzwerkfehler");
+                            plotLeft = parseFloat(response.headers.get('X-Plot-Left')) || 0.125;
+                            plotBottom = parseFloat(response.headers.get('X-Plot-Bottom')) || 0.11;
+                            plotWidth = parseFloat(response.headers.get('X-Plot-Width')) || 0.775;
+                            plotHeight = parseFloat(response.headers.get('X-Plot-Height')) || 0.77;
+                            audioDuration = parseFloat(response.headers.get('X-Audio-Duration')) || 0;
+                            return response.blob();
+                        })
+                        .then(blob => {
+                            img.src = URL.createObjectURL(blob);
+                        })
+                        .catch(err => {
+                            console.error("Fehler beim Laden:", err);
+                            loadingText.innerText = "Fehler beim Laden.";
+                        });
+                }
+
+                function switchSpectrum(mode) {
+                    currentSpectrumMode = mode;
+                    document.getElementById('btn-freq').style.background = (mode === 'freq') ? '#4caf50' : '#37474f';
+                    document.getElementById('btn-phase').style.background = (mode === 'phase') ? '#4caf50' : '#37474f';
+                    
+                    if (currentSelectedWav) {
+                        let url = (mode === 'freq') ? "/api/archive/spectrogram/" : "/api/archive/phase_spectrogram/";
+                        fetchSpectrogram(url + encodeURIComponent(currentSelectedWav));
+                    }
+                }
 
                 function loadSpectrogram(filename) {
                     var container = document.getElementById('spectrogram-container');
-                    var img = document.getElementById('spectrogram-img');
+                    var waveformImg = document.getElementById('waveform-img');
                     var audio = document.getElementById('audio-player');
                     var source = document.getElementById('audio-source');
                     var title = document.getElementById('spectrogram-title');
-                    var loadingText = document.getElementById('loading-text');
+                    var loadingTextWaveform = document.getElementById('loading-text-waveform');
                     
                     container.style.display = 'block';
                     title.innerText = "Ausgewählt: " + filename;
                     
-                    img.style.display = 'none';
-                    loadingText.style.display = 'block';
-                    img.src = "/api/archive/spectrogram/" + encodeURIComponent(filename);
+                    waveformImg.style.display = 'none';
+                    loadingTextWaveform.style.display = 'block';
+                    waveformImg.src = "/api/archive/waveform/" + encodeURIComponent(filename);
+                    
+                    let url = (currentSpectrumMode === 'freq') ? "/api/archive/spectrogram/" : "/api/archive/phase_spectrogram/";
+                    fetchSpectrogram(url + encodeURIComponent(filename));
                     
                     source.src = "/api/archive/audio/" + encodeURIComponent(filename);
                     audio.load();
@@ -183,6 +252,136 @@
                     document.getElementById('delete-wav-btn').style.display = 'inline-block';
                 }
                 
+                // Interaktive Marker Logik
+                function resetMarkers() {
+                    clickState = 0;
+                    firstClickData = null;
+                    document.getElementById('markers-container').innerHTML = '';
+                }
+
+                function createMarker(x, y, text, color) {
+                    let container = document.getElementById('markers-container');
+                    let marker = document.createElement('div');
+                    marker.style.position = 'absolute';
+                    marker.style.left = x + 'px';
+                    marker.style.top = y + 'px';
+                    marker.style.width = '10px';
+                    marker.style.height = '10px';
+                    marker.style.backgroundColor = color;
+                    marker.style.borderRadius = '50%';
+                    marker.style.transform = 'translate(-50%, -50%)';
+                    marker.style.border = '2px solid white';
+                    marker.style.boxShadow = '0 0 5px rgba(0,0,0,0.5)';
+                    
+                    let label = document.createElement('div');
+                    label.innerText = text;
+                    label.style.position = 'absolute';
+                    label.style.left = '15px';
+                    label.style.top = '-10px';
+                    label.style.backgroundColor = 'rgba(0, 0, 0, 0.8)';
+                    label.style.color = '#fff';
+                    label.style.padding = '4px 8px';
+                    label.style.borderRadius = '4px';
+                    label.style.fontSize = '12px';
+                    label.style.whiteSpace = 'nowrap';
+                    marker.appendChild(label);
+                    
+                    container.appendChild(marker);
+                    return marker;
+                }
+
+                function createLine(x1, y1, x2, y2, text) {
+                    let container = document.getElementById('markers-container');
+                    let length = Math.sqrt((x2-x1)*(x2-x1) + (y2-y1)*(y2-y1));
+                    let angle = Math.atan2(y2-y1, x2-x1) * 180 / Math.PI;
+                    
+                    let line = document.createElement('div');
+                    line.style.position = 'absolute';
+                    line.style.left = x1 + 'px';
+                    line.style.top = y1 + 'px';
+                    line.style.width = length + 'px';
+                    line.style.height = '2px';
+                    line.style.backgroundColor = '#ffeb3b';
+                    line.style.transformOrigin = '0 0';
+                    line.style.transform = 'rotate(' + angle + 'deg)';
+                    line.style.boxShadow = '0 0 3px rgba(0,0,0,0.5)';
+                    
+                    let label = document.createElement('div');
+                    label.innerText = text;
+                    label.style.position = 'absolute';
+                    label.style.left = '50%';
+                    label.style.top = '-25px';
+                    label.style.transform = 'translateX(-50%)';
+                    label.style.backgroundColor = 'rgba(255, 235, 59, 0.9)';
+                    label.style.color = '#000';
+                    label.style.padding = '4px 8px';
+                    label.style.borderRadius = '4px';
+                    label.style.fontSize = '12px';
+                    label.style.fontWeight = 'bold';
+                    label.style.transformOrigin = 'center';
+                    // Re-rotate label to stay horizontal
+                    label.style.transform = 'translateX(-50%) rotate(' + (-angle) + 'deg)';
+                    
+                    line.appendChild(label);
+                    container.appendChild(line);
+                }
+
+                document.getElementById('spectrogram-img').addEventListener('click', function(e) {
+                    if (clickState === 2) {
+                        resetMarkers();
+                        return;
+                    }
+
+                    const rect = this.getBoundingClientRect();
+                    const scaleX = this.clientWidth / this.naturalWidth;
+                    const scaleY = this.clientHeight / this.naturalHeight;
+                    
+                    const offsetX = e.clientX - rect.left;
+                    const offsetY = e.clientY - rect.top;
+
+                    // Plot boundaries in CSS pixels
+                    const pLeft = plotLeft * this.clientWidth;
+                    const pWidth = plotWidth * this.clientWidth;
+                    const pTop = (1.0 - (plotBottom + plotHeight)) * this.clientHeight;
+                    const pHeight = plotHeight * this.clientHeight;
+
+                    // Check if click is inside the plot area
+                    if (offsetX < pLeft || offsetX > pLeft + pWidth ||
+                        offsetY < pTop || offsetY > pTop + pHeight) {
+                        return; // Ignore clicks on axes/margins
+                    }
+
+                    let xRel = (offsetX - pLeft) / pWidth;
+                    let yRel = ((pTop + pHeight) - offsetY) / pHeight;
+
+                    let clickTime = xRel * audioDuration;
+                    
+                    let clickFreqText = "";
+                    if (currentSpectrumMode === 'freq') {
+                        let maxMel = hzToMel(20000);
+                        let clickMel = yRel * maxMel;
+                        let clickFreq = melToHz(clickMel);
+                        clickFreqText = Math.round(clickFreq) + " Hz";
+                    } else {
+                        // For Phase, yRel is directly linear to Mel scale 0..20000 (wait, same as freq!)
+                        let maxMel = hzToMel(20000);
+                        let clickMel = yRel * maxMel;
+                        let clickFreq = melToHz(clickMel);
+                        clickFreqText = Math.round(clickFreq) + " Hz";
+                    }
+
+                    if (clickState === 0) {
+                        firstClickData = { x: offsetX, y: offsetY, time: clickTime, freq: clickFreqText };
+                        createMarker(offsetX, offsetY, clickFreqText + " | " + clickTime.toFixed(2) + "s", "#4caf50");
+                        clickState = 1;
+                    } else if (clickState === 1) {
+                        let dt = Math.abs(clickTime - firstClickData.time) * 1000;
+                        createMarker(offsetX, offsetY, clickFreqText + " | " + clickTime.toFixed(2) + "s", "#f44336");
+                        createLine(firstClickData.x, firstClickData.y, offsetX, offsetY, "Δt: " + Math.round(dt) + " ms");
+                        clickState = 2;
+                    }
+                });
+
                 function deleteSelectedWav() {
                     if (!currentSelectedWav) return;
                     if (confirm("Möchten Sie die Datei '" + currentSelectedWav + "' wirklich löschen?")) {

@@ -1712,20 +1712,153 @@ def serve_archive_spectrogram(filename):
     
     try:
         y, sr = librosa.load(file_path, sr=None)
-        fig, ax = plt.subplots(figsize=(8, 4))
+        fig = plt.figure(figsize=(8, 4))
+        ax = fig.add_axes([0.12, 0.15, 0.75, 0.75])
         S = librosa.feature.melspectrogram(y=y, sr=sr, n_mels=128, fmax=20000)
         S_dB = librosa.power_to_db(S, ref=np.max)
         img = librosa.display.specshow(S_dB, x_axis='time', y_axis='mel', sr=sr, fmax=20000, ax=ax)
         ax.set_title(f"Spectrogram: {filename}")
-        fig.colorbar(img, ax=ax, format='%+2.0f dB')
+        
+        cax = fig.add_axes([0.88, 0.15, 0.02, 0.75])
+        fig.colorbar(img, cax=cax, format='%+2.0f dB')
+        
+        fig.canvas.draw()
+        pos = ax.get_position()
+        duration = librosa.get_duration(y=y, sr=sr)
         
         buf = io.BytesIO()
-        fig.savefig(buf, format='png', bbox_inches='tight')
+        fig.savefig(buf, format='png')
+        buf.seek(0)
+        plt.close(fig)
+        
+        from flask import make_response
+        response = make_response(send_file(buf, mimetype='image/png'))
+        response.headers['X-Plot-Left'] = str(pos.x0)
+        response.headers['X-Plot-Bottom'] = str(pos.y0)
+        response.headers['X-Plot-Width'] = str(pos.width)
+        response.headers['X-Plot-Height'] = str(pos.height)
+        response.headers['X-Audio-Duration'] = str(duration)
+        response.headers['Access-Control-Expose-Headers'] = 'X-Plot-Left, X-Plot-Bottom, X-Plot-Width, X-Plot-Height, X-Audio-Duration'
+        return response
+    except Exception as e:
+        print(f"Error generating spectrogram: {e}")
+        abort(500)
+
+@app.route('/api/archive/phase_spectrogram/<filename>')
+def serve_archive_phase_spectrogram(filename):
+    archive_path = os.path.join(AUDIO_DIR, "archive")
+    file_path = os.path.join(archive_path, filename)
+    if not os.path.exists(file_path):
+        abort(404)
+    
+    try:
+        y, sr = librosa.load(file_path, sr=None)
+        D = librosa.stft(y)
+        phase = np.angle(D)
+        
+        # Berechne die zeitliche Ableitung der Phase (Momentanfrequenz / Phase Stability)
+        unwrapped_phase = np.unwrap(phase, axis=1)
+        inst_freq = np.gradient(unwrapped_phase, axis=1)
+        
+        from scipy.interpolate import interp1d
+        
+        # Interpoliere auf die Mel-Skala, um exakt die gleiche y-Achse wie beim Frequenzspektrum zu erhalten
+        mel_frequencies = librosa.mel_frequencies(n_mels=128, fmin=0.0, fmax=20000)
+        linear_frequencies = librosa.fft_frequencies(sr=sr, n_fft=2048)
+        
+        f = interp1d(linear_frequencies, inst_freq, axis=0, bounds_error=False, fill_value='extrapolate')
+        inst_freq_mel = f(mel_frequencies)
+        
+        # Auf -180° bis +180° wrappen und in Grad umwandeln
+        inst_freq_deg = np.angle(np.exp(1j * inst_freq_mel), deg=True)
+        
+        fig = plt.figure(figsize=(8, 4))
+        ax = fig.add_axes([0.12, 0.15, 0.75, 0.75])
+        cmap = plt.get_cmap('twilight').copy()
+        
+        # Zeige die Momentanfrequenz fuer die gesamte Flaeche an (ohne Maskierung) auf der Mel-Skala
+        img = librosa.display.specshow(inst_freq_deg, x_axis='time', y_axis='mel', sr=sr, fmax=20000, ax=ax, cmap=cmap, vmin=-180, vmax=180)
+        
+        # Exakte X-Achsen-Limits wie beim Spektrogramm erzwingen
+        duration = len(y) / sr
+        ax.set_xlim(0, duration)
+        
+        ax.set_title(f"Phasenstabilität: {filename}")
+        
+        cax = fig.add_axes([0.88, 0.15, 0.02, 0.75])
+        cbar = fig.colorbar(img, cax=cax, format='%+2.0f\u00b0')
+        
+        fig.canvas.draw()
+        pos = ax.get_position()
+        
+        buf = io.BytesIO()
+        fig.savefig(buf, format='png')
+        buf.seek(0)
+        plt.close(fig)
+        
+        from flask import make_response
+        response = make_response(send_file(buf, mimetype='image/png'))
+        response.headers['X-Plot-Left'] = str(pos.x0)
+        response.headers['X-Plot-Bottom'] = str(pos.y0)
+        response.headers['X-Plot-Width'] = str(pos.width)
+        response.headers['X-Plot-Height'] = str(pos.height)
+        response.headers['X-Audio-Duration'] = str(duration)
+        response.headers['Access-Control-Expose-Headers'] = 'X-Plot-Left, X-Plot-Bottom, X-Plot-Width, X-Plot-Height, X-Audio-Duration'
+        return response
+    except Exception as e:
+        print(f"Error generating phase spectrogram: {e}")
+        abort(500)
+
+@app.route('/api/archive/waveform/<filename>')
+def serve_archive_waveform(filename):
+    archive_path = os.path.join(AUDIO_DIR, "archive")
+    file_path = os.path.join(archive_path, filename)
+    if not os.path.exists(file_path):
+        abort(404)
+    
+    try:
+        y, sr = librosa.load(file_path, sr=None)
+        fig = plt.figure(figsize=(8, 2.5))
+        ax = fig.add_axes([0.12, 0.25, 0.75, 0.65])
+        librosa.display.waveshow(y, sr=sr, ax=ax, color='b')
+        ax.set_title(f"Amplitudenspektrum: {filename}")
+        ax.set_ylabel("Amplitude (dB)")
+        ax.set_xlabel("Zeit (s)")
+        
+        import matplotlib.ticker as ticker
+        def lin_to_db(x, pos):
+            val = np.abs(x)
+            if val < 1e-10:
+                return '-inf'
+            return f'{20 * np.log10(val):.0f}'
+        ax.yaxis.set_major_formatter(ticker.FuncFormatter(lin_to_db))
+        
+        # Exakte X-Achsen-Limits wie beim Spektrogramm erzwingen
+        duration = len(y) / sr
+        ax.set_xlim(0, duration)
+        
+        # Unsichtbare Platzhalter-Colorbar hinzufügen, 
+        # damit die Bildbreite und Achsenausrichtung exakt mit dem Spektrogramm übereinstimmt.
+        # Wir nutzen eine komplett transparente Colormap, damit kein Farbverlauf sichtbar ist.
+        from matplotlib.colors import ListedColormap
+        transparent_cmap = ListedColormap([(0,0,0,0)])
+        sm = plt.cm.ScalarMappable(cmap=transparent_cmap)
+        sm.set_array([])
+        
+        cax = fig.add_axes([0.88, 0.25, 0.02, 0.65])
+        cbar = fig.colorbar(sm, cax=cax, format='%+2.0f dB')
+        cbar.ax.tick_params(color='none', labelcolor='none')
+        cbar.outline.set_visible(False)
+        
+        fig.canvas.draw()
+        
+        buf = io.BytesIO()
+        fig.savefig(buf, format='png')
         buf.seek(0)
         plt.close(fig)
         return send_file(buf, mimetype='image/png')
     except Exception as e:
-        print(f"Error generating spectrogram: {e}")
+        print(f"Error generating waveform: {e}")
         abort(500)
 
 @app.route('/api/archive/delete/<filename>', methods=['POST', 'DELETE'])

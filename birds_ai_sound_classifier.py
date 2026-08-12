@@ -2220,7 +2220,18 @@ def api_control_delete_single_occurrences():
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
     deleted_count = 0
+    deleted_files = 0
     try:
+        c.execute("""
+            SELECT species, timestamp FROM detections 
+            WHERE species IN (
+                SELECT species FROM detections 
+                GROUP BY species 
+                HAVING COUNT(*) = 1
+            )
+        """)
+        rows = c.fetchall()
+
         c.execute("""
             DELETE FROM detections 
             WHERE species IN (
@@ -2231,12 +2242,25 @@ def api_control_delete_single_occurrences():
         """)
         deleted_count = c.rowcount
         conn.commit()
+
+        for species, ts in rows:
+            try:
+                dt = datetime.datetime.strptime(ts, "%Y-%m-%d %H:%M:%S")
+                fn_ts = dt.strftime("%y-%m-%d-%H-%M-%S")
+                safe_species = species.replace(" ", "_").replace("/", "_")
+                filepath = os.path.join(AUDIO_DIR, "archive", f"{safe_species}_{fn_ts}.wav")
+                if os.path.exists(filepath):
+                    os.remove(filepath)
+                    deleted_files += 1
+            except:
+                pass
+
     except Exception as e:
         conn.rollback()
         return jsonify({"error": str(e)}), 500
     finally:
         conn.close()
-    return jsonify({"msg": f"{deleted_count} einzelne Vogelarten wurden gelöscht."})
+    return jsonify({"msg": f"{deleted_count} einzelne Vogelarten und {deleted_files} Dateien wurden gelöscht."})
 
 @app.route('/api/control/bulk_delete_species', methods=['POST'])
 def api_control_bulk_delete_species():
@@ -2248,16 +2272,33 @@ def api_control_bulk_delete_species():
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
     deleted_count = 0
+    deleted_files = 0
     try:
+        c.execute("SELECT timestamp FROM detections WHERE species = ?", (species,))
+        rows = c.fetchall()
+
         c.execute("DELETE FROM detections WHERE species = ?", (species,))
         deleted_count = c.rowcount
         conn.commit()
+
+        safe_species = species.replace(" ", "_").replace("/", "_")
+        for (ts,) in rows:
+            try:
+                dt = datetime.datetime.strptime(ts, "%Y-%m-%d %H:%M:%S")
+                fn_ts = dt.strftime("%y-%m-%d-%H-%M-%S")
+                filepath = os.path.join(AUDIO_DIR, "archive", f"{safe_species}_{fn_ts}.wav")
+                if os.path.exists(filepath):
+                    os.remove(filepath)
+                    deleted_files += 1
+            except:
+                pass
+
     except Exception as e:
         conn.rollback()
         return jsonify({"error": str(e)}), 500
     finally:
         conn.close()
-    return jsonify({"success": True, "msg": f"{deleted_count} Einträge für '{species}' wurden gelöscht."})
+    return jsonify({"success": True, "msg": f"{deleted_count} Einträge und {deleted_files} Dateien für '{species}' wurden gelöscht."})
 
 @app.route('/api/control/bulk_rename_species', methods=['POST'])
 def api_control_bulk_rename_species():
@@ -2270,16 +2311,39 @@ def api_control_bulk_rename_species():
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
     updated_count = 0
+    renamed_files = 0
     try:
+        c.execute("SELECT timestamp FROM detections WHERE species = ?", (old_species,))
+        rows = c.fetchall()
+
         c.execute("UPDATE detections SET species = ? WHERE species = ?", (new_species, old_species))
         updated_count = c.rowcount
         conn.commit()
+
+        safe_old_species = old_species.replace(" ", "_").replace("/", "_")
+        safe_new_species = new_species.replace(" ", "_").replace("/", "_")
+        archive_dir = os.path.join(AUDIO_DIR, "archive")
+
+        for (ts,) in rows:
+            try:
+                dt = datetime.datetime.strptime(ts, "%Y-%m-%d %H:%M:%S")
+                fn_ts = dt.strftime("%y-%m-%d-%H-%M-%S")
+                
+                old_filepath = os.path.join(archive_dir, f"{safe_old_species}_{fn_ts}.wav")
+                new_filepath = os.path.join(archive_dir, f"{safe_new_species}_{fn_ts}.wav")
+                
+                if os.path.exists(old_filepath):
+                    os.rename(old_filepath, new_filepath)
+                    renamed_files += 1
+            except:
+                pass
+
     except Exception as e:
         conn.rollback()
         return jsonify({"error": str(e)}), 500
     finally:
         conn.close()
-    return jsonify({"success": True, "msg": f"{updated_count} Einträge wurden von '{old_species}' in '{new_species}' umbenannt."})
+    return jsonify({"success": True, "msg": f"{updated_count} Einträge und {renamed_files} Dateien wurden von '{old_species}' in '{new_species}' umbenannt."})
 
 @app.route('/api/status')
 def api_status():
@@ -2504,7 +2568,19 @@ def api_control_dbreset():
         c.execute("DELETE FROM detections")
         conn.commit()
         conn.close()
-        return jsonify({"msg": "Datenbank wurde erfolgreich geleert!"})
+        
+        deleted_files = 0
+        archive_dir = os.path.join(AUDIO_DIR, "archive")
+        if os.path.exists(archive_dir):
+            for f in os.listdir(archive_dir):
+                if f.endswith(".wav"):
+                    try:
+                        os.remove(os.path.join(archive_dir, f))
+                        deleted_files += 1
+                    except:
+                        pass
+
+        return jsonify({"msg": f"Datenbank wurde erfolgreich geleert! {deleted_files} Dateien wurden gelöscht."})
     except Exception as e:
         return jsonify({"msg": f"Fehler beim Leeren: {e}"})
 

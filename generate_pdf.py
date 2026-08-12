@@ -41,6 +41,15 @@ lines = [
     "- Alarm-Ton aktivieren: Akustisches Signal bei jeder neuen Erkennung",
     "- Klick-Ton aktivieren: Dezentes akustisches Feedback im Browser bei Erkennungen",
     "",
+    "Steuerung & Datenbank:",
+    "- Woerterbuch anwenden: Wendet das Woerterbuch rueckwirkend auf alle Eintraege an (inkl. Dateiumbenennung)",
+    "- Datenbank synchronisieren: Sortiert die komplette Datenbankliste chronologisch nach dem Zeitstempel",
+    "- Einzelvorkommen loeschen: Loescht alle Vogelarten (inkl. Dateien), die bisher nur ein einziges Mal erkannt wurden",
+    "- Arten zusammenfuehren: Benennt alle Eintraege und Audiodateien einer bestimmten Art in eine andere Art um",
+    "- Art-Eintraege loeschen: Loescht saemtliche Eintraege und Audiodateien einer bestimmten Vogelart",
+    "- Datenbank Backup: Erstellt sofort eine Sicherungskopie der aktuellen Datenbank-Datei",
+    "- Datenbank zuruecksetzen: Loescht alle Erkennungen aus der Datenbank und leert das komplette Audio-Archiv",
+    "",
     "Audio-Erfassung & Auswertung (System-Intern):"
 ]
 

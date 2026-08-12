@@ -657,9 +657,16 @@ class AudioMonitor:
                 settings = load_settings()
                 bird_dict = get_bird_dictionary()
                 lat_val = settings.get("gps_lat")
-                lat = float(lat_val) if lat_val is not None else -1.0
+                try:
+                    lat = float(lat_val) if lat_val else -1.0
+                except ValueError:
+                    lat = -1.0
+                    
                 lon_val = settings.get("gps_lon")
-                lon = float(lon_val) if lon_val is not None else -1.0
+                try:
+                    lon = float(lon_val) if lon_val else -1.0
+                except ValueError:
+                    lon = -1.0
                 
                 recording = Recording(
                     analyzer,
@@ -813,7 +820,7 @@ class AudioMonitor:
 # --- FLASK ROUTEN ---
 @app.context_processor
 def inject_version():
-    return dict(version="1.3.0")
+    return dict(version="1.3.1")
 
 @app.route('/favicon.ico')
 def favicon():
@@ -2345,6 +2352,25 @@ def api_control_bulk_rename_species():
         conn.close()
     return jsonify({"success": True, "msg": f"{updated_count} Einträge und {renamed_files} Dateien wurden von '{old_species}' in '{new_species}' umbenannt."})
 
+@app.route('/api/model_labels')
+def api_model_labels():
+    try:
+        model_dir = os.path.join(os.path.dirname(__file__), 'model')
+        labels_path = None
+        if os.path.exists(model_dir):
+            for file in os.listdir(model_dir):
+                if file.endswith('_Labels.txt') or file.endswith('Labels.txt'):
+                    labels_path = os.path.join(model_dir, file)
+                    break
+        
+        if not labels_path or not os.path.exists(labels_path):
+            return jsonify({"error": "Label-Datei nicht gefunden."}), 404
+        with open(labels_path, 'r', encoding='utf-8') as f:
+            labels = [line.strip() for line in f if line.strip()]
+        return jsonify({"labels": labels})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/api/status')
 def api_status():
     conn = sqlite3.connect(DB_FILE)
@@ -2402,7 +2428,7 @@ def check_model_update():
 
 @app.route('/api/check_app_update')
 def check_app_update():
-    current_version = "1.3.0"
+    current_version = "1.3.1"
     try:
         import urllib.request
         import json

@@ -2655,9 +2655,29 @@ def api_detections_delete():
     try:
         conn = sqlite3.connect(DB_FILE)
         c = conn.cursor()
+        
+        c.execute("SELECT species, timestamp FROM detections WHERE rowid = ?", (data['id'],))
+        row = c.fetchone()
+        
         c.execute("DELETE FROM detections WHERE rowid = ?", (data['id'],))
         conn.commit()
         conn.close()
+        
+        if row:
+            old_species, old_ts = row
+            try:
+                dt = datetime.datetime.strptime(old_ts, "%Y-%m-%d %H:%M:%S")
+                fn_ts = dt.strftime("%y-%m-%d-%H-%M-%S")
+                safe_species = old_species.replace(" ", "_").replace("/", "_")
+                old_filename = f"{safe_species}_{fn_ts}.wav"
+                old_filepath = os.path.join(AUDIO_DIR, "archive", old_filename)
+                
+                if os.path.exists(old_filepath):
+                    os.remove(old_filepath)
+                    update_log(f"Zugehörige Audiodatei gelöscht: {old_filename}")
+            except Exception as fe:
+                update_log(f"Fehler beim Löschen der Audiodatei: {fe}")
+                
         return jsonify({"success": True, "msg": "Eintrag gelöscht."})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)})
@@ -2668,9 +2688,36 @@ def api_detections_update():
     try:
         conn = sqlite3.connect(DB_FILE)
         c = conn.cursor()
+        
+        c.execute("SELECT species, timestamp FROM detections WHERE id = ?", (data['id'],))
+        row = c.fetchone()
+        
         c.execute("UPDATE detections SET species = ? WHERE id = ?", (data['species'], data['id']))
         conn.commit()
         conn.close()
+        
+        if row:
+            old_species, old_ts = row
+            new_species = data['species']
+            if old_species != new_species:
+                try:
+                    dt = datetime.datetime.strptime(old_ts, "%Y-%m-%d %H:%M:%S")
+                    fn_ts = dt.strftime("%y-%m-%d-%H-%M-%S")
+                    
+                    safe_old_species = old_species.replace(" ", "_").replace("/", "_")
+                    old_filename = f"{safe_old_species}_{fn_ts}.wav"
+                    old_filepath = os.path.join(AUDIO_DIR, "archive", old_filename)
+                    
+                    safe_new_species = new_species.replace(" ", "_").replace("/", "_")
+                    new_filename = f"{safe_new_species}_{fn_ts}.wav"
+                    new_filepath = os.path.join(AUDIO_DIR, "archive", new_filename)
+                    
+                    if os.path.exists(old_filepath):
+                        os.rename(old_filepath, new_filepath)
+                        update_log(f"Audiodatei umbenannt: {old_filename} -> {new_filename}")
+                except Exception as fe:
+                    update_log(f"Fehler beim Umbenennen der Audiodatei: {fe}")
+                    
         return jsonify({"success": True, "msg": "Eintrag aktualisiert."})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)})

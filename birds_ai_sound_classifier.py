@@ -2921,6 +2921,13 @@ def export_weekly_csv():
         headers={"Content-disposition": f"attachment; filename={filename}"}
     )
 
+@app.route('/api/export/blocklist_log')
+def export_blocklist_log():
+    try:
+        return send_file('blocklist-log.txt', as_attachment=True)
+    except Exception as e:
+        return f"Fehler beim Herunterladen: {e}", 404
+
 def log_reader_thread():
     while True:
         if log_queue_global is not None:

@@ -690,19 +690,29 @@ class AudioMonitor:
                 # Ergebnisse verarbeiten
                 valid_detections = recording.detections.copy() if recording.detections else []
                 
-                # Manuell die Forced Species aus der ungefilterten Liste hinzufügen
-                if forced_species and hasattr(recording, 'detection_list'):
+                # Manuell die Forced Species hinzufügen und lokationsgefilterte Arten loggen
+                if hasattr(recording, 'detection_list'):
                     allowed_labels = {d['label'] for d in valid_detections}
                     
                     for raw_d in recording.detection_list:
-                        if raw_d.common_name in forced_species and raw_d.confidence >= recording.minimum_confidence:
+                        if raw_d.confidence >= recording.minimum_confidence:
                             if raw_d.label not in allowed_labels:
-                                try:
-                                    forced_dict = recording.return_detection_dict(raw_d)
-                                    valid_detections.append(forced_dict)
-                                    allowed_labels.add(raw_d.label)
-                                except Exception as e:
-                                    update_log(f"Fehler beim manuellen Hinzufügen von Force-Species: {e}")
+                                if forced_species and raw_d.common_name in forced_species:
+                                    try:
+                                        forced_dict = recording.return_detection_dict(raw_d)
+                                        valid_detections.append(forced_dict)
+                                        allowed_labels.add(raw_d.label)
+                                    except Exception as e:
+                                        update_log(f"Fehler beim manuellen Hinzufügen von Force-Species: {e}")
+                                else:
+                                    try:
+                                        eng_species = raw_d.common_name
+                                        species = bird_dict.get(eng_species, eng_species)
+                                        with open("blocklist-log.txt", "a", encoding="utf-8") as f:
+                                            ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                                            f.write(f"{ts} > low probability for your area, Species: {species} > erkannt., {raw_d.confidence*100:.0f}%, {calculated_snr:.1f} dB, {lat}, {lon}\n")
+                                    except Exception as e:
+                                        pass
 
                 if valid_detections:
                     current_detected_species = set()

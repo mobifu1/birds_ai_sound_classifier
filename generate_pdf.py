@@ -32,6 +32,7 @@ lines = [
     "- Status (Woerterbuch): Vogel-Klassifizierung (Standvogel, Zugvogel, etc.) fuer die Wochen-Statistik",
     "- Konf. % (Woerterbuch): Individuelle Erkennungssicherheit, ueberschreibt globales Limit",
     "- Blocked (Woerterbuch): Markierte Voegel ignorieren und nicht speichern/anzeigen",
+    "- blocklist-log.txt: Protokolliert Vogelarten, die aufgrund lokaler GPS-Filter oder Blockierung (Woerterbuch) aussortiert wurden.",
     "",
     "Audio Filter & System:",
     "- High-Pass Filter: Herausfiltern von tiefen Stoergeraeuschen (inkl. Grenzfrequenz in Hz)",

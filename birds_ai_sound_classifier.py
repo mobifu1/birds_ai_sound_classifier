@@ -693,20 +693,32 @@ class AudioMonitor:
                 # Manuell die Forced Species hinzufügen und lokationsgefilterte Arten loggen
                 if hasattr(recording, 'detection_list'):
                     allowed_labels = {d['label'] for d in valid_detections}
+                    app_min_conf = float(settings.get("threshold", MIN_CONFIDENCE * 100)) / 100.0
                     
                     for raw_d in recording.detection_list:
-                        if raw_d.confidence >= recording.minimum_confidence:
-                            if raw_d.label not in allowed_labels:
-                                if forced_species and raw_d.common_name in forced_species:
+                        eng_species = raw_d.common_name
+                        species_min_conf = app_min_conf
+                        
+                        if eng_species in full_bird_dict and isinstance(full_bird_dict[eng_species], dict):
+                            ind_conf_val = full_bird_dict[eng_species].get("ind_conf")
+                            if ind_conf_val is not None and str(ind_conf_val).strip() != "":
+                                try:
+                                    species_min_conf = float(ind_conf_val) / 100.0
+                                except (ValueError, TypeError):
+                                    pass
+
+                        if raw_d.label not in allowed_labels:
+                            if forced_species and eng_species in forced_species:
+                                if raw_d.confidence >= recording.minimum_confidence:
                                     try:
                                         forced_dict = recording.return_detection_dict(raw_d)
                                         valid_detections.append(forced_dict)
                                         allowed_labels.add(raw_d.label)
                                     except Exception as e:
                                         update_log(f"Fehler beim manuellen Hinzufügen von Force-Species: {e}")
-                                else:
+                            else:
+                                if raw_d.confidence >= species_min_conf:
                                     try:
-                                        eng_species = raw_d.common_name
                                         species = bird_dict.get(eng_species, eng_species)
                                         with open("blocklist-log.txt", "a", encoding="utf-8") as f:
                                             ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")

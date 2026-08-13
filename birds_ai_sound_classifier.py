@@ -41,6 +41,7 @@ from birdnetlib import Recording
 # --- KONFIGURATION ---
 DB_FILE = "birds_audio_stats.db"
 SETTINGS_FILE = "settings.json"
+DICTIONARY_FILE = "dictionary.json"
 BIRDWEATHER_FILE = "birdweather.json"
 BIRDWEATHER_QUEUE_DIR = "birdweather_queue"
 MAX_BIRDWEATHER_QUEUE = 500
@@ -148,18 +149,31 @@ DEFAULT_BIRD_TRANSLATIONS = {
     "Red-backed Shrike": "Neuntöter"
 }
 
-def get_bird_dictionary():
-    settings = load_settings()
-    if "bird_dictionary" in settings:
-        raw_dict = settings["bird_dictionary"]
-        flat_dict = {}
-        for k, v in raw_dict.items():
-            if isinstance(v, dict):
-                flat_dict[k] = v.get("translation", k)
-            else:
-                flat_dict[k] = v
-        return flat_dict
+def load_dictionary():
+    if os.path.exists(DICTIONARY_FILE):
+        try:
+            with open(DICTIONARY_FILE, 'r') as f:
+                return json.load(f)
+        except:
+            pass
     return DEFAULT_BIRD_TRANSLATIONS
+
+def save_dictionary(dict_data):
+    try:
+        with open(DICTIONARY_FILE, 'w') as f:
+            json.dump(dict_data, f)
+    except:
+        pass
+
+def get_bird_dictionary():
+    raw_dict = load_dictionary()
+    flat_dict = {}
+    for k, v in raw_dict.items():
+        if isinstance(v, dict):
+            flat_dict[k] = v.get("translation", k)
+        else:
+            flat_dict[k] = v
+    return flat_dict
 
 # Analyzer laden (wird im Hintergrundprozess initialisiert)
 analyzer = None
@@ -678,7 +692,7 @@ class AudioMonitor:
                 )
 
                 # Check for forced species in bird_dictionary
-                full_bird_dict = settings.get("bird_dictionary", {})
+                full_bird_dict = load_dictionary()
                 forced_species = []
                 for eng_name, props in full_bird_dict.items():
                     if isinstance(props, dict) and props.get("force_active", False):
@@ -745,7 +759,7 @@ class AudioMonitor:
                         min_conf = float(settings.get("threshold", MIN_CONFIDENCE * 100)) / 100.0
                         min_snr_val = float(settings.get("min_snr", 0.0))
                         
-                        full_bird_dict = settings.get("bird_dictionary", {})
+                        full_bird_dict = load_dictionary()
                         is_blocklisted = False
                         if eng_species in full_bird_dict and isinstance(full_bird_dict[eng_species], dict):
                             is_blocklisted = full_bird_dict[eng_species].get("blocklist", False)
@@ -866,8 +880,7 @@ def settings_page():
     bw = load_birdweather_settings()
     s['birdweather_id'] = bw.get('birdweather_id', '')
     s['birdweather_active'] = bw.get('birdweather_active', False)
-    if "bird_dictionary" not in s:
-        s["bird_dictionary"] = DEFAULT_BIRD_TRANSLATIONS
+    s["bird_dictionary"] = load_dictionary()
     
     queue_size = 0
     if os.path.exists(BIRDWEATHER_QUEUE_DIR):
@@ -1303,7 +1316,7 @@ def generate_weekly_heatmap_html(year_str=None):
         }
 
         settings = load_settings()
-        raw_bird_dict = settings.get("bird_dictionary", {})
+        raw_bird_dict = load_dictionary()
         species_meta = {}
         for eng, data in raw_bird_dict.items():
             if isinstance(data, dict):
@@ -2174,7 +2187,7 @@ def api_save_settings():
     if "nr_quality" in data:
         save_setting("nr_quality", str(data.get("nr_quality", "Medium")))
     if "bird_dictionary" in data:
-        save_setting("bird_dictionary", data.get("bird_dictionary", {}))
+        save_dictionary(data.get("bird_dictionary", {}))
     return jsonify({"msg": "Einstellungen gespeichert!"})
 
 @app.route('/api/birdweather/test', methods=['POST'])
@@ -2927,6 +2940,108 @@ def export_blocklist_log():
         return send_file('blocklist-log.txt', as_attachment=True)
     except Exception as e:
         return f"Fehler beim Herunterladen: {e}", 404
+
+@app.route('/api/control/update_bird_icons', methods=['POST'])
+def update_bird_icons():
+    try:
+        response = requests.get("https://api.github.com/repos/mobifu1/birds_ai_sound_classifier/contents/static/bird_icons", timeout=10)
+        if response.status_code != 200:
+            return jsonify({'success': False, 'msg': f'Fehler beim Abrufen der Github-Daten. Statuscode: {response.status_code}'})
+        
+        files = response.json()
+        downloaded = 0
+        icon_dir = os.path.join("static", "bird_icons")
+        os.makedirs(icon_dir, exist_ok=True)
+        
+        for file in files:
+            if file.get("type") == "file":
+                file_name = file.get("name")
+                download_url = file.get("download_url")
+                local_path = os.path.join(icon_dir, file_name)
+                
+                if not os.path.exists(local_path) and download_url:
+                    img_resp = requests.get(download_url, timeout=10)
+                    if img_resp.status_code == 200:
+                        with open(local_path, "wb") as f:
+                            f.write(img_resp.content)
+                        downloaded += 1
+                        
+        return jsonify({'success': True, 'msg': f'Update abgeschlossen. {downloaded} neue Icons heruntergeladen.'})
+    except Exception as e:
+        return jsonify({'success': False, 'msg': f'Fehler: {str(e)}'})
+
+@app.route('/api/control/update_dictionary', methods=['POST'])
+def update_dictionary():
+    try:
+        response = requests.get("https://raw.githubusercontent.com/mobifu1/birds_ai_sound_classifier/main/dictionary.json", timeout=10)
+        if response.status_code != 200:
+            return jsonify({'success': False, 'msg': f'Fehler beim Abrufen der Dictionary-Daten. Statuscode: {response.status_code}'})
+        
+        new_dict = response.json()
+        local_dict = load_dictionary()
+        added = 0
+        
+        for key, value in new_dict.items():
+            if key not in local_dict:
+                local_dict[key] = value
+                added += 1
+                
+        if added > 0:
+            save_dictionary(local_dict)
+            
+        return jsonify({'success': True, 'msg': f'Update abgeschlossen. {added} neue Vögel dem Wörterbuch hinzugefügt.'})
+    except Exception as e:
+        return jsonify({'success': False, 'msg': f'Fehler: {str(e)}'})
+
+@app.route('/api/control/check_dictionary', methods=['GET'])
+def check_dictionary_route():
+    issues = []
+    if not os.path.exists(DICTIONARY_FILE):
+        return jsonify({'success': False, 'msg': 'dictionary.json existiert nicht.'})
+        
+    with open(DICTIONARY_FILE, 'r', encoding='utf-8') as f:
+        content = f.read()
+        
+    seen_keys = set()
+    duplicates_keys = set()
+    
+    def object_pairs_hook(pairs):
+        for key, value in pairs:
+            if key in seen_keys:
+                duplicates_keys.add(key)
+            else:
+                seen_keys.add(key)
+        return dict(pairs)
+        
+    try:
+        parsed = json.loads(content, object_pairs_hook=object_pairs_hook)
+    except Exception as e:
+        return jsonify({'success': False, 'msg': f'Fehler beim Parsen der JSON: {e}'})
+        
+    if duplicates_keys:
+        issues.append(f"Doppelte englische Begriffe (Keys): {', '.join(duplicates_keys)}")
+        
+    translation_to_keys = {}
+    for key, value in parsed.items():
+        if isinstance(value, dict):
+            trans = value.get("translation", "").strip()
+        else:
+            trans = str(value).strip()
+            
+        if trans:
+            if trans not in translation_to_keys:
+                translation_to_keys[trans] = []
+            translation_to_keys[trans].append(key)
+            
+    dup_trans = {t: ks for t, ks in translation_to_keys.items() if len(ks) > 1}
+    for t, ks in dup_trans.items():
+        issues.append(f"Doppelte Übersetzung '{t}' verwendet bei: {', '.join(ks)}")
+        
+    if not issues:
+        return jsonify({'success': True, 'msg': 'Keine doppelten Einträge gefunden. Alles in Ordnung!'})
+    else:
+        return jsonify({'success': True, 'msg': 'Folgende mögliche Probleme wurden gefunden:\n\n' + '\n'.join(issues)})
+
 
 def log_reader_thread():
     while True:

@@ -175,6 +175,12 @@
                     <a href="/api/export/blocklist_log" class="btn btn-blue" style="width: auto; padding: 5px 15px; margin: 0; text-decoration: none;">💾 Blocklist-Log</a>
                 </div>
             </div>
+            <div class="control-row" style="margin-top: 15px; border-top: 1px solid #444; padding-top: 15px;">
+                <div style="display: flex; align-items: center; gap: 10px; width: 100%;">
+                    <button class="btn btn-blue" style="width: auto; padding: 5px 15px; margin: 0;" onclick="updateBirdIcons()" id="btn-update-icons">Update Bird Icons</button>
+                    <button class="btn btn-blue" style="width: auto; padding: 5px 15px; margin: 0;" onclick="updateDictionary()" id="btn-update-dict">Update Dictionary</button>
+                </div>
+            </div>
         </div>
 
         <div class="section">
@@ -289,6 +295,7 @@
             <button type="button" class="btn btn-green" onclick="openBirdSearchModal()" style="margin-top: 15px; width: auto; margin-right: 10px;">Suche Vogelart in KI-Modell</button>
             <button type="button" class="btn btn-blue" onclick="addDictionaryRow('', '')" style="margin-top: 15px; width: auto;">+ Neuer Eintrag Wörterbuch</button>
             <button type="button" class="btn btn-orange" onclick="applyDictionary()" style="margin-top: 15px; margin-left: 10px; width: auto;">Wörterbuch auf DB anwenden</button>
+            <button type="button" class="btn btn-blue" onclick="checkDictionary()" style="margin-top: 15px; margin-left: 10px; width: auto;" id="btn-check-dict">Wörterbuch Check</button>
         </div>
 
         <button type="button" class="btn" style="width: 200px; display: block; margin: 30px auto;" onclick="saveSettings()">Speichern</button>
@@ -579,6 +586,25 @@
             }
         }
 
+        function checkDictionary() {
+            const btn = document.getElementById('btn-check-dict');
+            const originalText = btn.innerText;
+            btn.disabled = true;
+            btn.innerText = "Prüfe...";
+            fetch('/api/control/check_dictionary')
+                .then(r => r.json())
+                .then(d => {
+                    alert(d.msg);
+                    btn.disabled = false;
+                    btn.innerText = originalText;
+                })
+                .catch(e => {
+                    alert("Fehler bei der Anfrage: " + e);
+                    btn.disabled = false;
+                    btn.innerText = originalText;
+                });
+        }
+
         function filterDictionary() {
             const searchTerm = document.getElementById('dict-search').value.toLowerCase();
             const rows = document.querySelectorAll('.dict-row');
@@ -638,6 +664,47 @@
                     resDiv.style.display = 'block';
                     resDiv.style.background = '#F44336';
                     resDiv.innerHTML = "Netzwerkfehler: " + e;
+                });
+        }
+
+        function updateBirdIcons() {
+            const btn = document.getElementById('btn-update-icons');
+            const originalText = btn.innerText;
+            btn.disabled = true;
+            btn.innerText = "Lade...";
+            fetch('/api/control/update_bird_icons', { method: 'POST' })
+                .then(r => r.json())
+                .then(d => {
+                    alert(d.msg);
+                    btn.disabled = false;
+                    btn.innerText = originalText;
+                })
+                .catch(e => {
+                    alert("Fehler: " + e);
+                    btn.disabled = false;
+                    btn.innerText = originalText;
+                });
+        }
+
+        function updateDictionary() {
+            const btn = document.getElementById('btn-update-dict');
+            const originalText = btn.innerText;
+            btn.disabled = true;
+            btn.innerText = "Lade...";
+            fetch('/api/control/update_dictionary', { method: 'POST' })
+                .then(r => r.json())
+                .then(d => {
+                    alert(d.msg);
+                    if(d.success && d.msg.includes("neue Vögel")) {
+                        window.location.reload();
+                    }
+                    btn.disabled = false;
+                    btn.innerText = originalText;
+                })
+                .catch(e => {
+                    alert("Fehler: " + e);
+                    btn.disabled = false;
+                    btn.innerText = originalText;
                 });
         }
 

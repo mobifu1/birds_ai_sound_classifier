@@ -240,11 +240,12 @@ def init_db():
     conn.commit()
     conn.close()
 
-def save_detection(species, confidence, snr=0.0):
+def save_detection(species, confidence, snr=0.0, ts=None):
     try:
         conn = sqlite3.connect(DB_FILE)
         c = conn.cursor()
-        ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        if ts is None:
+            ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         c.execute("INSERT INTO detections (species, timestamp, confidence, snr) VALUES (?, ?, ?, ?)",
                   (species, ts, confidence, snr))
         conn.commit()
@@ -462,7 +463,11 @@ class AudioMonitor:
         
         update_log(f"Erkannt: {species} ({confidence:.0%}) | SNR: {calculated_snr:.1f}dB")
         
-        save_detection(species, confidence, calculated_snr)
+        now_dt = datetime.datetime.now()
+        ts_db = now_dt.strftime("%Y-%m-%d %H:%M:%S")
+        ts_file = now_dt.strftime("%y-%m-%d-%H-%M-%S")
+        
+        save_detection(species, confidence, calculated_snr, ts_db)
         
         temp_commit_wav = "temp_commit.wav"
         try:
@@ -564,8 +569,7 @@ class AudioMonitor:
                         can_save = False
                 
                 if can_save:
-                    timestamp = datetime.datetime.now().strftime("%y-%m-%d-%H-%M-%S")
-                    new_filename = f"{safe_species}_{timestamp}.wav"
+                    new_filename = f"{safe_species}_{ts_file}.wav"
                     new_filepath = os.path.join(archive_dir, new_filename)
                     
                     try:

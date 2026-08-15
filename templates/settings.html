@@ -173,6 +173,7 @@
                 <div style="display: flex; align-items: center; gap: 10px; width: 100%;">
                     <label style="margin: 0; color: #ccc;">Protokoll der aussortierten/blockierten Vogelarten:</label>
                     <a href="/api/export/blocklist_log" class="btn btn-blue" style="width: auto; padding: 5px 15px; margin: 0; text-decoration: none;">💾 Blocklist-Log</a>
+                    <button class="btn btn-red" style="width: auto; padding: 5px 15px; margin: 0;" onclick="clearBlocklistLog()">🗑️ Blocklist-Log löschen</button>
                 </div>
             </div>
             <div class="control-row" style="margin-top: 15px; border-top: 1px solid #444; padding-top: 15px;">
@@ -433,6 +434,25 @@
                 return;
             }
             window.location.href = `/api/export/weekly_csv?year=${year}`;
+        }
+
+        function clearBlocklistLog() {
+            if (confirm("Möchten Sie das Blocklist-Log wirklich löschen? Dieser Vorgang kann nicht rückgängig gemacht werden.")) {
+                fetch('/api/control/clear_blocklist_log', {
+                    method: 'POST'
+                })
+                .then(r => r.json())
+                .then(data => {
+                    if (data.success) {
+                        alert("Erfolg: " + data.msg);
+                    } else {
+                        alert("Fehler: " + data.msg);
+                    }
+                })
+                .catch(e => {
+                    alert("Netzwerkfehler: " + e);
+                });
+            }
         }
 
         const initialBirdDictionary = {{ s.get('bird_dictionary', {}) | tojson }};

@@ -1391,8 +1391,12 @@ def generate_weekly_heatmap_html(year_str=None):
                     style = f'background-color: rgba(76, 175, 80, {alpha});'
                 
                 if is_in_range:
-                    is_start = (i == 0) or not in_range_list[i-1]
-                    is_end = (i == len(in_range_list) - 1) or not in_range_list[i+1]
+                    if start_m and end_m and start_m > end_m:
+                        is_start = (i > 0) and not in_range_list[i-1]
+                        is_end = (i < len(in_range_list) - 1) and not in_range_list[i+1]
+                    else:
+                        is_start = (i == 0) or not in_range_list[i-1]
+                        is_end = (i == len(in_range_list) - 1) or not in_range_list[i+1]
                     
                     shadows = []
                     
@@ -2944,6 +2948,14 @@ def export_blocklist_log():
         return send_file('blocklist-log.txt', as_attachment=True)
     except Exception as e:
         return f"Fehler beim Herunterladen: {e}", 404
+
+@app.route('/api/control/clear_blocklist_log', methods=['POST'])
+def clear_blocklist_log():
+    try:
+        open('blocklist-log.txt', 'w').close()
+        return jsonify({'success': True, 'msg': 'Blocklist-Log wurde erfolgreich gelöscht.'})
+    except Exception as e:
+        return jsonify({'success': False, 'msg': f'Fehler beim Löschen: {e}'})
 
 @app.route('/api/control/update_bird_icons', methods=['POST'])
 def update_bird_icons():

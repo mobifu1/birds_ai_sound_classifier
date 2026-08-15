@@ -1948,14 +1948,52 @@ def yearly_page():
     conn.close()
     
     total = sum([r[1] for r in rows])
-    chart_urls = []
-    if rows:
-        labels = [r[0] for r in rows]
-        values = [r[1] for r in rows]
-        chart_urls.append(create_chart("", labels, values))
+    
+    icon_map = {}
+    static_folder = os.path.join(app.root_path, 'static', 'bird_icons')
+    if os.path.exists(static_folder):
+        for f in os.listdir(static_folder):
+            if f.lower().endswith(('.png', '.jpg', '.jpeg', '.gif')):
+                icon_map[os.path.splitext(f)[0].lower()] = f"bird_icons/{f}"
+                icon_map[f.lower()] = f"bird_icons/{f}"
+
+    def get_icon(sp):
+        if not sp: return 'bird_icons/Unbekannt.png'
+        clean = sp.strip().lower()
+        if clean in icon_map: return icon_map[clean]
+        if clean + '.png' in icon_map: return icon_map[clean + '.png']
+        return 'bird_icons/Unbekannt.png'
+        
+    def format_count(c):
+        if c >= 1_000_000:
+            return f"{c/1_000_000:.1f}M".replace('.', ',')
+        elif c >= 1_000:
+            return f"{c/1_000:.1f}K".replace('.', ',')
+        else:
+            return str(c)
+
+    import math
+    max_val = max([r[1] for r in rows]) if rows else 0
+    max_log = math.log10(max_val + 1) if max_val > 0 else 1
+    
+    color_palette = ['#e6194b', '#3cb44b', '#ffe119', '#4363d8', '#f58231', '#911eb4', '#46f0f0', '#f032e6', '#bcf60c', '#fabebe', '#008080', '#e6beff', '#9a6324', '#fffac8', '#800000', '#aaffc3', '#808000', '#ffd8b1', '#000075', '#808080', '#ffffff', '#000000']
+    
+    bird_data = []
+    for i, r in enumerate(rows):
+        species = r[0]
+        count = r[1]
+        width_pct = (math.log10(count + 1) / max_log) * 100
+        bird_data.append({
+            'species': species,
+            'count': count,
+            'formatted_count': format_count(count),
+            'icon': get_icon(species),
+            'width_pct': width_pct,
+            'color': color_palette[i % len(color_palette)]
+        })
         
     return render_template('yearly.html', 
-        chart_urls=chart_urls, selected_year=year, total_birds_year=total,
+        bird_data=bird_data, selected_year=year, total_birds_year=total,
         prev_year=year-1, next_year=year+1,
         is_current_year=(year == today.year), current_year=today.year,
         unique_species_year=len(rows)
@@ -2293,17 +2331,19 @@ def api_control_delete_single_occurrences():
         deleted_count = c.rowcount
         conn.commit()
 
-        for species, ts in rows:
-            try:
-                dt = datetime.datetime.strptime(ts, "%Y-%m-%d %H:%M:%S")
-                fn_ts = dt.strftime("%y-%m-%d-%H-%M-%S")
+        archive_dir = os.path.join(AUDIO_DIR, "archive")
+        if os.path.exists(archive_dir):
+            for species, ts in rows:
                 safe_species = species.replace(" ", "_").replace("/", "_")
-                filepath = os.path.join(AUDIO_DIR, "archive", f"{safe_species}_{fn_ts}.wav")
-                if os.path.exists(filepath):
-                    os.remove(filepath)
-                    deleted_files += 1
-            except:
-                pass
+                prefix = f"{safe_species}_"
+                for filename in os.listdir(archive_dir):
+                    if filename.startswith(prefix) and filename.endswith(".wav"):
+                        filepath = os.path.join(archive_dir, filename)
+                        try:
+                            os.remove(filepath)
+                            deleted_files += 1
+                        except:
+                            pass
 
     except Exception as e:
         conn.rollback()
@@ -2332,16 +2372,17 @@ def api_control_bulk_delete_species():
         conn.commit()
 
         safe_species = species.replace(" ", "_").replace("/", "_")
-        for (ts,) in rows:
-            try:
-                dt = datetime.datetime.strptime(ts, "%Y-%m-%d %H:%M:%S")
-                fn_ts = dt.strftime("%y-%m-%d-%H-%M-%S")
-                filepath = os.path.join(AUDIO_DIR, "archive", f"{safe_species}_{fn_ts}.wav")
-                if os.path.exists(filepath):
-                    os.remove(filepath)
-                    deleted_files += 1
-            except:
-                pass
+        archive_dir = os.path.join(AUDIO_DIR, "archive")
+        if os.path.exists(archive_dir):
+            prefix = f"{safe_species}_"
+            for filename in os.listdir(archive_dir):
+                if filename.startswith(prefix) and filename.endswith(".wav"):
+                    filepath = os.path.join(archive_dir, filename)
+                    try:
+                        os.remove(filepath)
+                        deleted_files += 1
+                    except:
+                        pass
 
     except Exception as e:
         conn.rollback()
@@ -2374,19 +2415,17 @@ def api_control_bulk_rename_species():
         safe_new_species = new_species.replace(" ", "_").replace("/", "_")
         archive_dir = os.path.join(AUDIO_DIR, "archive")
 
-        for (ts,) in rows:
-            try:
-                dt = datetime.datetime.strptime(ts, "%Y-%m-%d %H:%M:%S")
-                fn_ts = dt.strftime("%y-%m-%d-%H-%M-%S")
-                
-                old_filepath = os.path.join(archive_dir, f"{safe_old_species}_{fn_ts}.wav")
-                new_filepath = os.path.join(archive_dir, f"{safe_new_species}_{fn_ts}.wav")
-                
-                if os.path.exists(old_filepath):
-                    os.rename(old_filepath, new_filepath)
-                    renamed_files += 1
-            except:
-                pass
+        if os.path.exists(archive_dir):
+            for filename in os.listdir(archive_dir):
+                if filename.startswith(safe_old_species + "_") and filename.endswith(".wav"):
+                    old_filepath = os.path.join(archive_dir, filename)
+                    new_filename = filename.replace(safe_old_species + "_", safe_new_species + "_", 1)
+                    new_filepath = os.path.join(archive_dir, new_filename)
+                    try:
+                        os.rename(old_filepath, new_filepath)
+                        renamed_files += 1
+                    except Exception as fe:
+                        print(f"Failed to rename {filename}: {fe}")
 
     except Exception as e:
         conn.rollback()

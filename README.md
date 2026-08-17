@@ -9,6 +9,5 @@ To manage the system, it features an integrated web server. This provides a user
 Furthermore, you don't have to keep your fascinating avian discoveries to yourself. The software includes built-in functionality to share your local data with the global community. It can automatically upload your bird detection logs directly to the Birdweather platform. By contributing your local observations, you help build a larger, comprehensive map of bird populations and movements.
 
 
-
-!\[station](https://github.com/mobifu1/birds_ai_sound_classifier/blob/main/gui/station.png "Station")
+<p align="center"><img width="800" src="https://github.com/mobifu1/birds_ai_sound_classifier/blob/main/gui/station.png" alt="Station" /></p>
 

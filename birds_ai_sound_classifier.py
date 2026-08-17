@@ -686,6 +686,14 @@ class AudioMonitor:
                 except ValueError:
                     lon = -1.0
                 
+                # Update Occurrence Threshold dynamically
+                try:
+                    occ_thresh = float(settings.get("occurrence_threshold", 0.03))
+                    if hasattr(analyzer, 'sf_thresh') or True: # Force set
+                        analyzer.sf_thresh = occ_thresh
+                except Exception as e:
+                    pass
+
                 recording = Recording(
                     analyzer,
                     TEMP_WAV,
@@ -738,9 +746,10 @@ class AudioMonitor:
                                 if raw_d.confidence >= species_min_conf:
                                     try:
                                         species = bird_dict.get(eng_species, eng_species)
-                                        with open("blocklist-log.txt", "a", encoding="utf-8") as f:
-                                            ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                                            f.write(f"{ts} > low probability for your area, Species: {species} > erkannt., {raw_d.confidence*100:.0f}%, {calculated_snr:.1f} dB, {lat}, {lon}\n")
+                                        if settings.get("log_blocklist", True):
+                                            with open("blocklist-log.txt", "a", encoding="utf-8") as f:
+                                                ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                                                f.write(f"{ts} > low probability for your area, Species: {species} > erkannt., {raw_d.confidence*100:.0f}%, {calculated_snr:.1f} dB, {lat}, {lon}\n")
                                     except Exception as e:
                                         pass
 
@@ -778,9 +787,10 @@ class AudioMonitor:
                         if is_blocklisted:
                             if confidence >= min_conf and calculated_snr > min_snr_val:
                                 try:
-                                    with open("blocklist-log.txt", "a", encoding="utf-8") as f:
-                                        ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                                        f.write(f"{ts}, {species}, {confidence*100:.0f}%, {calculated_snr:.1f} dB, {lat}, {lon}\n")
+                                    if settings.get("log_blocklist", True):
+                                        with open("blocklist-log.txt", "a", encoding="utf-8") as f:
+                                            ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                                            f.write(f"{ts}, {species}, {confidence*100:.0f}%, {calculated_snr:.1f} dB, {lat}, {lon}\n")
                                 except Exception as e:
                                     pass
                                 update_log(f"Ignoriert (Blocklist): {species}")
@@ -2202,6 +2212,7 @@ def api_save_settings():
     if "birdweather_active" in data:
         save_birdweather_setting("birdweather_active", bool(data.get("birdweather_active", False)))
     save_setting("threshold", data.get("threshold", 30))
+    save_setting("occurrence_threshold", float(data.get("occurrence_threshold", 0.03)))
     save_setting("min_snr", data.get("min_snr", 0.0))
     save_setting("gps_lat", data.get("gps_lat"))
     save_setting("gps_lon", data.get("gps_lon"))

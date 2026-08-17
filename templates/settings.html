@@ -171,7 +171,9 @@
             </div>
             <div class="control-row" style="margin-top: 15px; border-top: 1px solid #444; padding-top: 15px;">
                 <div style="display: flex; align-items: center; gap: 10px; width: 100%;">
-                    <label style="margin: 0; color: #ccc;">Protokoll der aussortierten/blockierten Vogelarten:</label>
+                    <label style="margin: 0; color: #ccc; display: flex; align-items: center;">Protokoll der aussortierten/blockierten Vogelarten:
+                        <input type="checkbox" id="log_blocklist" style="width: 18px; height: 18px; margin-left: 10px;" {% if s.get('log_blocklist', True) %}checked{% endif %}>
+                    </label>
                     <a href="/api/export/blocklist_log" class="btn btn-blue" style="width: auto; padding: 5px 15px; margin: 0; text-decoration: none;">💾 Blocklist-Log</a>
                     <button class="btn btn-red" style="width: auto; padding: 5px 15px; margin: 0;" onclick="clearBlocklistLog()">🗑️ Blocklist-Log löschen</button>
                 </div>
@@ -194,6 +196,11 @@
             <div class="row">
                 <label>Mindest-SNR (dB):<br><small>Ab welchem Signal-Rausch-Verhältnis (SNR) soll ein Vogel gespeichert werden?</small></label>
                 <input type="number" id="min_snr" value="{{ s.get('min_snr', 0.0) }}" step="0.5">
+            </div>
+
+            <div class="row">
+                <label>Occurrence Threshold (Sichtbarkeits-Schwellwert):<br><small>Historische eBird-Wahrscheinlichkeit für deinen Standort (Standard: 0.03)</small></label>
+                <input type="number" id="occurrence_threshold" value="{{ s.get('occurrence_threshold', 0.03) }}" step="0.005" min="0" max="1.0">
             </div>
 
         <div class="row">
@@ -753,6 +760,7 @@
 
             const data = {
                 threshold: parseInt(document.getElementById('threshold').value),
+                occurrence_threshold: parseFloat(document.getElementById('occurrence_threshold').value),
                 min_snr: parseFloat(document.getElementById('min_snr').value),
                 gps_lat: (function() {
                     const v = document.getElementById('gps_lat').value.trim().toLowerCase();
@@ -784,6 +792,7 @@
                 nr_quality: document.getElementById('nr_quality').value,
                 birdweather_active: document.getElementById('birdweather_active').checked,
                 birdweather_id: document.getElementById('birdweather_id').value,
+                log_blocklist: document.getElementById('log_blocklist').checked,
                 bird_dictionary: birdDict
             };
 

@@ -10,5 +10,5 @@ Furthermore, you don't have to keep your fascinating avian discoveries to yourse
 
 
 
-!\[station](https://github.com/mobifu1/birds\_ai\_sound\_classifier/blob/main/gui/station.png)
+!\[station](https://github.com/mobifu1/birds_ai_sound_classifier/blob/main/gui/station.png)
 

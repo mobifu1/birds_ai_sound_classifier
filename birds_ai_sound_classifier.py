@@ -688,11 +688,10 @@ class AudioMonitor:
                     lon = -1.0
                 
                 # Update Occurrence Threshold dynamically
+                occ_thresh = 0.03
                 try:
                     occ_thresh = float(settings.get("occurrence_threshold", 0.03))
-                    if hasattr(analyzer, 'sf_thresh') or True: # Force set
-                        analyzer.sf_thresh = occ_thresh
-                except Exception as e:
+                except Exception:
                     pass
 
                 recording = Recording(
@@ -701,7 +700,8 @@ class AudioMonitor:
                     lat=lat,
                     lon=lon,
                     date=datetime.datetime.now(),
-                    min_conf=MIN_CONFIDENCE
+                    min_conf=MIN_CONFIDENCE,
+                    filter_threshold=occ_thresh
                 )
 
                 # Check for forced species in bird_dictionary

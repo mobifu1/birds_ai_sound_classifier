@@ -870,7 +870,7 @@ class AudioMonitor:
 # --- FLASK ROUTEN ---
 @app.context_processor
 def inject_version():
-    return dict(version="V1.3.2")
+    return dict(version="V1.3.3")
 
 @app.route('/favicon.ico')
 def favicon():
@@ -2243,6 +2243,8 @@ def api_save_settings():
         save_setting("nr_active", bool(data.get("nr_active", False)))
     if "nr_quality" in data:
         save_setting("nr_quality", str(data.get("nr_quality", "Medium")))
+    if "log_blocklist" in data:
+        save_setting("log_blocklist", bool(data.get("log_blocklist", True)))
     if "bird_dictionary" in data:
         save_dictionary(data.get("bird_dictionary", {}))
     return jsonify({"msg": "Einstellungen gespeichert!"})
@@ -2521,7 +2523,7 @@ def check_model_update():
 
 @app.route('/api/check_app_update')
 def check_app_update():
-    current_version = "V1.3.2"
+    current_version = "V1.3.3"
     try:
         import urllib.request
         import json

@@ -720,7 +720,8 @@ class AudioMonitor:
                 geo_prob_dict = {}
                 try:
                     if hasattr(analyzer, 'species_class'):
-                        geo_probs = analyzer.species_class.return_list(lon=lon, lat=lat, date=datetime.datetime.now(), threshold=0.0)
+                        with open(os.devnull, 'w') as f_out, contextlib.redirect_stdout(f_out):
+                            geo_probs = analyzer.species_class.return_list(lon=lon, lat=lat, date=datetime.datetime.now(), threshold=0.0)
                         geo_prob_dict = {item['common_name']: item['threshold'] for item in geo_probs}
                 except Exception:
                     pass

@@ -1251,14 +1251,20 @@ def generate_weekly_heatmap_html(year_str=None):
         conn.close()
 
     import datetime
-    current_year = int(year_str) if year_str else datetime.datetime.now().year
+    now = datetime.datetime.now()
+    current_year = int(year_str) if year_str else now.year
     short_y = str(current_year)[-2:]
     all_weeks_display_empty = [f"{w:02d}<br><small style='color:#aaa'>'{short_y}</small>" for w in range(1, 53)]
     
+    current_week_str = f"{int(now.strftime('%W')) + 1:02d}<br><small style='color:#aaa'>'{str(now.year)[-2:]}</small>"
+
     html_table = '<div class="table-responsive" style="margin-top:30px;"><table class="weekly-table">'
     html_table += '<thead><tr><th style="text-align:left;">Vogelarten (0)</th>'
     for col in all_weeks_display_empty:
-        html_table += f'<th title="Gesamtsumme: 0">{col}</th>'
+        if col == current_week_str:
+            html_table += f'<th title="Gesamtsumme: 0" style="background-color: #81d4fa; color: black;">{col}</th>'
+        else:
+            html_table += f'<th title="Gesamtsumme: 0">{col}</th>'
     html_table += '</tr></thead><tbody>'
     html_table += f'<tr><td colspan="{len(all_weeks_display_empty)+1}" style="text-align:center;">Keine Daten vorhanden.</td></tr>'
     html_table += '</tbody></table></div>'
@@ -1311,12 +1317,19 @@ def generate_weekly_heatmap_html(year_str=None):
         pivot_pct = pivot_pct.sort_values('total_sort_idx', ascending=False)
         pivot_pct = pivot_pct.drop('total_sort_idx', axis=1)
 
+        import datetime
+        now = datetime.datetime.now()
+        current_week_str = f"{int(now.strftime('%W')) + 1:02d}<br><small style='color:#aaa'>'{str(now.year)[-2:]}</small>"
+
         num_species = len(pivot_pct)
         html_table = '<div class="table-responsive" style="margin-top:30px;"><table class="weekly-table">'
         html_table += f'<thead><tr><th style="text-align:left;">Vogelarten ({num_species})</th>'
         for col in pivot_pct.columns:
             total_in_week = int(week_totals[col])
-            html_table += f'<th title="Gesamtsumme: {total_in_week}">{col}</th>'
+            if col == current_week_str:
+                html_table += f'<th title="Gesamtsumme: {total_in_week}" style="background-color: #81d4fa; color: black;">{col}</th>'
+            else:
+                html_table += f'<th title="Gesamtsumme: {total_in_week}">{col}</th>'
         html_table += '</tr></thead><tbody>'
         
         import re

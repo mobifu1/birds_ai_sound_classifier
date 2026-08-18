@@ -459,9 +459,10 @@ class AudioMonitor:
         best = det['best']
         lat = det['lat']
         lon = det['lon']
+        geo_prob = det.get('geo_prob', 0.0)
         settings = det['settings']
         
-        update_log(f"Erkannt: {species} ({confidence:.0%}) | SNR: {calculated_snr:.1f}dB")
+        update_log(f"Erkannt: {species} ({confidence:.0%}) | SNR: {calculated_snr:.1f}dB | Geo-Prob: {geo_prob*100:.2f}%")
         
         now_dt = datetime.datetime.now()
         ts_db = now_dt.strftime("%Y-%m-%d %H:%M:%S")
@@ -716,6 +717,14 @@ class AudioMonitor:
                 # Ergebnisse verarbeiten
                 valid_detections = recording.detections.copy() if recording.detections else []
                 
+                geo_prob_dict = {}
+                try:
+                    if hasattr(analyzer, 'species_class'):
+                        geo_probs = analyzer.species_class.return_list(lon=lon, lat=lat, date=datetime.datetime.now(), threshold=0.0)
+                        geo_prob_dict = {item['common_name']: item['threshold'] for item in geo_probs}
+                except Exception:
+                    pass
+                
                 # Manuell die Forced Species hinzufügen und lokationsgefilterte Arten loggen
                 if hasattr(recording, 'detection_list'):
                     allowed_labels = {d['label'] for d in valid_detections}
@@ -749,7 +758,8 @@ class AudioMonitor:
                                         if settings.get("log_blocklist", True):
                                             with open("blocklist-log.txt", "a", encoding="utf-8") as f:
                                                 ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                                                f.write(f"{ts} > low probability for your area, Species: {species} > erkannt., {raw_d.confidence*100:.0f}%, {calculated_snr:.1f} dB, {lat}, {lon}\n")
+                                                geo_prob_val = geo_prob_dict.get(eng_species, 0.0)
+                                                f.write(f"{ts} > low probability for your area, Species: {species} > erkannt., {raw_d.confidence*100:.0f}%, {calculated_snr:.1f} dB, Geo-Prob: {geo_prob_val*100:.2f}%, {lat}, {lon}\n")
                                     except Exception as e:
                                         pass
 
@@ -790,7 +800,8 @@ class AudioMonitor:
                                     if settings.get("log_blocklist", True):
                                         with open("blocklist-log.txt", "a", encoding="utf-8") as f:
                                             ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                                            f.write(f"{ts}, {species}, {confidence*100:.0f}%, {calculated_snr:.1f} dB, {lat}, {lon}\n")
+                                            geo_prob_val = geo_prob_dict.get(eng_species, 0.0)
+                                            f.write(f"{ts}, {species}, {confidence*100:.0f}%, {calculated_snr:.1f} dB, Geo-Prob: {geo_prob_val*100:.2f}%, {lat}, {lon}\n")
                                 except Exception as e:
                                     pass
                                 update_log(f"Ignoriert (Blocklist): {species}")
@@ -813,6 +824,7 @@ class AudioMonitor:
                             except Exception as e:
                                 print(f"Fehler bei DB-Check für neue Art: {e}")
 
+                            geo_prob_val = geo_prob_dict.get(eng_species, 0.0)
                             current_det_data = {
                                 'species': species,
                                 'confidence': confidence,
@@ -823,6 +835,7 @@ class AudioMonitor:
                                 'best': best,
                                 'lat': lat,
                                 'lon': lon,
+                                'geo_prob': geo_prob_val,
                                 'settings': settings
                             }
 

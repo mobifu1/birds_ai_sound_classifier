@@ -16,6 +16,7 @@ lines = [
     "Erkennungs-Einstellungen:",
     "- Mindest-Konfidenz (Threshold %): Prozentsatz der Sicherheit, ab der ein Vogel gespeichert wird",
     "- Mindest-SNR (dB): Signal-Rausch-Verhaeltnis, ab dem ein Vogel gespeichert wird",
+    "- Occurrence Threshold: Historische eBird-Wahrscheinlichkeit fuer deinen Standort",
     "- GPS Breitengrad / Laengengrad: Koordinaten fuer lokale Vogelarten-Filterung",
     "",
     "Radar-Einstellungen:",

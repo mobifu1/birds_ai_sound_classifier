@@ -373,8 +373,9 @@
                 }
                 let confStr = det.confidence !== undefined ? Math.round(det.confidence * 100) + '%' : '--%';
                 let snrStr = det.snr !== undefined ? det.snr.toFixed(1) + 'dB' : '--dB';
+                let geoStr = det.geo_prob !== undefined ? Math.round(det.geo_prob * 100) + '%' : '--%';
                 
-                node.title = `T:${timeStr} | K:${confStr} | SNR:${snrStr}`;
+                node.title = `(T: ${timeStr} | K: ${confStr} | P: ${geoStr} | SNR: ${snrStr})`;
 
                 node.innerHTML = `
                     ${isUnknown 

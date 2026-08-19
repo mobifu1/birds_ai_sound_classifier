@@ -236,18 +236,22 @@ def init_db():
         c.execute('ALTER TABLE detections ADD COLUMN snr REAL DEFAULT 0.0')
     except sqlite3.OperationalError:
         pass # Spalte existiert bereits
+    try:
+        c.execute('ALTER TABLE detections ADD COLUMN geo_prob REAL DEFAULT 0.0')
+    except sqlite3.OperationalError:
+        pass # Spalte existiert bereits
     c.execute('CREATE INDEX IF NOT EXISTS idx_timestamp ON detections(timestamp)')
     conn.commit()
     conn.close()
 
-def save_detection(species, confidence, snr=0.0, ts=None):
+def save_detection(species, confidence, snr=0.0, ts=None, geo_prob=0.0):
     try:
         conn = sqlite3.connect(DB_FILE)
         c = conn.cursor()
         if ts is None:
             ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        c.execute("INSERT INTO detections (species, timestamp, confidence, snr) VALUES (?, ?, ?, ?)",
-                  (species, ts, confidence, snr))
+        c.execute("INSERT INTO detections (species, timestamp, confidence, snr, geo_prob) VALUES (?, ?, ?, ?, ?)",
+                  (species, ts, confidence, snr, geo_prob))
         conn.commit()
         conn.close()
     except Exception as e:
@@ -467,8 +471,7 @@ class AudioMonitor:
         now_dt = datetime.datetime.now()
         ts_db = now_dt.strftime("%Y-%m-%d %H:%M:%S")
         ts_file = now_dt.strftime("%y-%m-%d-%H-%M-%S")
-        
-        save_detection(species, confidence, calculated_snr, ts_db)
+        save_detection(species, confidence, calculated_snr, ts_db, geo_prob)
         
         temp_commit_wav = "temp_commit.wav"
         try:
@@ -2758,7 +2761,8 @@ def api_top_species():
         SELECT d1.species, COUNT(*) as count,
                (SELECT snr FROM detections d2 WHERE d2.species = d1.species ORDER BY timestamp DESC LIMIT 1) as snr,
                (SELECT confidence FROM detections d2 WHERE d2.species = d1.species ORDER BY timestamp DESC LIMIT 1) as confidence,
-               (SELECT timestamp FROM detections d2 WHERE d2.species = d1.species ORDER BY timestamp DESC LIMIT 1) as timestamp
+               (SELECT timestamp FROM detections d2 WHERE d2.species = d1.species ORDER BY timestamp DESC LIMIT 1) as timestamp,
+               (SELECT geo_prob FROM detections d2 WHERE d2.species = d1.species ORDER BY timestamp DESC LIMIT 1) as geo_prob
         FROM detections d1
         WHERE date(timestamp) = date('now', 'localtime')
           AND timestamp >= datetime('now', '-{radar_time_range} hours', 'localtime')
@@ -2800,12 +2804,26 @@ def api_top_species():
         elif conf_val is None:
             conf_val = 0.0
             
+        geo_prob_val = r[5] if len(r) > 5 and r[5] is not None else 0.0
+        if isinstance(geo_prob_val, bytes):
+            import struct
+            try:
+                if len(geo_prob_val) == 8:
+                    geo_prob_val = struct.unpack('d', geo_prob_val)[0]
+                elif len(geo_prob_val) == 4:
+                    geo_prob_val = struct.unpack('f', geo_prob_val)[0]
+                else:
+                    geo_prob_val = 0.0
+            except:
+                geo_prob_val = 0.0
+
         top_data.append({
             "species": r[0], 
             "count": r[1], 
             "snr": float(snr_val),
             "confidence": float(conf_val),
-            "timestamp": r[4]
+            "timestamp": r[4],
+            "geo_prob": float(geo_prob_val)
         })
 
     

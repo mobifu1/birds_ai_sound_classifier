@@ -199,6 +199,28 @@ def load_settings():
             pass
     return {}
 
+def get_effective_occurrence_threshold():
+    settings = load_settings()
+    if not settings.get("auto_season_lowering", False):
+        return float(settings.get("occurrence_threshold", 0.03))
+    
+    lowering_file = "auto_season_lowering.json"
+    default_val = 0.03
+    if os.path.exists(lowering_file):
+        try:
+            import datetime, json
+            with open(lowering_file, "r") as f:
+                data = json.load(f)
+            default_val = float(data.get("default", 0.03))
+            current_cw = datetime.datetime.now().isocalendar()[1]
+            weeks = data.get("weeks", {})
+            cw_str = str(current_cw)
+            if cw_str in weeks:
+                return float(weeks[cw_str])
+        except Exception:
+            pass
+    return default_val
+
 def load_birdweather_settings():
     if os.path.exists(BIRDWEATHER_FILE):
         try:
@@ -691,11 +713,7 @@ class AudioMonitor:
                     lon = -1.0
                 
                 # Update Occurrence Threshold dynamically
-                occ_thresh = 0.03
-                try:
-                    occ_thresh = float(settings.get("occurrence_threshold", 0.03))
-                except Exception:
-                    pass
+                occ_thresh = get_effective_occurrence_threshold()
 
                 recording = Recording(
                     analyzer,
@@ -2257,6 +2275,8 @@ def api_save_settings():
         save_birdweather_setting("birdweather_active", bool(data.get("birdweather_active", False)))
     save_setting("threshold", data.get("threshold", 30))
     save_setting("occurrence_threshold", float(data.get("occurrence_threshold", 0.03)))
+    if "auto_season_lowering" in data:
+        save_setting("auto_season_lowering", bool(data.get("auto_season_lowering", False)))
     save_setting("min_snr", data.get("min_snr", 0.0))
     save_setting("gps_lat", data.get("gps_lat"))
     save_setting("gps_lon", data.get("gps_lon"))
@@ -2529,7 +2549,8 @@ def api_status():
     return jsonify({
         "status": "Online (Mikrofon aktiv)" if (monitor_running_event.is_set() if monitor_running_event else False) else "Offline (Gestoppt)",
         "total_detections": total_count,
-        "today_detections": today_count
+        "today_detections": today_count,
+        "effective_occurrence_threshold": get_effective_occurrence_threshold()
     })
 
 @app.route('/api/check_model_update')

@@ -202,7 +202,17 @@
             </div>
 
             <div class="row">
-                <label>Occurrence Threshold (Sichtbarkeits-Schwellwert):<br><small>Historische eBird-Wahrscheinlichkeit für deinen Standort (Standard: 0.03)</small></label>
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px;">
+                    <label style="margin: 0;">Occurrence Threshold (Sichtbarkeits-Schwellwert):</label>
+                    <div style="display: flex; align-items: center;">
+                        <label style="display: flex; align-items: center; margin: 0; cursor: pointer; color: #ccc;">
+                            <input type="checkbox" id="auto_season_lowering" style="width: 18px; height: 18px; margin-right: 8px;" {% if s.get('auto_season_lowering', False) %}checked{% endif %}>
+                            Auto Season Lowering
+                        </label>
+                        <span id="current_auto_lowering" style="margin-left: 10px; font-size: 0.85rem; color: #4CAF50; display: none;"></span>
+                    </div>
+                </div>
+                <small style="color: #ccc; display: block; margin-bottom: 5px;">Historische eBird-Wahrscheinlichkeit für deinen Standort (Standard: 0.03)</small>
                 <input type="number" id="occurrence_threshold" value="{{ s.get('occurrence_threshold', 0.03) }}" step="0.005" min="0" max="1.0">
             </div>
 
@@ -323,6 +333,16 @@
                         statusEl.innerText = data.status;
                         document.getElementById('today-count').innerText = data.today_detections;
                         document.getElementById('total-count').innerText = data.total_detections;
+                    }
+                    const autoCheck = document.getElementById('auto_season_lowering');
+                    const spanLow = document.getElementById('current_auto_lowering');
+                    if (autoCheck && spanLow && data.effective_occurrence_threshold !== undefined) {
+                        if (autoCheck.checked) {
+                            spanLow.innerText = "(Aktuell: " + data.effective_occurrence_threshold + ")";
+                            spanLow.style.display = 'inline';
+                        } else {
+                            spanLow.style.display = 'none';
+                        }
                     }
                 });
 
@@ -764,6 +784,7 @@
             const data = {
                 threshold: parseInt(document.getElementById('threshold').value),
                 occurrence_threshold: parseFloat(document.getElementById('occurrence_threshold').value),
+                auto_season_lowering: document.getElementById('auto_season_lowering').checked,
                 min_snr: parseFloat(document.getElementById('min_snr').value),
                 gps_lat: (function() {
                     const v = document.getElementById('gps_lat').value.trim().toLowerCase();
@@ -879,6 +900,16 @@
                     scaleContainer.appendChild(mark);
                     scaleContainer.appendChild(label);
                 }
+            }
+
+            const autoCheck = document.getElementById('auto_season_lowering');
+            if (autoCheck) {
+                autoCheck.addEventListener('change', function() {
+                    const spanLow = document.getElementById('current_auto_lowering');
+                    if (spanLow) {
+                        spanLow.style.display = this.checked ? 'inline' : 'none';
+                    }
+                });
             }
 
             const enabled = localStorage.getItem("spectrogram_enabled");

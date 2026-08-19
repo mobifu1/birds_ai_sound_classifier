@@ -2,6 +2,7 @@ import sys
 from fpdf import FPDF
 
 pdf = FPDF()
+pdf.set_auto_page_break(auto=True, margin=15)
 pdf.add_page()
 pdf.set_font("Arial", size=12)
 

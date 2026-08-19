@@ -763,7 +763,7 @@ class AudioMonitor:
                                             with open("blocklist-log.txt", "a", encoding="utf-8") as f:
                                                 ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                                                 geo_prob_val = geo_prob_dict.get(eng_species, 0.0)
-                                                f.write(f"{ts} > low probability for your area, Species: {species} > erkannt., {raw_d.confidence*100:.0f}%, {calculated_snr:.1f} dB, Geo-Prob: {geo_prob_val*100:.2f}%, {lat}, {lon}\n")
+                                                f.write(f"{ts} > Low probability for your area, LAT: {lat}, LON: {lon}, K: {raw_d.confidence*100:.0f}%, P: {geo_prob_val*100:.2f}%, SNR: {calculated_snr:.1f} dB, Species: {species} > erkannt\n")
                                     except Exception as e:
                                         pass
 

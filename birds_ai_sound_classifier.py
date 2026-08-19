@@ -760,10 +760,17 @@ class AudioMonitor:
                                     try:
                                         species = bird_dict.get(eng_species, eng_species)
                                         if settings.get("log_blocklist", True):
-                                            with open("blocklist-log.txt", "a", encoding="utf-8") as f:
-                                                ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                                                geo_prob_val = geo_prob_dict.get(eng_species, 0.0)
-                                                f.write(f"{ts} > Low probability for your area,LAT:{lat},LON:{lon},K:{raw_d.confidence*100:.0f}%,P:{geo_prob_val*100:.2f}%,SNR:{calculated_snr:.1f}dB,Species:{species} > erkannt\n")
+                                            geo_prob_val = geo_prob_dict.get(eng_species, 0.0)
+                                            prob_switch_active = settings.get("log_blocklist_prob_switch", False)
+                                            
+                                            should_log = True
+                                            if prob_switch_active and geo_prob_val <= 0.0:
+                                                should_log = False
+                                                
+                                            if should_log:
+                                                with open("blocklist-log.txt", "a", encoding="utf-8") as f:
+                                                    ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                                                    f.write(f"{ts} > Low probability for your area,LAT:{lat},LON:{lon},K:{raw_d.confidence*100:.0f}%,P:{geo_prob_val*100:.2f}%,SNR:{calculated_snr:.1f}dB,Species:{species} > erkannt\n")
                                     except Exception as e:
                                         pass
 
@@ -802,10 +809,17 @@ class AudioMonitor:
                             if confidence >= min_conf and calculated_snr > min_snr_val:
                                 try:
                                     if settings.get("log_blocklist", True):
-                                        with open("blocklist-log.txt", "a", encoding="utf-8") as f:
-                                            ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                                            geo_prob_val = geo_prob_dict.get(eng_species, 0.0)
-                                            f.write(f"{ts}, {species}, {confidence*100:.0f}%, {calculated_snr:.1f} dB, Geo-Prob: {geo_prob_val*100:.2f}%, {lat}, {lon}\n")
+                                        geo_prob_val = geo_prob_dict.get(eng_species, 0.0)
+                                        prob_switch_active = settings.get("log_blocklist_prob_switch", False)
+                                        
+                                        should_log = True
+                                        if prob_switch_active and geo_prob_val <= 0.0:
+                                            should_log = False
+                                            
+                                        if should_log:
+                                            with open("blocklist-log.txt", "a", encoding="utf-8") as f:
+                                                ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                                                f.write(f"{ts}, {species}, {confidence*100:.0f}%, {calculated_snr:.1f} dB, Geo-Prob: {geo_prob_val*100:.2f}%, {lat}, {lon}\n")
                                 except Exception as e:
                                     pass
                                 update_log(f"Ignoriert (Blocklist): {species}")
@@ -2275,6 +2289,8 @@ def api_save_settings():
         save_setting("nr_quality", str(data.get("nr_quality", "Medium")))
     if "log_blocklist" in data:
         save_setting("log_blocklist", bool(data.get("log_blocklist", True)))
+    if "log_blocklist_prob_switch" in data:
+        save_setting("log_blocklist_prob_switch", bool(data.get("log_blocklist_prob_switch", False)))
     if "bird_dictionary" in data:
         save_dictionary(data.get("bird_dictionary", {}))
     return jsonify({"msg": "Einstellungen gespeichert!"})

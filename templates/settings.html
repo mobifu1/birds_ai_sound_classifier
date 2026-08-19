@@ -174,7 +174,10 @@
                     <label style="margin: 0; color: #ccc; display: flex; align-items: center;">Protokoll der aussortierten/blockierten Vogelarten:
                         <input type="checkbox" id="log_blocklist" style="width: 18px; height: 18px; margin-left: 10px;" {% if s.get('log_blocklist', True) %}checked{% endif %}>
                     </label>
-                    <a href="/api/export/blocklist_log" class="btn btn-blue" style="width: auto; padding: 5px 15px; margin: 0; text-decoration: none;">💾 Blocklist-Log</a>
+                    <label style="margin: 0; color: #ccc; display: flex; align-items: center; margin-left: 15px;">Prob-Filter:
+                        <input type="checkbox" id="log_blocklist_prob_switch" style="width: 18px; height: 18px; margin-left: 10px;" title="Wenn aktiv, werden nur Arten mit Geo-Probability > 0% gespeichert." {% if s.get('log_blocklist_prob_switch', False) %}checked{% endif %}>
+                    </label>
+                    <a href="/api/export/blocklist_log" class="btn btn-blue" style="width: auto; padding: 5px 15px; margin: 0; text-decoration: none; margin-left: auto;">💾 Blocklist-Log</a>
                     <button class="btn btn-red" style="width: auto; padding: 5px 15px; margin: 0;" onclick="clearBlocklistLog()">🗑️ Blocklist-Log löschen</button>
                 </div>
             </div>
@@ -793,6 +796,7 @@
                 birdweather_active: document.getElementById('birdweather_active').checked,
                 birdweather_id: document.getElementById('birdweather_id').value,
                 log_blocklist: document.getElementById('log_blocklist').checked,
+                log_blocklist_prob_switch: document.getElementById('log_blocklist_prob_switch').checked,
                 bird_dictionary: birdDict
             };
 

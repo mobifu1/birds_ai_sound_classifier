@@ -34,6 +34,7 @@ lines = [
     "- Konf. % (Woerterbuch): Individuelle Erkennungssicherheit, ueberschreibt globales Limit",
     "- Blocked (Woerterbuch): Markierte Voegel ignorieren und nicht speichern/anzeigen",
     "- blocklist-log.txt: Protokolliert Vogelarten, die aufgrund lokaler GPS-Filter oder Blockierung (Woerterbuch) aussortiert wurden.",
+    "- Blocklist-Log-Probability Umschalter: Wenn aktiviert, werden nur Vogelarten mit Geo-Probability > 0% im blocklist-log protokolliert.",
     "",
     "Audio Filter & System:",
     "- High-Pass Filter: Herausfiltern von tiefen Stoergeraeuschen (inkl. Grenzfrequenz in Hz)",

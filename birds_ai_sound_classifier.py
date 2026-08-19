@@ -3150,10 +3150,13 @@ def check_dictionary_route():
     for t, ks in dup_trans.items():
         issues.append(f"Doppelte Übersetzung '{t}' verwendet bei: {', '.join(ks)}")
         
+    total_entries = len(seen_keys)
+    info_msg = f"Das Wörterbuch besitzt {total_entries} Einträge (Schlüsselwörter).\n\n"
+
     if not issues:
-        return jsonify({'success': True, 'msg': 'Keine doppelten Einträge gefunden. Alles in Ordnung!'})
+        return jsonify({'success': True, 'msg': info_msg + 'Keine doppelten Einträge gefunden. Alles in Ordnung!'})
     else:
-        return jsonify({'success': True, 'msg': 'Folgende mögliche Probleme wurden gefunden:\n\n' + '\n'.join(issues)})
+        return jsonify({'success': True, 'msg': info_msg + 'Folgende mögliche Probleme wurden gefunden:\n\n' + '\n'.join(issues)})
 
 
 def log_reader_thread():

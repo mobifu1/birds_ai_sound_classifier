@@ -732,7 +732,7 @@ class AudioMonitor:
                     if isinstance(props, dict) and props.get("force_active", False):
                         forced_species.append(eng_name)
 
-                with open(os.devnull, 'w') as f, contextlib.redirect_stdout(f):
+                with open(os.devnull, 'w') as f, contextlib.redirect_stdout(f), contextlib.redirect_stderr(f):
                     recording.analyze()
                 
                 # Ergebnisse verarbeiten
@@ -741,7 +741,7 @@ class AudioMonitor:
                 geo_prob_dict = {}
                 try:
                     if hasattr(analyzer, 'species_class'):
-                        with open(os.devnull, 'w') as f_out, contextlib.redirect_stdout(f_out):
+                        with open(os.devnull, 'w') as f_out, contextlib.redirect_stdout(f_out), contextlib.redirect_stderr(f_out):
                             geo_probs = analyzer.species_class.return_list(lon=lon, lat=lat, date=datetime.datetime.now(), threshold=0.0)
                         geo_prob_dict = {item['common_name']: item['threshold'] for item in geo_probs}
                 except Exception:
@@ -2694,7 +2694,8 @@ def run_audio_process(running_event, log_q, shared_al, shared_ql, shared_wf):
     global analyzer
     
     print("Initialisiere BirdNET Analyzer...")
-    analyzer = Analyzer()
+    with open(os.devnull, 'w') as f, contextlib.redirect_stdout(f), contextlib.redirect_stderr(f):
+        analyzer = Analyzer()
     print("OK: BirdNET Analyzer bereit.")
     
     log_queue_global = log_q
@@ -3158,8 +3159,9 @@ def check_probability_route():
         with open(DICTIONARY_FILE, 'r', encoding='utf-8') as f:
             dictionary = json.load(f)
             
-        sl = SpeciesList()
-        predicted = sl.return_list(lat=lat, lon=lon, date=datetime.datetime.now(), threshold=0.0)
+        with open(os.devnull, 'w') as f, contextlib.redirect_stdout(f), contextlib.redirect_stderr(f):
+            sl = SpeciesList()
+            predicted = sl.return_list(lat=lat, lon=lon, date=datetime.datetime.now(), threshold=0.0)
         
         results = []
         for vogel_name, props in dictionary.items():
@@ -3172,7 +3174,7 @@ def check_probability_route():
                     if p['scientific_name'] == sci_name:
                         prob = float(p['threshold'])
                         break
-                results.append((translated_name, prob))
+                results.append((vogel_name, translated_name, prob))
             else:
                 # Fallback if dictionary keys are different (which they are)
                 prob = 0.0
@@ -3180,13 +3182,13 @@ def check_probability_route():
                     if p['scientific_name'] in vogel_name or p['common_name'] == vogel_name:
                         prob = float(p['threshold'])
                         break
-                results.append((translated_name, prob))
+                results.append((vogel_name, translated_name, prob))
                 
-        results.sort(key=lambda x: x[1], reverse=True)
+        results.sort(key=lambda x: x[2], reverse=True)
         
         msg_lines = []
-        for name, prob in results:
-            msg_lines.append(f"{name}: {prob*100:.1f}%")
+        for eng_name, trans_name, prob in results:
+            msg_lines.append(f"{eng_name} ({trans_name}): {prob*100:.1f}%")
             
         msg = "\n".join(msg_lines)
         return jsonify({'success': True, 'msg': msg})

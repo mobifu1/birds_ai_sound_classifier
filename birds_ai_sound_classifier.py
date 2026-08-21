@@ -919,7 +919,7 @@ class AudioMonitor:
 # --- FLASK ROUTEN ---
 @app.context_processor
 def inject_version():
-    return dict(version="V1.3.3-RC1")
+    return dict(version="V1.3.3-RC2")
 
 @app.route('/favicon.ico')
 def favicon():
@@ -2590,7 +2590,7 @@ def check_model_update():
 
 @app.route('/api/check_app_update')
 def check_app_update():
-    current_version = "V1.3.3-RC1"
+    current_version = "V1.3.3-RC2"
     try:
         import urllib.request
         import json
@@ -3140,6 +3140,57 @@ def update_dictionary():
             save_dictionary(local_dict)
             
         return jsonify({'success': True, 'msg': f'Update abgeschlossen. {added} neue Vögel dem Wörterbuch hinzugefügt.'})
+    except Exception as e:
+        return jsonify({'success': False, 'msg': f'Fehler: {str(e)}'})
+
+@app.route('/api/control/check_probability', methods=['GET'])
+def check_probability_route():
+    try:
+        from birdnetlib.species import SpeciesList
+        import datetime
+        
+        local_settings = load_settings()
+        lat = float(local_settings.get('gps_lat', 0.0))
+        lon = float(local_settings.get('gps_lon', 0.0))
+        
+        if not os.path.exists(DICTIONARY_FILE):
+            return jsonify({'success': False, 'msg': 'dictionary.json existiert nicht.'})
+        with open(DICTIONARY_FILE, 'r', encoding='utf-8') as f:
+            dictionary = json.load(f)
+            
+        sl = SpeciesList()
+        predicted = sl.return_list(lat=lat, lon=lon, date=datetime.datetime.now(), threshold=0.0)
+        
+        results = []
+        for vogel_name, props in dictionary.items():
+            translated_name = props.get("translation", vogel_name)
+            parts = vogel_name.split('_')
+            if len(parts) >= 2:
+                sci_name = parts[0]
+                prob = 0.0
+                for p in predicted:
+                    if p['scientific_name'] == sci_name:
+                        prob = float(p['threshold'])
+                        break
+                results.append((translated_name, prob))
+            else:
+                # Fallback if dictionary keys are different (which they are)
+                prob = 0.0
+                for p in predicted:
+                    if p['scientific_name'] in vogel_name or p['common_name'] == vogel_name:
+                        prob = float(p['threshold'])
+                        break
+                results.append((translated_name, prob))
+                
+        results.sort(key=lambda x: x[1], reverse=True)
+        
+        msg_lines = []
+        for name, prob in results:
+            msg_lines.append(f"{name}: {prob*100:.1f}%")
+            
+        msg = "\n".join(msg_lines)
+        return jsonify({'success': True, 'msg': msg})
+        
     except Exception as e:
         return jsonify({'success': False, 'msg': f'Fehler: {str(e)}'})
 

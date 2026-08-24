@@ -13,4 +13,4 @@ Furthermore, you don't have to keep your fascinating avian discoveries to yourse
 
 # Overview
 
-<p align="center"><img width="800" src="https://github.com/mobifu1/birds_ai_sound_classifier/blob/main/gui/how_it_works.png" alt="overview" /></p>
+<p align="center"><img width="1000" src="https://github.com/mobifu1/birds_ai_sound_classifier/blob/main/gui/how_it_works.png" alt="overview" /></p>

@@ -3154,6 +3154,8 @@ def check_probability_route():
         lat = float(local_settings.get('gps_lat', 0.0))
         lon = float(local_settings.get('gps_lon', 0.0))
         
+        threshold_val = get_effective_occurrence_threshold()
+        
         if not os.path.exists(DICTIONARY_FILE):
             return jsonify({'success': False, 'msg': 'dictionary.json existiert nicht.'})
         with open(DICTIONARY_FILE, 'r', encoding='utf-8') as f:
@@ -3188,9 +3190,10 @@ def check_probability_route():
         
         msg_lines = []
         for eng_name, trans_name, prob in results:
-            msg_lines.append(f"{eng_name} ({trans_name}): {prob*100:.1f}%")
+            color = "#4CAF50" if prob >= threshold_val else "#F44336"
+            msg_lines.append(f'<div style="color: {color};">{eng_name} ({trans_name}): {prob*100:.1f}%</div>')
             
-        msg = "\n".join(msg_lines)
+        msg = "".join(msg_lines)
         return jsonify({'success': True, 'msg': msg})
         
     except Exception as e:

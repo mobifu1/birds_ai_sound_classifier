@@ -664,7 +664,7 @@
             fetch('/api/control/check_probability')
                 .then(r => r.json())
                 .then(d => {
-                    document.getElementById('probCheckResults').innerText = d.msg;
+                    document.getElementById('probCheckResults').innerHTML = d.msg;
                     document.getElementById('probCheckModal').style.display = 'flex';
                     btn.disabled = false;
                     btn.innerText = originalText;

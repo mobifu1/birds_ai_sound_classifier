@@ -11,6 +11,6 @@ Furthermore, you don't have to keep your fascinating avian discoveries to yourse
 
 <p align="center"><img width="800" src="https://github.com/mobifu1/birds_ai_sound_classifier/blob/main/gui/station.png" alt="Permanent Station" /></p>
 
-# How it Works
+# Overview
 
 <p align="center"><img width="800" src="https://github.com/mobifu1/birds_ai_sound_classifier/blob/main/gui/how_it_works.png" alt="overview" /></p>

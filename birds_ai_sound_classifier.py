@@ -919,7 +919,7 @@ class AudioMonitor:
 # --- FLASK ROUTEN ---
 @app.context_processor
 def inject_version():
-    return dict(version="V1.3.3")
+    return dict(version="V1.3.4-RC1")
 
 @app.route('/favicon.ico')
 def favicon():
@@ -1518,7 +1518,8 @@ def create_weekly_total_chart(year_str):
     SELECT 
         CAST(strftime('%W', timestamp) AS INTEGER) + 1 as week_num,
         COUNT(*) as counts,
-        COUNT(DISTINCT species) as unique_species
+        COUNT(DISTINCT species) as unique_species,
+        GROUP_CONCAT(DISTINCT species) as species_list
     FROM detections
     {where_clause}
     GROUP BY week_num
@@ -1544,6 +1545,8 @@ def create_weekly_total_chart(year_str):
     
     counts = [0] * 53
     species_counts = [0] * 53
+    species_sets = [set() for _ in range(53)]
+    
     if not grouped.empty:
         for _, row in grouped.iterrows():
             if pd.notna(row['week_num']):
@@ -1553,8 +1556,19 @@ def create_weekly_total_chart(year_str):
                         counts[w-1] = int(row['counts'])
                         if 'unique_species' in row:
                             species_counts[w-1] = int(row['unique_species'])
+                        if 'species_list' in row and row['species_list']:
+                            species_sets[w-1] = set(row['species_list'].split(','))
                 except:
                     pass
+
+    jaccard_indices = [np.nan] * 53
+    for i in range(1, 53):
+        set_prev = species_sets[i-1]
+        set_curr = species_sets[i]
+        if set_prev or set_curr:
+            intersection = len(set_prev.intersection(set_curr))
+            union = len(set_prev.union(set_curr))
+            jaccard_indices[i] = intersection / union if union > 0 else np.nan
 
     line1 = ax1.plot(weeks, counts, color='#e5c07b', linewidth=2, marker='o', markersize=4, label='Rufe (Gesamt)')
     ax1.fill_between(weeks, counts, color='#e5c07b', alpha=0.1)
@@ -1580,7 +1594,14 @@ def create_weekly_total_chart(year_str):
     for spine in ax2.spines.values():
         spine.set_color('#444')
 
-    lines = line1 + line2
+    ax3 = ax1.twinx()
+    line3 = ax3.plot(weeks, jaccard_indices, color='#98c379', linewidth=2, linestyle='--', marker='^', markersize=4, label='Konstanz (Jaccard-Index)')
+    ax3.set_ylim(0, 1)
+    ax3.yaxis.set_visible(False)
+    for spine in ax3.spines.values():
+        spine.set_visible(False)
+
+    lines = line1 + line2 + line3
     labels = [l.get_label() for l in lines]
     ax1.legend(lines, labels, loc='upper left', facecolor='#263238', edgecolor='#444', labelcolor='white')
 
@@ -2590,7 +2611,7 @@ def check_model_update():
 
 @app.route('/api/check_app_update')
 def check_app_update():
-    current_version = "V1.3.3"
+    current_version = "V1.3.4-RC1"
     try:
         import urllib.request
         import json

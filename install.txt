@@ -1,3 +1,5 @@
+At first: install: python-3.10.11-amd64.exe | from Python Website
+
 python -m pip install -r requirements.txt
 pip install --upgrade tensorflow
 winget install ffmpeg

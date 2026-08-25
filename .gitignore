@@ -8,6 +8,7 @@ backup_db/
 debug_log.txt
 generate_pdf.py
 *.wav
+python-3.10.11-amd64.exe
 
 *.db-shm
 *.db-wal

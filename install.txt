@@ -1,7 +1,8 @@
-pip install -r requirements.txt
 python -m pip install -r requirements.txt
-
 pip install --upgrade tensorflow
-
 winget install ffmpeg
+winget install Microsoft.VCRedist.2015+.x64 | alt: https://aka.ms/vs/17/release/vc_redist.x64.exe
+
+Options:
+pip install tflite-runtime
 conda install -c conda-forge ffmpeg

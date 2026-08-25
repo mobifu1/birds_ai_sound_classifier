@@ -1756,7 +1756,118 @@ def territory_page():
     
     return render_template('territory.html', threshold=round(threshold, 1), min_calls=min_calls, categories=categories)
 
+
+@app.route('/intersection')
+def intersection_page():
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("SELECT DISTINCT strftime('%Y', timestamp) FROM detections WHERE timestamp IS NOT NULL")
+    years = [row[0] for row in c.fetchall() if row[0]]
+    conn.close()
+    
+    current_year = str(datetime.datetime.now().year)
+    if not years:
+        years = [current_year]
+    elif current_year not in years:
+        years.append(current_year)
+    
+    years.sort(reverse=True)
+        
+    return render_template('intersection.html', available_years=years, current_year=current_year)
+
+@app.route('/api/intersection_data')
+def api_intersection_data():
+    year = request.args.get('year', str(datetime.datetime.now().year))
+    division = request.args.get('division', 'quarter')
+    
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("SELECT species, timestamp FROM detections WHERE strftime('%Y', timestamp) = ?", (year,))
+    rows = c.fetchall()
+    conn.close()
+    
+    from collections import defaultdict
+    import datetime as dt
+    species_in_bucket = defaultdict(set)
+    
+    for species, ts_str in rows:
+        if not ts_str: continue
+        try:
+            ts = dt.datetime.strptime(ts_str, '%Y-%m-%d %H:%M:%S')
+        except ValueError:
+            continue
+            
+        bucket = None
+        if division == 'half':
+            bucket = "H1" if ts.month <= 6 else "H2"
+        elif division == 'tertial':
+            if ts.month <= 4: bucket = "T1"
+            elif ts.month <= 8: bucket = "T2"
+            else: bucket = "T3"
+        elif division == 'quarter':
+            if ts.month <= 3: bucket = "Q1"
+            elif ts.month <= 6: bucket = "Q2"
+            elif ts.month <= 9: bucket = "Q3"
+            else: bucket = "Q4"
+        elif division == 'month':
+            months = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"]
+            bucket = months[ts.month - 1]
+        elif division == 'week':
+            bucket = f"KW {ts.isocalendar()[1]}"
+            
+        if bucket:
+            species_in_bucket[bucket].add(species)
+            
+    # Removed Top-5 limit to show all available weeks
+    if len(species_in_bucket) < 2:
+        return jsonify({'error': 'Zu wenig Daten für die gewählten Zeiträume vorhanden.'})
+        
+    # Sort buckets chronologically
+    expected_order = []
+    if division == 'half': expected_order = ["H1", "H2"]
+    elif division == 'tertial': expected_order = ["T1", "T2", "T3"]
+    elif division == 'quarter': expected_order = ["Q1", "Q2", "Q3", "Q4"]
+    elif division == 'month': expected_order = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"]
+    elif division == 'week': expected_order = [f"KW {w}" for w in range(1, 54)]
+    
+    # Only keep buckets that have data, keeping their chronological order
+    chronological_buckets = [b for b in expected_order if b in species_in_bucket]
+    # Handle any edge case (like custom buckets in the future)
+    for b in species_in_bucket.keys():
+        if b not in chronological_buckets:
+            chronological_buckets.append(b)
+
+    venn_data = []
+    
+    # 1-way sets
+    for b in chronological_buckets:
+        venn_data.append({
+            'sets': [b], 
+            'size': len(species_in_bucket[b]), 
+            'species': list(species_in_bucket[b])
+        })
+        
+    # 2-way sets (Only chronologically adjacent intersections)
+    for i in range(len(chronological_buckets) - 1):
+        b1 = chronological_buckets[i]
+        b2 = chronological_buckets[i+1]
+        
+        intersect = species_in_bucket[b1].intersection(species_in_bucket[b2])
+        union_len = len(species_in_bucket[b1].union(species_in_bucket[b2]))
+        
+        if len(intersect) > 0:
+            jaccard = len(intersect) / union_len if union_len > 0 else 0
+            venn_data.append({
+                'sets': [b1, b2],
+                'size': len(intersect),
+                'species': list(intersect),
+                'jaccard': jaccard
+            })
+                
+    return jsonify({'data': venn_data})
+
 @app.route('/species')
+
 def species_page():
     species_set = set(get_bird_dictionary().values())
     conn = sqlite3.connect(DB_FILE)

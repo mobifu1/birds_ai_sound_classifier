@@ -68,6 +68,9 @@
             min-width: 25px;
             padding: 2px 0;
             vertical-align: bottom;
+            position: sticky;
+            top: 0;
+            z-index: 2;
         }
         .weekly-table th:first-child,
         .weekly-table td:first-child {
@@ -140,7 +143,8 @@
             border-radius: 2px;
         }
         .table-responsive {
-            overflow-x: auto;
+            overflow: auto;
+            max-height: 70vh;
             margin-bottom: 20px;
         }
     </style>

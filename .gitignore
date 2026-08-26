@@ -1,18 +1,19 @@
 # Ignoriere-Ordner
 model/
 backup_db/
+birdweather_queue/
 
 # Ignoriere Modell-Files/Database-Files
-*.tflite
-*.db
+birdweather.json
 debug_log.txt
 generate_pdf.py
-*.wav
-python-3.10.11-amd64.exe
-
-*.db-shm
-*.db-wal
-birdweather.json
-birdweather_queue/
+missing_bird_pics.txt
 blocklist-log.txt
 identified_errors.txt
+python-3.10.11-amd64.exe
+
+*.wav
+*.db-shm
+*.db-wal
+*.tflite
+*.db

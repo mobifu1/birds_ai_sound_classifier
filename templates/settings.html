@@ -250,6 +250,11 @@
             <label>Radar Min SNR (dB):<br><small>Ab welchem SNR soll ein Vogel ganz am Rand angezeigt werden?</small></label>
             <input type="number" id="radar_snr_min" value="{{ s.get('radar_snr_min', 5.0) }}" step="0.5" min="0">
         </div>
+
+        <div class="row">
+            <label>Barchart Max Calls (wöchentlich):<br><small>Bei wie vielen Rufen soll der Bargraf für die Wochen-Statistik das Maximum (100%) erreichen?</small></label>
+            <input type="number" id="barchart_max_calls_weekly" value="{{ s.get('barchart_max_calls_weekly', 3000) }}" step="100" min="100">
+        </div>
         </div>
 
         <div class="section">
@@ -828,6 +833,7 @@
                 radar_time_range: parseInt(document.getElementById('radar_time_range').value),
                 radar_snr_max: parseFloat(document.getElementById('radar_snr_max').value),
                 radar_snr_min: parseFloat(document.getElementById('radar_snr_min').value),
+                barchart_max_calls_weekly: parseInt(document.getElementById('barchart_max_calls_weekly').value),
                 mic_index: parseInt(document.getElementById('mic_index').value),
                 archive_species: document.getElementById('archive_species').value,
                 max_archive_files: parseInt(document.getElementById('max_archive_files').value) || 0,

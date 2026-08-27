@@ -919,7 +919,7 @@ class AudioMonitor:
 # --- FLASK ROUTEN ---
 @app.context_processor
 def inject_version():
-    return dict(version="V1.3.4-RC2")
+    return dict(version="V1.3.4")
 
 @app.route('/favicon.ico')
 def favicon():
@@ -1491,16 +1491,33 @@ def generate_weekly_heatmap_html(year_str=None):
                 else:
                     tooltip = "0%"
                     
-                html_table += f'<td title="{tooltip}" style="{style}"></td>'
+                import math
+                barchart_max = settings.get("barchart_max_calls_weekly", 3000)
+                inner_html = ""
+                if absolute_count > 0:
+                    step = math.ceil((absolute_count / barchart_max) * 10)
+                    step = min(step, 10)
+                    step = max(step, 1)
+                    height_pct = step * 10
+                    inner_html = f'<div class="data-cell-inner"><div class="barchart-bar" style="height: {height_pct}%;"></div></div>'
+                    
+                html_table += f'<td title="{tooltip}" style="{style}">{inner_html}</td>'
             html_table += '</tr>'
         html_table += '</tbody></table></div>'
         
         html_table += """
-        <div class="legend-container">
+        <div class="legend-container" id="heatmapLegend">
             <div class="legend-item"><div class="legend-box" style="background-color: transparent;"></div><span>0 Sichtungen</span></div>
             <div class="legend-item"><div class="legend-box" style="background-color: rgba(76, 175, 80, 0.2);"></div><span>Wenige</span></div>
             <div class="legend-item"><div class="legend-box" style="background-color: rgba(76, 175, 80, 0.6);"></div><span>Mittel</span></div>
             <div class="legend-item"><div class="legend-box" style="background-color: rgba(76, 175, 80, 1.0);"></div><span>Viele</span></div>
+        </div>
+        <div class="legend-container" id="barchartLegend" style="display: none; align-items: center;">
+            <div class="legend-item" style="display: flex; align-items: center;">
+                <div style="border-left: 1px solid #fff; height: 16px; margin-right: 4px;"></div>
+                <div style="width: 40px; height: 16px; background-color: #90ee90; clip-path: polygon(0 50%, 100% 0, 100% 100%); margin-right: 8px;"></div>
+                <span>= selten bis oft</span>
+            </div>
         </div>
         """
 
@@ -2417,6 +2434,7 @@ def api_save_settings():
     save_setting("radar_time_range", data.get("radar_time_range", 24))
     save_setting("radar_snr_max", data.get("radar_snr_max", 20.0))
     save_setting("radar_snr_min", data.get("radar_snr_min", 5.0))
+    save_setting("barchart_max_calls_weekly", int(data.get("barchart_max_calls_weekly", 3000)))
     if "mic_index" in data:
         save_setting("mic_index", data.get("mic_index", -1))
     if "archive_species" in data:
@@ -2722,7 +2740,7 @@ def check_model_update():
 
 @app.route('/api/check_app_update')
 def check_app_update():
-    current_version = "V1.3.4-RC2"
+    current_version = "V1.3.4"
     try:
         import urllib.request
         import json

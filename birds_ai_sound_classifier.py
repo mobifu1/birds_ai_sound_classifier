@@ -1456,11 +1456,7 @@ def generate_weekly_heatmap_html(year_str=None):
                 
                 is_in_range = in_range_list[i]
                 
-                style = 'background-color: transparent;'
-                if val > 0:
-                    alpha = 0.15 + (val / 50.0) * 0.85 
-                    alpha = min(alpha, 1.0) 
-                    style = f'background-color: rgba(76, 175, 80, {alpha});'
+                style = ''
                 
                 if is_in_range:
                     if start_m and end_m and start_m > end_m:
@@ -1506,13 +1502,7 @@ def generate_weekly_heatmap_html(year_str=None):
         html_table += '</tbody></table></div>'
         
         html_table += """
-        <div class="legend-container" id="heatmapLegend">
-            <div class="legend-item"><div class="legend-box" style="background-color: transparent;"></div><span>0 Sichtungen</span></div>
-            <div class="legend-item"><div class="legend-box" style="background-color: rgba(76, 175, 80, 0.2);"></div><span>Wenige</span></div>
-            <div class="legend-item"><div class="legend-box" style="background-color: rgba(76, 175, 80, 0.6);"></div><span>Mittel</span></div>
-            <div class="legend-item"><div class="legend-box" style="background-color: rgba(76, 175, 80, 1.0);"></div><span>Viele</span></div>
-        </div>
-        <div class="legend-container" id="barchartLegend" style="display: none; align-items: center;">
+        <div class="legend-container" id="barchartLegend" style="display: flex; align-items: center;">
             <div class="legend-item" style="display: flex; align-items: center;">
                 <div style="border-left: 1px solid #fff; height: 16px; margin-right: 4px;"></div>
                 <div style="width: 40px; height: 16px; background-color: #90ee90; clip-path: polygon(0 50%, 100% 0, 100% 100%); margin-right: 8px;"></div>

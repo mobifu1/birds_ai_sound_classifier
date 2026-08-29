@@ -8,3 +8,5 @@ winget install Microsoft.VCRedist.2015+.x64 | alt: https://aka.ms/vs/17/release/
 Options:
 pip install tflite-runtime
 conda install -c conda-forge ffmpeg
+
+call webserver: http://bird-ai-sound-classifier.local:5001

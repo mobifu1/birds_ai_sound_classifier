@@ -812,6 +812,21 @@ class AudioMonitor:
                         min_snr_val = float(settings.get("min_snr", 0.0))
                         
                         full_bird_dict = load_dictionary()
+                        
+                        if eng_species not in full_bird_dict:
+                            full_bird_dict[eng_species] = {
+                                "translation": eng_species,
+                                "blocklist": False,
+                                "ind_conf": "",
+                                "force_active": False,
+                                "link": "",
+                                "priority": False
+                            }
+                            save_dictionary(full_bird_dict)
+                            bird_dict = get_bird_dictionary()
+                            species = bird_dict.get(eng_species, eng_species)
+                            update_log(f"INFO: Neue Art ins Dictionary aufgenommen: {eng_species}")
+
                         is_blocklisted = False
                         if eng_species in full_bird_dict and isinstance(full_bird_dict[eng_species], dict):
                             is_blocklisted = full_bird_dict[eng_species].get("blocklist", False)
@@ -919,7 +934,7 @@ class AudioMonitor:
 # --- FLASK ROUTEN ---
 @app.context_processor
 def inject_version():
-    return dict(version="V1.3.4")
+    return dict(version="V1.3.5-RC1", year="2026")
 
 @app.route('/favicon.ico')
 def favicon():
@@ -2730,7 +2745,7 @@ def check_model_update():
 
 @app.route('/api/check_app_update')
 def check_app_update():
-    current_version = "V1.3.4"
+    current_version = "V1.3.5-RC1"
     try:
         import urllib.request
         import json
@@ -3435,9 +3450,44 @@ if __name__ == '__main__':
     monitor_running_event.set()
     
     print(f"Starte Webserver auf http://127.0.0.1:{FLASK_PORT}")
+    
+    # --- mDNS (Zeroconf) Setup ---
+    zc = None
+    try:
+        from zeroconf import ServiceInfo, Zeroconf
+        import socket
+        
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            s.connect(('10.255.255.255', 1))
+            local_ip = s.getsockname()[0]
+        except Exception:
+            local_ip = '127.0.0.1'
+        finally:
+            s.close()
+            
+        desc = {'path': '/'}
+        info = ServiceInfo(
+            "_http._tcp.local.",
+            "Birds AI Sound Classifier._http._tcp.local.",
+            addresses=[socket.inet_aton(local_ip)],
+            port=FLASK_PORT,
+            properties=desc,
+            server="bird-ai-sound-classifier.local."
+        )
+        
+        zc = Zeroconf()
+        zc.register_service(info)
+        print(f"mDNS Broadcasting gestartet: http://bird-ai-sound-classifier.local:{FLASK_PORT}")
+    except Exception as e:
+        print(f"Fehler beim Starten von mDNS/Zeroconf: {e}")
+
     try:
         serve(app, host='0.0.0.0', port=FLASK_PORT)
     except KeyboardInterrupt:
+        if zc is not None:
+            zc.unregister_service(info)
+            zc.close()
         monitor_running_event.clear()
         monitor_process.join(timeout=2)
         print("Server beendet.")

@@ -12,3 +12,4 @@ pillow>=9.0.0
 noisereduce==3.0.3
 requests
 soundfile
+zeroconf>=0.131.0

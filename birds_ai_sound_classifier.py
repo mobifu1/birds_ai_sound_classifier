@@ -2440,6 +2440,8 @@ def api_save_settings():
     save_setting("radar_snr_max", data.get("radar_snr_max", 20.0))
     save_setting("radar_snr_min", data.get("radar_snr_min", 5.0))
     save_setting("barchart_max_calls_weekly", int(data.get("barchart_max_calls_weekly", 3000)))
+    if "device_hostname" in data:
+        save_setting("device_hostname", data.get("device_hostname", "bird-ai-sound-classifier"))
     if "mic_index" in data:
         save_setting("mic_index", data.get("mic_index", -1))
     if "archive_species" in data:
@@ -3466,19 +3468,26 @@ if __name__ == '__main__':
         finally:
             s.close()
             
+        local_settings = load_settings()
+        raw_hostname = local_settings.get('device_hostname', 'bird-ai-sound-classifier')
+        import re
+        safe_hostname = re.sub(r'[^a-zA-Z0-9-]', '-', raw_hostname).strip('-').lower()
+        if not safe_hostname:
+            safe_hostname = "bird-ai-sound-classifier"
+
         desc = {'path': '/'}
         info = ServiceInfo(
             "_http._tcp.local.",
-            "Birds AI Sound Classifier._http._tcp.local.",
+            f"Birds AI Sound Classifier - {safe_hostname}._http._tcp.local.",
             addresses=[socket.inet_aton(local_ip)],
             port=FLASK_PORT,
             properties=desc,
-            server="bird-ai-sound-classifier.local."
+            server=f"{safe_hostname}.local."
         )
         
         zc = Zeroconf()
         zc.register_service(info)
-        print(f"mDNS Broadcasting gestartet: http://bird-ai-sound-classifier.local:{FLASK_PORT}")
+        print(f"mDNS Broadcasting gestartet: http://{safe_hostname}.local:{FLASK_PORT}")
     except Exception as e:
         print(f"Fehler beim Starten von mDNS/Zeroconf: {e}")
 

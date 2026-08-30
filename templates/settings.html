@@ -255,6 +255,11 @@
             <label>Barchart Max Calls (wöchentlich):<br><small>Bei wie vielen Rufen soll der Bargraf für die Wochen-Statistik das Maximum (100%) erreichen?</small></label>
             <input type="number" id="barchart_max_calls_weekly" value="{{ s.get('barchart_max_calls_weekly', 3000) }}" step="100" min="100">
         </div>
+
+        <div class="row">
+            <label>Gerätename (Netzwerk):<br><small>Unter welchem Namen soll die App im Netzwerk erreichbar sein? (Standard: bird-ai-sound-classifier)</small></label>
+            <input type="text" id="device_hostname" value="{{ s.get('device_hostname', 'bird-ai-sound-classifier') }}">
+        </div>
         </div>
 
         <div class="section">
@@ -834,6 +839,7 @@
                 radar_snr_max: parseFloat(document.getElementById('radar_snr_max').value),
                 radar_snr_min: parseFloat(document.getElementById('radar_snr_min').value),
                 barchart_max_calls_weekly: parseInt(document.getElementById('barchart_max_calls_weekly').value),
+                device_hostname: document.getElementById('device_hostname').value,
                 mic_index: parseInt(document.getElementById('mic_index').value),
                 archive_species: document.getElementById('archive_species').value,
                 max_archive_files: parseInt(document.getElementById('max_archive_files').value) || 0,

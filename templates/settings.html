@@ -528,12 +528,22 @@
             inputEng.value = engKey;
             inputEng.className = 'dict-key';
             inputEng.style.flex = '1';
+            if (transValue.trim() === '') {
+                inputEng.style.color = '#FF9800';
+            }
 
             const inputTrans = document.createElement('input');
             inputTrans.type = 'text';
             inputTrans.value = transValue;
             inputTrans.className = 'dict-val';
             inputTrans.style.flex = '1';
+            inputTrans.addEventListener('input', function() {
+                if (this.value.trim() === '') {
+                    inputEng.style.color = '#FF9800';
+                } else {
+                    inputEng.style.color = '';
+                }
+            });
 
             const inputAuf = document.createElement('input');
             inputAuf.type = 'text';

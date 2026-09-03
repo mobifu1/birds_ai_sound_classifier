@@ -3059,6 +3059,9 @@ def api_top_species():
     new_record = c.fetchone()
     new_record_species = new_record[0] if new_record else None
     
+    c.execute("SELECT COUNT(*) FROM detections WHERE date(timestamp) = date('now', 'localtime')")
+    today_total_count = c.fetchone()[0]
+    
     conn.close()
     return jsonify({
         "top": top_data, 
@@ -3068,7 +3071,9 @@ def api_top_species():
         "last_hour_count": last_hour_count,
         "last_24h_count": last_24h_count,
         "seconds_since_latest": seconds_since_latest,
-        "new_record_species": new_record_species
+        "new_record_species": new_record_species,
+        "today_total_count": today_total_count,
+        "radar_time_range": radar_time_range
     })
 
 # --- DATENBANK MANAGEMENT ROUTEN ---

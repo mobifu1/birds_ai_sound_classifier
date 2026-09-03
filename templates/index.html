@@ -279,7 +279,7 @@
             osc.stop(now + 0.05);
         }
 
-        function updateRadar(topDetections, latestSpecies, latestId) {
+        function updateRadar(topDetections, latestSpecies, latestId, todayTotalCount, radarTimeRange) {
             const container = document.getElementById('radar-container');
             const nodesContainer = document.getElementById('radar-nodes');
             const svg = document.getElementById('radar-lines');
@@ -288,7 +288,11 @@
             svg.innerHTML = '';
             
             if (!topDetections || topDetections.length === 0) {
-                nodesContainer.innerHTML = '<div style="position: absolute; left: 50%; top: 60%; transform: translate(-50%, -50%); text-align: center; color: #888;">Heute wurden noch keine Vögel klassifiziert. Sobald ein Vogel erkannt wird, erscheint er hier im Radar!</div>';
+                if (todayTotalCount > 0) {
+                    nodesContainer.innerHTML = `<div style="position: absolute; left: 50%; top: 60%; transform: translate(-50%, -50%); text-align: center; color: #888; font-size: 0.9em; width: 80%;">Es wurden heute schon Vögel erkannt, allerdings keine in den letzten ${radarTimeRange} Stunden.<br>Sobald ein Vogel erkannt wird, erscheint er hier im Radar!</div>`;
+                } else {
+                    nodesContainer.innerHTML = '<div style="position: absolute; left: 50%; top: 60%; transform: translate(-50%, -50%); text-align: center; color: #888; font-size: 0.9em; width: 80%;">Heute wurden noch keine Vögel klassifiziert.<br>Sobald ein Vogel erkannt wird, erscheint er hier im Radar!</div>';
+                }
                 return;
             }
             
@@ -419,7 +423,7 @@
             fetch('/api/top_species')
                 .then(r => r.json())
                 .then(data => {
-                    updateRadar(data.top, data.latest, data.latest_id);
+                    updateRadar(data.top, data.latest, data.latest_id, data.today_total_count, data.radar_time_range);
                     if (data.unique_species_count !== undefined) {
                         let callsCount = data.last_hour_count || 0;
                         let callsColor = '#aed581';

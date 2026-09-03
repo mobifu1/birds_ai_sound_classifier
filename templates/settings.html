@@ -257,9 +257,20 @@
         </div>
 
         <div class="row">
-            <label>Gerätename (Netzwerk):<br><small>Unter welchem Namen soll die App im Netzwerk erreichbar sein? (Standard: bird-ai-sound-classifier)</small></label>
+            <label>Gerätename (Netzwerk):<br><small>Unter welchem Namen soll die App im Netzwerk erreichbar sein? (Vollständige Adresse: <span id="url_preview" style="color: #4CAF50; font-weight: bold;"></span>)</small></label>
             <input type="text" id="device_hostname" value="{{ s.get('device_hostname', 'bird-ai-sound-classifier') }}">
         </div>
+        <script>
+            function updateUrlPreview() {
+                let host = document.getElementById('device_hostname').value.trim() || 'bird-ai-sound-classifier';
+                let safe_host = host.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/^-+|-+$/g, '');
+                if (!safe_host) safe_host = 'bird-ai-sound-classifier';
+                let port = window.location.port ? ':' + window.location.port : '';
+                document.getElementById('url_preview').innerText = 'http://' + safe_host + '.local' + port;
+            }
+            document.getElementById('device_hostname').addEventListener('input', updateUrlPreview);
+            updateUrlPreview();
+        </script>
         </div>
 
         <div class="section">

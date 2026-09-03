@@ -496,6 +496,20 @@ class AudioMonitor:
         ts_file = now_dt.strftime("%y-%m-%d-%H-%M-%S")
         save_detection(species, confidence, calculated_snr, ts_db, geo_prob)
         
+        if is_new_species:
+            full_bird_dict = load_dictionary()
+            if eng_species not in full_bird_dict:
+                full_bird_dict[eng_species] = {
+                    "translation": "",
+                    "blocklist": False,
+                    "ind_conf": "",
+                    "force_active": False,
+                    "link": "",
+                    "priority": False
+                }
+                save_dictionary(full_bird_dict)
+                update_log(f"INFO: Neue Art ins Dictionary aufgenommen: {eng_species}")
+        
         temp_commit_wav = "temp_commit.wav"
         try:
             wf = wave.open(temp_commit_wav, 'wb')
@@ -811,22 +825,7 @@ class AudioMonitor:
                         
                         min_conf = float(settings.get("threshold", MIN_CONFIDENCE * 100)) / 100.0
                         min_snr_val = float(settings.get("min_snr", 0.0))
-                        
                         full_bird_dict = load_dictionary()
-                        
-                        if eng_species not in full_bird_dict:
-                            full_bird_dict[eng_species] = {
-                                "translation": "",
-                                "blocklist": False,
-                                "ind_conf": "",
-                                "force_active": False,
-                                "link": "",
-                                "priority": False
-                            }
-                            save_dictionary(full_bird_dict)
-                            bird_dict = get_bird_dictionary()
-                            species = bird_dict.get(eng_species, eng_species)
-                            update_log(f"INFO: Neue Art ins Dictionary aufgenommen: {eng_species}")
 
                         is_blocklisted = False
                         if eng_species in full_bird_dict and isinstance(full_bird_dict[eng_species], dict):

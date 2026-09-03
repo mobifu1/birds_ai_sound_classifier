@@ -170,9 +170,10 @@ def get_bird_dictionary():
     flat_dict = {}
     for k, v in raw_dict.items():
         if isinstance(v, dict):
-            flat_dict[k] = v.get("translation", k)
+            trans = v.get("translation", "")
+            flat_dict[k] = trans if str(trans).strip() != "" else k
         else:
-            flat_dict[k] = v
+            flat_dict[k] = v if str(v).strip() != "" else k
     return flat_dict
 
 # Analyzer laden (wird im Hintergrundprozess initialisiert)
@@ -815,7 +816,7 @@ class AudioMonitor:
                         
                         if eng_species not in full_bird_dict:
                             full_bird_dict[eng_species] = {
-                                "translation": eng_species,
+                                "translation": "",
                                 "blocklist": False,
                                 "ind_conf": "",
                                 "force_active": False,
@@ -934,7 +935,7 @@ class AudioMonitor:
 # --- FLASK ROUTEN ---
 @app.context_processor
 def inject_version():
-    return dict(version="V1.3.5-RC1", year="2026")
+    return dict(version="V1.3.5-RC2", year="2026")
 
 @app.route('/favicon.ico')
 def favicon():
@@ -1411,7 +1412,8 @@ def generate_weekly_heatmap_html(year_str=None):
         species_meta = {}
         for eng, data in raw_bird_dict.items():
             if isinstance(data, dict):
-                trans = data.get("translation", eng)
+                trans = data.get("translation", "")
+                trans = trans if str(trans).strip() != "" else eng
                 species_meta[trans] = {
                     "aufenthalt": data.get("aufenthalt", ""),
                     "status": data.get("status", "")
@@ -2747,7 +2749,7 @@ def check_model_update():
 
 @app.route('/api/check_app_update')
 def check_app_update():
-    current_version = "V1.3.5-RC1"
+    current_version = "V1.3.5-RC2"
     try:
         import urllib.request
         import json
@@ -3324,7 +3326,8 @@ def check_probability_route():
         
         results = []
         for vogel_name, props in dictionary.items():
-            translated_name = props.get("translation", vogel_name)
+            trans = props.get("translation", "")
+            translated_name = trans if str(trans).strip() != "" else vogel_name
             parts = vogel_name.split('_')
             if len(parts) >= 2:
                 sci_name = parts[0]

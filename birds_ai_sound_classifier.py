@@ -1296,6 +1296,11 @@ def generate_daily_heatmap_html(date_str):
         # Avoid division by zero
         pivot_pct = pivot_counts.div(hour_totals.replace(0, 1), axis=1).mul(100).fillna(0)
         
+        total_counts = pivot_counts.sum(axis=1)
+        pivot_pct['total_sort_idx'] = total_counts
+        pivot_pct = pivot_pct.sort_values('total_sort_idx', ascending=False)
+        pivot_pct = pivot_pct.drop('total_sort_idx', axis=1)
+        
         num_species = len(pivot_counts.index)
         html_table = '<div class="table-responsive" style="margin-top:20px;"><table class="weekly-table">'
         html_table += f'<thead><tr><th style="text-align:left;">Vogelarten ({num_species})</th>'

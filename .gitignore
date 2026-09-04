@@ -9,7 +9,7 @@ debug_log.txt
 generate_pdf.py
 missing_bird_pics.txt
 blocklist-log.txt
-identified_errors.txt
+release_notes.txt
 python-3.10.11-amd64.exe
 
 *.wav

@@ -200,7 +200,78 @@
         {% if daily_pie %}
         <div style="margin-top: 30px; text-align: center;">
             <h2 style="text-align: left; margin-bottom: 15px;">🥧 Status</h2>
-            <img src="data:image/png;base64,{{ daily_pie }}" alt="Status Tortendiagramm" style="max-width: 400px; width: 100%; height: auto; object-fit: contain; margin: 0 auto; display: block;">
+            <div style="max-width: 600px; margin: 0 auto; width: 100%;">
+                <canvas id="dailyPieChart"></canvas>
+            </div>
+            <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+            <script>
+                document.addEventListener('DOMContentLoaded', function() {
+                    const pieData = {{ daily_pie | tojson }};
+                    const ctx = document.getElementById('dailyPieChart').getContext('2d');
+                    
+                    new Chart(ctx, {
+                        type: 'pie',
+                        data: {
+                            labels: pieData.labels,
+                            datasets: [{
+                                data: pieData.sizes,
+                                backgroundColor: pieData.colors,
+                                borderWidth: 1,
+                                borderColor: '#1e1e1e'
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            plugins: {
+                                legend: {
+                                    labels: {
+                                        color: '#fff',
+                                        font: {
+                                            size: 14
+                                        }
+                                    }
+                                },
+                                tooltip: {
+                                    titleFont: { size: 14 },
+                                    bodyFont: { size: 13 },
+                                    padding: 10,
+                                    callbacks: {
+                                        label: function(context) {
+                                            const label = context.label || '';
+                                            const value = context.raw || 0;
+                                            return label + ': ' + value + ' Rufe';
+                                        },
+                                        afterLabel: function(context) {
+                                            const index = context.dataIndex;
+                                            let speciesStr = pieData.species[index];
+                                            if (speciesStr) {
+                                                // To prevent the tooltip from being too wide, we can split it if it has many species
+                                                const maxLen = 60;
+                                                let lines = [];
+                                                while (speciesStr.length > maxLen) {
+                                                    let splitIdx = speciesStr.lastIndexOf(', ', maxLen);
+                                                    if (splitIdx === -1) splitIdx = maxLen;
+                                                    lines.push(speciesStr.substring(0, splitIdx));
+                                                    speciesStr = speciesStr.substring(splitIdx + 2);
+                                                }
+                                                lines.push(speciesStr);
+                                                
+                                                let result = [''];
+                                                result.push('Arten:');
+                                                for(let i=0; i<lines.length; i++){
+                                                    result.push('  ' + lines[i]);
+                                                }
+                                                return result;
+                                            }
+                                            return '';
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    });
+                });
+            </script>
         </div>
         {% endif %}
 

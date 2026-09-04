@@ -1096,7 +1096,7 @@ def daily_page():
 
     s = load_settings()
     daily_chart = create_daily_total_chart(date_str)
-    daily_pie = create_daily_pie_chart(date_str)
+    daily_pie = get_daily_pie_data(date_str)
     return render_template('daily.html', 
         s=s,
         selected_date_str=date_str, total_birds_day=total, 
@@ -1187,7 +1187,7 @@ def create_daily_total_chart(date_str):
     buf.seek(0)
     return base64.b64encode(buf.read()).decode('utf-8')
 
-def create_daily_pie_chart(date_str):
+def get_daily_pie_data(date_str):
     query = f"SELECT species, COUNT(*) as count FROM detections WHERE timestamp LIKE '{date_str}%' GROUP BY species"
     
     conn = sqlite3.connect(DB_FILE, timeout=10)
@@ -1203,6 +1203,7 @@ def create_daily_pie_chart(date_str):
 
     d = load_dictionary()
     status_counts = {}
+    status_species = {}
     
     for _, row in df.iterrows():
         sp = row['species']
@@ -1220,30 +1221,29 @@ def create_daily_pie_chart(date_str):
             status = 'Unbekannt'
             
         status_counts[status] = status_counts.get(status, 0) + count
+        if status not in status_species:
+            status_species[status] = []
+        if sp not in status_species[status]:
+            status_species[status].append(sp)
 
     if not status_counts:
         return None
-
-    fig, ax = plt.subplots(figsize=(4, 4), facecolor='#1e1e1e')
-    ax.set_facecolor('#1e1e1e')
-    
+        
     labels = list(status_counts.keys())
     sizes = list(status_counts.values())
     
-    colors = plt.cm.Set3(np.linspace(0, 1, len(labels)))
+    import matplotlib.colors as mcolors
+    colors_rgba = plt.cm.Set3(np.linspace(0, 1, len(labels)))
+    colors_hex = [mcolors.to_hex(c) for c in colors_rgba]
     
-    wedges, texts, autotexts = ax.pie(sizes, labels=labels, autopct='%1.1f%%', 
-                                      startangle=140, colors=colors, 
-                                      textprops=dict(color="w", fontsize=10))
+    species_lists = [", ".join(status_species[status]) for status in labels]
     
-    plt.tight_layout()
-    buf = io.BytesIO()
-    plt.savefig(buf, format='png', bbox_inches='tight', transparent=True, dpi=100)
-    buf.seek(0)
-    img_base64 = base64.b64encode(buf.read()).decode('utf-8')
-    plt.close(fig)
-    
-    return img_base64
+    return {
+        "labels": labels,
+        "sizes": sizes,
+        "colors": colors_hex,
+        "species": species_lists
+    }
 
 def generate_daily_heatmap_html(date_str):
     query = f"""

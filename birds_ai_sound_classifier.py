@@ -934,7 +934,7 @@ class AudioMonitor:
 # --- FLASK ROUTEN ---
 @app.context_processor
 def inject_version():
-    return dict(version="V1.3.5-RC2", year="2026")
+    return dict(version="V1.3.5-RC3", year="2026")
 
 @app.route('/favicon.ico')
 def favicon():
@@ -1096,6 +1096,7 @@ def daily_page():
 
     s = load_settings()
     daily_chart = create_daily_total_chart(date_str)
+    daily_pie = create_daily_pie_chart(date_str)
     return render_template('daily.html', 
         s=s,
         selected_date_str=date_str, total_birds_day=total, 
@@ -1103,7 +1104,8 @@ def daily_page():
         prev_date=prev_date, next_date=next_date,
         is_today=(dt == today), today_str=today.strftime('%Y-%m-%d'),
         table_content=generate_daily_heatmap_html(date_str),
-        daily_chart=daily_chart
+        daily_chart=daily_chart,
+        daily_pie=daily_pie
     )
 
 def create_daily_total_chart(date_str):
@@ -1184,6 +1186,64 @@ def create_daily_total_chart(date_str):
     plt.close()
     buf.seek(0)
     return base64.b64encode(buf.read()).decode('utf-8')
+
+def create_daily_pie_chart(date_str):
+    query = f"SELECT species, COUNT(*) as count FROM detections WHERE timestamp LIKE '{date_str}%' GROUP BY species"
+    
+    conn = sqlite3.connect(DB_FILE, timeout=10)
+    try:
+        df = pd.read_sql_query(query, conn)
+    except:
+        df = pd.DataFrame()
+    finally:
+        conn.close()
+
+    if df.empty:
+        return None
+
+    d = load_dictionary()
+    status_counts = {}
+    
+    for _, row in df.iterrows():
+        sp = row['species']
+        count = row['count']
+        status = 'Unbekannt'
+        if sp in d:
+            status = d[sp].get('status', 'Unbekannt')
+        else:
+            for k, v in d.items():
+                if v.get('translation') == sp:
+                    status = v.get('status', 'Unbekannt')
+                    break
+                    
+        if not status:
+            status = 'Unbekannt'
+            
+        status_counts[status] = status_counts.get(status, 0) + count
+
+    if not status_counts:
+        return None
+
+    fig, ax = plt.subplots(figsize=(4, 4), facecolor='#1e1e1e')
+    ax.set_facecolor('#1e1e1e')
+    
+    labels = list(status_counts.keys())
+    sizes = list(status_counts.values())
+    
+    colors = plt.cm.Set3(np.linspace(0, 1, len(labels)))
+    
+    wedges, texts, autotexts = ax.pie(sizes, labels=labels, autopct='%1.1f%%', 
+                                      startangle=140, colors=colors, 
+                                      textprops=dict(color="w", fontsize=10))
+    
+    plt.tight_layout()
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png', bbox_inches='tight', transparent=True, dpi=100)
+    buf.seek(0)
+    img_base64 = base64.b64encode(buf.read()).decode('utf-8')
+    plt.close(fig)
+    
+    return img_base64
 
 def generate_daily_heatmap_html(date_str):
     query = f"""
@@ -2748,7 +2808,7 @@ def check_model_update():
 
 @app.route('/api/check_app_update')
 def check_app_update():
-    current_version = "V1.3.5-RC2"
+    current_version = "V1.3.5-RC3"
     try:
         import urllib.request
         import json

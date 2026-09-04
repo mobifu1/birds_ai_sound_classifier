@@ -197,6 +197,13 @@
         </div>
         {% endif %}
 
+        {% if daily_pie %}
+        <div style="margin-top: 30px; text-align: center;">
+            <h2 style="text-align: left; margin-bottom: 15px;">🥧 Status</h2>
+            <img src="data:image/png;base64,{{ daily_pie }}" alt="Status Tortendiagramm" style="max-width: 400px; width: 100%; height: auto; object-fit: contain; margin: 0 auto; display: block;">
+        </div>
+        {% endif %}
+
         <br>
         <div class="footer">
             {{ version }} | {{ year }}

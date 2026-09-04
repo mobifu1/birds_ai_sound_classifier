@@ -1207,7 +1207,7 @@ def get_daily_pie_data(date_str):
     
     for _, row in df.iterrows():
         sp = row['species']
-        count = row['count']
+        # count = row['count']  # We no longer need the call count
         status = 'Unbekannt'
         if sp in d:
             status = d[sp].get('status', 'Unbekannt')
@@ -1220,7 +1220,7 @@ def get_daily_pie_data(date_str):
         if not status:
             status = 'Unbekannt'
             
-        status_counts[status] = status_counts.get(status, 0) + count
+        status_counts[status] = status_counts.get(status, 0) + 1
         if status not in status_species:
             status_species[status] = []
         if sp not in status_species[status]:

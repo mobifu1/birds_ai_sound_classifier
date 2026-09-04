@@ -199,7 +199,7 @@
 
         {% if daily_pie %}
         <div style="margin-top: 30px; text-align: center;">
-            <h2 style="text-align: left; margin-bottom: 15px;">🥧 Status</h2>
+            <h2 style="text-align: left; margin-bottom: 15px;">🥧 Arten nach Status</h2>
             <div style="max-width: 600px; margin: 0 auto; width: 100%;">
                 <canvas id="dailyPieChart"></canvas>
             </div>
@@ -239,7 +239,7 @@
                                         label: function(context) {
                                             const label = context.label || '';
                                             const value = context.raw || 0;
-                                            return label + ': ' + value + ' Rufe';
+                                            return label + ': ' + value + (value === 1 ? ' Art' : ' Arten');
                                         },
                                         afterLabel: function(context) {
                                             const index = context.dataIndex;

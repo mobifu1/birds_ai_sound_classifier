@@ -50,6 +50,33 @@
         .submit-btn:hover {
             background: #45a049;
         }
+
+        .segmented-control {
+            display: inline-flex;
+            background-color: #37474f;
+            border-radius: 20px;
+            overflow: hidden;
+            border: 1px solid #546e7a;
+            margin-left: 10px;
+        }
+
+        .segmented-control input[type="radio"] {
+            display: none;
+        }
+
+        .segmented-control label {
+            padding: 8px 16px;
+            cursor: pointer;
+            color: #aaa;
+            font-weight: bold;
+            transition: all 0.3s;
+            user-select: none;
+        }
+
+        .segmented-control input[type="radio"]:checked + label {
+            background-color: #4CAF50;
+            color: white;
+        }
     </style>
 </head>
 
@@ -75,6 +102,14 @@
                     <option value="{{ sp }}" {% if sp == selected_species %}selected{% endif %}>{{ sp }}</option>
                     {% endfor %}
                 </select>
+                
+                <div class="segmented-control">
+                    <input type="radio" id="mode-absolute" name="time_mode" value="absolute" onchange="this.form.submit()" {% if time_mode != 'relative' %}checked{% endif %}>
+                    <label for="mode-absolute">Absolut</label>
+                    <input type="radio" id="mode-relative" name="time_mode" value="relative" onchange="this.form.submit()" {% if time_mode == 'relative' %}checked{% endif %}>
+                    <label for="mode-relative">Relativ (Sonnenaufgang)</label>
+                </div>
+
                 <noscript>
                     <button type="submit" class="submit-btn">Anzeigen</button>
                 </noscript>

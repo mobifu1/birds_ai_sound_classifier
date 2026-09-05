@@ -5,6 +5,8 @@ import threading
 import multiprocessing as mp
 import sqlite3
 import datetime
+from astral import LocationInfo
+from astral.sun import sun
 import pyaudio
 import wave
 import json
@@ -934,7 +936,7 @@ class AudioMonitor:
 # --- FLASK ROUTEN ---
 @app.context_processor
 def inject_version():
-    return dict(version="V1.3.5-RC3", year="2026")
+    return dict(version="V1.3.5-RC4", year="2026")
 
 @app.route('/favicon.ico')
 def favicon():
@@ -1725,7 +1727,7 @@ def weekly_page():
         current_year=today.year
     )
 
-def create_species_polar_chart(species, hourly_counts):
+def create_species_polar_chart(species, hourly_counts, is_relative=False):
     plt.figure(figsize=(8, 8), facecolor='#1e1e1e')
     ax = plt.subplot(111, polar=True)
     ax.set_facecolor('#1e1e1e')
@@ -1738,14 +1740,19 @@ def create_species_polar_chart(species, hourly_counts):
     ax.set_theta_direction(-1)
     
     ax.set_xticks(theta)
-    ax.set_xticklabels([f"{i:02d}:00" for i in range(24)], color='white')
+    if is_relative:
+        labels = ["Sonnen-\naufgang" if i == 0 else f"+{i}h" if i <= 12 else f"-{24-i}h" for i in range(24)]
+        ax.set_xticklabels(labels, color='white', fontsize=9)
+    else:
+        ax.set_xticklabels([f"{i:02d}:00" for i in range(24)], color='white')
     ax.tick_params(colors='white')
     for spine in ax.spines.values():
         spine.set_color('#444')
     
     bars = ax.bar(theta, hourly_counts, width=2*np.pi/24, bottom=0.0, color='#4CAF50', alpha=0.7, edgecolor='white')
     
-    plt.title(f"Aktivität über 24h: {species}", color='white', y=1.08)
+    title_text = f"Aktivität (Relativ zum Sonnenaufgang): {species}" if is_relative else f"Aktivität über 24h: {species}"
+    plt.title(title_text, color='white', y=1.08)
     plt.grid(color='#444', linestyle='--', linewidth=0.5, alpha=0.5)
     plt.tight_layout()
     
@@ -1970,30 +1977,62 @@ def species_page():
         
     all_species = sorted(list(species_set))
     selected_species = request.args.get('species', '')
+    time_mode = request.args.get('time_mode', 'absolute')
     
     chart_url = None
     total_count = 0
     wav_files = []
     confusion_report = []
     if selected_species:
-        c.execute("SELECT strftime('%H', timestamp) as hour, COUNT(*) FROM detections WHERE species = ? GROUP BY hour", (selected_species,))
-        rows = c.fetchall()
-        
         c.execute("SELECT COUNT(*) FROM detections WHERE species = ?", (selected_species,))
         total_row = c.fetchone()
         total_count = total_row[0] if total_row else 0
         
+        hourly_counts = [0] * 24
+        
         if total_count > 0:
-            hourly_counts = [0] * 24
-            for r in rows:
-                if r[0] is not None:
-                    try:
-                        h = int(r[0])
-                        if 0 <= h < 24:
-                            hourly_counts[h] = r[1]
-                    except:
-                        pass
-            chart_url = create_species_polar_chart(selected_species, hourly_counts)
+            if time_mode == 'relative':
+                settings = load_settings()
+                try:
+                    lat = float(settings.get("gps_lat", -1.0))
+                    lon = float(settings.get("gps_lon", -1.0))
+                except:
+                    lat, lon = -1.0, -1.0
+                
+                if lat != -1.0 and lon != -1.0:
+                    loc = LocationInfo(latitude=lat, longitude=lon)
+                    c.execute("SELECT timestamp FROM detections WHERE species = ?", (selected_species,))
+                    rows = c.fetchall()
+                    local_tz = datetime.datetime.now().astimezone().tzinfo
+                    for r in rows:
+                        if r[0] is not None:
+                            try:
+                                dt = datetime.datetime.strptime(r[0], "%Y-%m-%d %H:%M:%S")
+                                s = sun(loc.observer, date=dt.date())
+                                sunrise_dt = s['sunrise']
+                                dt_aware = dt.replace(tzinfo=local_tz)
+                                diff = dt_aware - sunrise_dt
+                                diff_hours = diff.total_seconds() / 3600.0
+                                rel_hour = int(diff_hours // 1) % 24
+                                hourly_counts[rel_hour] += 1
+                            except:
+                                pass
+                    chart_url = create_species_polar_chart(selected_species, hourly_counts, is_relative=True)
+                else:
+                    time_mode = 'absolute'
+                    
+            if time_mode == 'absolute':
+                c.execute("SELECT strftime('%H', timestamp) as hour, COUNT(*) FROM detections WHERE species = ? GROUP BY hour", (selected_species,))
+                rows = c.fetchall()
+                for r in rows:
+                    if r[0] is not None:
+                        try:
+                            h = int(r[0])
+                            if 0 <= h < 24:
+                                hourly_counts[h] = r[1]
+                        except:
+                            pass
+                chart_url = create_species_polar_chart(selected_species, hourly_counts, is_relative=False)
             
             try:
                 c.execute('CREATE INDEX IF NOT EXISTS idx_timestamp ON detections(timestamp)')
@@ -2034,7 +2073,8 @@ def species_page():
         chart_url=chart_url,
         total_count=total_count,
         wav_files=wav_files,
-        confusion_report=confusion_report
+        confusion_report=confusion_report,
+        time_mode=time_mode
     )
 
 @app.route('/api/archive/audio/<filename>')
@@ -2813,7 +2853,7 @@ def check_model_update():
 
 @app.route('/api/check_app_update')
 def check_app_update():
-    current_version = "V1.3.5-RC3"
+    current_version = "V1.3.5-RC4"
     try:
         import urllib.request
         import json

@@ -104,10 +104,10 @@
                 </select>
                 
                 <div class="segmented-control">
-                    <input type="radio" id="mode-absolute" name="time_mode" value="absolute" onchange="this.form.submit()" {% if time_mode != 'relative' %}checked{% endif %}>
-                    <label for="mode-absolute">Absolut</label>
-                    <input type="radio" id="mode-relative" name="time_mode" value="relative" onchange="this.form.submit()" {% if time_mode == 'relative' %}checked{% endif %}>
-                    <label for="mode-relative">Relativ (Sonnenaufgang)</label>
+                    <input type="radio" id="mode-sunrise" name="time_mode" value="relative_sunrise" onchange="this.form.submit()" {% if time_mode != 'relative_sunset' %}checked{% endif %}>
+                    <label for="mode-sunrise">Relativ (Sonnenaufgang)</label>
+                    <input type="radio" id="mode-sunset" name="time_mode" value="relative_sunset" onchange="this.form.submit()" {% if time_mode == 'relative_sunset' %}checked{% endif %}>
+                    <label for="mode-sunset">Relativ (Sonnenuntergang)</label>
                 </div>
 
                 <noscript>

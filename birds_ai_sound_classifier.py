@@ -1727,7 +1727,7 @@ def weekly_page():
         current_year=today.year
     )
 
-def create_species_polar_chart(species, hourly_counts, is_relative=False):
+def create_species_polar_chart(species, hourly_counts, time_mode='relative_sunrise'):
     plt.figure(figsize=(8, 8), facecolor='#1e1e1e')
     ax = plt.subplot(111, polar=True)
     ax.set_facecolor('#1e1e1e')
@@ -1735,23 +1735,36 @@ def create_species_polar_chart(species, hourly_counts, is_relative=False):
     # 24 hours
     theta = np.linspace(0.0, 2 * np.pi, 24, endpoint=False)
     
-    # 0 degrees at top (midnight), going clockwise
-    ax.set_theta_zero_location("N")
+    # 0 degrees location depending on mode
+    if time_mode == 'relative_sunset':
+        ax.set_theta_zero_location("S")
+    else:
+        ax.set_theta_zero_location("N")
+        
+    # going clockwise
     ax.set_theta_direction(-1)
     
     ax.set_xticks(theta)
-    if is_relative:
+    if time_mode == 'relative_sunset':
+        labels = ["Sonnen-\nuntergang" if i == 0 else f"+{i}h" if i <= 12 else f"-{24-i}h" for i in range(24)]
+    elif time_mode == 'relative_sunrise':
         labels = ["Sonnen-\naufgang" if i == 0 else f"+{i}h" if i <= 12 else f"-{24-i}h" for i in range(24)]
-        ax.set_xticklabels(labels, color='white', fontsize=9)
     else:
-        ax.set_xticklabels([f"{i:02d}:00" for i in range(24)], color='white')
+        labels = [f"{i:02d}:00" for i in range(24)]
+        
+    ax.set_xticklabels(labels, color='white', fontsize=9)
     ax.tick_params(colors='white')
     for spine in ax.spines.values():
         spine.set_color('#444')
     
     bars = ax.bar(theta, hourly_counts, width=2*np.pi/24, bottom=0.0, color='#4CAF50', alpha=0.7, edgecolor='white')
     
-    title_text = f"Aktivität (Relativ zum Sonnenaufgang): {species}" if is_relative else f"Aktivität über 24h: {species}"
+    if time_mode == 'relative_sunset':
+        title_text = f"Aktivität (Relativ zum Sonnenuntergang): {species}"
+    elif time_mode == 'relative_sunrise':
+        title_text = f"Aktivität (Relativ zum Sonnenaufgang): {species}"
+    else:
+        title_text = f"Aktivität über 24h: {species}"
     plt.title(title_text, color='white', y=1.08)
     plt.grid(color='#444', linestyle='--', linewidth=0.5, alpha=0.5)
     plt.tight_layout()
@@ -1977,7 +1990,7 @@ def species_page():
         
     all_species = sorted(list(species_set))
     selected_species = request.args.get('species', '')
-    time_mode = request.args.get('time_mode', 'absolute')
+    time_mode = request.args.get('time_mode', 'relative_sunrise')
     
     chart_url = None
     total_count = 0
@@ -1991,7 +2004,7 @@ def species_page():
         hourly_counts = [0] * 24
         
         if total_count > 0:
-            if time_mode == 'relative':
+            if time_mode in ('relative_sunrise', 'relative_sunset'):
                 settings = load_settings()
                 try:
                     lat = float(settings.get("gps_lat", -1.0))
@@ -2009,15 +2022,15 @@ def species_page():
                             try:
                                 dt = datetime.datetime.strptime(r[0], "%Y-%m-%d %H:%M:%S")
                                 s = sun(loc.observer, date=dt.date())
-                                sunrise_dt = s['sunrise']
+                                ref_dt = s['sunrise'] if time_mode == 'relative_sunrise' else s['sunset']
                                 dt_aware = dt.replace(tzinfo=local_tz)
-                                diff = dt_aware - sunrise_dt
+                                diff = dt_aware - ref_dt
                                 diff_hours = diff.total_seconds() / 3600.0
                                 rel_hour = int(diff_hours // 1) % 24
                                 hourly_counts[rel_hour] += 1
                             except:
                                 pass
-                    chart_url = create_species_polar_chart(selected_species, hourly_counts, is_relative=True)
+                    chart_url = create_species_polar_chart(selected_species, hourly_counts, time_mode=time_mode)
                 else:
                     time_mode = 'absolute'
                     
@@ -2032,7 +2045,7 @@ def species_page():
                                 hourly_counts[h] = r[1]
                         except:
                             pass
-                chart_url = create_species_polar_chart(selected_species, hourly_counts, is_relative=False)
+                chart_url = create_species_polar_chart(selected_species, hourly_counts, time_mode='absolute')
             
             try:
                 c.execute('CREATE INDEX IF NOT EXISTS idx_timestamp ON detections(timestamp)')

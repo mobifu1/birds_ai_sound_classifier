@@ -2379,7 +2379,11 @@ def yearly_page():
 
         def _pct(v):
             f = safe_float(v)
-            return round(f * 100, 1) if f is not None else None
+            if f is None:
+                return None
+            # If value is already stored as percentage (> 1.0), don't multiply again
+            pct = f if f > 1.0 else f * 100
+            return round(min(pct, 100.0), 1)
 
         def _val(v):
             f = safe_float(v)

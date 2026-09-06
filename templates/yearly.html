@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html>
 
 <head>
@@ -88,6 +88,9 @@
             text-align: left;
             border-bottom: 2px solid #37474f;
             white-space: nowrap;
+            position: sticky;
+            top: 0;
+            z-index: 2;
         }
 
         .first-seen-table td {
@@ -202,7 +205,7 @@
                     style="width: 100%; max-width: 400px; padding: 10px; border-radius: 4px;
                            border: 1px solid #37474f; background: #263238; color: #fff;">
             </div>
-            <div style="background: #1e1e1e; padding: 20px; border-radius: 8px; border: 1px solid #333; overflow-x: auto;">
+            <div style="background: #1e1e1e; padding: 20px; border-radius: 8px; border: 1px solid #333; overflow-x: auto; overflow-y: auto; max-height: 75vh;">
                 <table class="first-seen-table">
                     <thead>
                         <tr>
@@ -343,6 +346,25 @@
                 row.style.display = row.getAttribute('data-species').includes(query) ? '' : 'none';
             });
         }
+        function fixStickyHeaders() {
+            const table = document.querySelector('.first-seen-table');
+            if (!table) return;
+            const rows = table.querySelectorAll('thead tr');
+            if (rows.length < 2) return;
+            const firstRowHeight = rows[0].getBoundingClientRect().height;
+            rows[1].querySelectorAll('th').forEach(th => {
+                th.style.top = firstRowHeight + 'px';
+            });
+        }
+
+        // Run after view is shown (showView switches display)
+        const _origShowView = window.showView;
+        window.showView = function(view) {
+            _origShowView(view);
+            if (view === 'firstseen') fixStickyHeaders();
+        };
+        // Also run on page load in case firstseen is the active view
+        document.addEventListener('DOMContentLoaded', fixStickyHeaders);
         </script>
 
         {% else %}

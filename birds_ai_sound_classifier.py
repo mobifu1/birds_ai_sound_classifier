@@ -2285,15 +2285,28 @@ def yearly_page():
     except:
         year = today.year
         year_str = str(year)
-        
+
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
     c.execute("SELECT species, COUNT(*) as c FROM detections WHERE timestamp LIKE ? GROUP BY species ORDER BY c DESC", (f"{year_str}%",))
     rows = c.fetchall()
+
+    # Query first & last detection per species in selected year (window functions)
+    c.execute("""
+        SELECT
+            species,
+            MIN(timestamp) AS first_time,
+            MAX(timestamp) AS last_time
+        FROM detections
+        WHERE timestamp LIKE ?
+        GROUP BY species
+        ORDER BY first_time DESC
+    """, (f"{year_str}%",))
+    first_last_rows = c.fetchall()
     conn.close()
-    
+
     total = sum([r[1] for r in rows])
-    
+
     icon_map = {}
     static_folder = os.path.join(app.root_path, 'static', 'bird_icons')
     if os.path.exists(static_folder):
@@ -2308,7 +2321,7 @@ def yearly_page():
         if clean in icon_map: return icon_map[clean]
         if clean + '.png' in icon_map: return icon_map[clean + '.png']
         return 'bird_icons/Unbekannt.png'
-        
+
     def format_count(c):
         if c >= 1_000_000:
             return f"{c/1_000_000:.1f}M".replace('.', ',')
@@ -2320,9 +2333,9 @@ def yearly_page():
     import math
     max_val = max([r[1] for r in rows]) if rows else 0
     max_log = math.log10(max_val + 1) if max_val > 0 else 1
-    
+
     color_palette = ['#e6194b', '#3cb44b', '#ffe119', '#4363d8', '#f58231', '#911eb4', '#46f0f0', '#f032e6', '#bcf60c', '#fabebe', '#008080', '#e6beff', '#9a6324', '#fffac8', '#800000', '#aaffc3', '#808000', '#ffd8b1', '#000075', '#808080', '#ffffff', '#000000']
-    
+
     bird_data = []
     for i, r in enumerate(rows):
         species = r[0]
@@ -2336,12 +2349,62 @@ def yearly_page():
             'width_pct': width_pct,
             'color': color_palette[i % len(color_palette)]
         })
-        
-    return render_template('yearly.html', 
+
+    # Build first_seen_data: fetch exact row details for first and last timestamps
+    # geo_prob may be stored as BLOB (bytes) – safe_float handles all cases
+    def safe_float(v):
+        if v is None:
+            return None
+        if isinstance(v, (bytes, bytearray)):
+            try:
+                import struct
+                if len(v) == 8:
+                    return struct.unpack('d', v)[0]
+                elif len(v) == 4:
+                    return struct.unpack('f', v)[0]
+                return float(v.decode('utf-8', errors='replace'))
+            except Exception:
+                return None
+        return float(v)
+
+    first_seen_data = []
+    conn2 = sqlite3.connect(DB_FILE)
+    c2 = conn2.cursor()
+    for row in first_last_rows:
+        species, first_time, last_time = row[0], row[1], row[2]
+        c2.execute("SELECT confidence, geo_prob, snr FROM detections WHERE species=? AND timestamp=? LIMIT 1", (species, first_time))
+        fr = c2.fetchone()
+        c2.execute("SELECT confidence, geo_prob, snr FROM detections WHERE species=? AND timestamp=? LIMIT 1", (species, last_time))
+        lr = c2.fetchone()
+
+        def _pct(v):
+            f = safe_float(v)
+            return round(f * 100, 1) if f is not None else None
+
+        def _val(v):
+            f = safe_float(v)
+            return round(f, 1) if f is not None else None
+
+        first_seen_data.append({
+            'species': species,
+            'icon': get_icon(species),
+            'first_time': first_time,
+            'first_conf': _pct(fr[0]) if fr else None,
+            'first_prob': _pct(fr[1]) if fr else None,
+            'first_snr':  _val(fr[2]) if fr else None,
+            'last_time': last_time,
+            'last_conf': _pct(lr[0]) if lr else None,
+            'last_prob': _pct(lr[1]) if lr else None,
+            'last_snr':  _val(lr[2]) if lr else None,
+        })
+    conn2.close()
+
+    return render_template('yearly.html',
         bird_data=bird_data, selected_year=year, total_birds_year=total,
         prev_year=year-1, next_year=year+1,
         is_current_year=(year == today.year), current_year=today.year,
-        unique_species_year=len(rows)
+        unique_species_year=len(rows),
+        first_seen_data=first_seen_data
     )
 
 @app.route('/manual_entry')

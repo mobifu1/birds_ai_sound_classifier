@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html>
 
 <head>
@@ -35,6 +35,90 @@
         a.jumper-btn:hover {
             background: #455a64;
         }
+
+        /* Pill Toggle */
+        .view-toggle {
+            display: flex;
+            justify-content: center;
+            margin: 18px 0 10px;
+        }
+
+        .pill-switch {
+            display: inline-flex;
+            background: #263238;
+            border: 1px solid #37474f;
+            border-radius: 50px;
+            padding: 4px;
+            gap: 4px;
+        }
+
+        .pill-switch button {
+            border: none;
+            border-radius: 50px;
+            padding: 8px 22px;
+            font-size: 0.9em;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background 0.2s, color 0.2s;
+            background: transparent;
+            color: #90a4ae;
+        }
+
+        .pill-switch button.active {
+            background: #0288d1;
+            color: #fff;
+        }
+
+        .pill-switch button:hover:not(.active) {
+            background: #37474f;
+            color: #fff;
+        }
+
+        /* First-seen table */
+        .first-seen-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.88em;
+        }
+
+        .first-seen-table th {
+            background: #263238;
+            color: #81d4fa;
+            padding: 10px 12px;
+            text-align: left;
+            border-bottom: 2px solid #37474f;
+            white-space: nowrap;
+        }
+
+        .first-seen-table td {
+            padding: 8px 12px;
+            border-bottom: 1px solid #2a2a2a;
+            vertical-align: middle;
+            white-space: nowrap;
+        }
+
+        .first-seen-table tr:hover td {
+            background: #1e2c34;
+        }
+
+        .fs-separator {
+            width: 1px;
+            background: #37474f;
+            padding: 0;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 2px 7px;
+            border-radius: 10px;
+            font-size: 0.82em;
+            font-weight: bold;
+        }
+
+        .badge-conf { background: #1b5e20; color: #a5d6a7; }
+        .badge-prob { background: #1a237e; color: #90caf9; }
+        .badge-snr  { background: #37474f; color: #eceff1; }
+        .badge-null { background: #424242; color: #9e9e9e; }
     </style>
 </head>
 
@@ -68,41 +152,199 @@
             <span style="font-size: 0.7em; color: #aed581;">&#128038; Unterschiedliche Arten: {{ unique_species_year }}</span>
         </div>
 
+        <!-- Pill Toggle -->
+        <div class="view-toggle">
+            <div class="pill-switch">
+                <button id="btn-chart" class="active" onclick="showView('chart')">📊 Häufigkeit</button>
+                <button id="btn-firstseen" onclick="showView('firstseen')">🆕 Erstmals erkannt</button>
+            </div>
+        </div>
+
         {% if bird_data %}
+        <!-- VIEW: Chart -->
+        <div id="view-chart">
             <div style="margin-top: 15px; margin-bottom: 20px; text-align: left;">
-                <input type="text" id="yearlySearchInput" placeholder="🔍 Vogelart suchen..." onkeyup="filterYearlyBars()" style="width: 100%; max-width: 400px; padding: 10px; border-radius: 4px; border: 1px solid #37474f; background: #263238; color: #fff;">
+                <input type="text" id="yearlySearchInput" placeholder="🔍 Vogelart suchen..."
+                    onkeyup="filterYearlyBars()"
+                    style="width: 100%; max-width: 400px; padding: 10px; border-radius: 4px;
+                           border: 1px solid #37474f; background: #263238; color: #fff;">
             </div>
 
             <div id="yearly-bars-container" style="background: #1e1e1e; padding: 20px; border-radius: 8px; border: 1px solid #333;">
                 {% for bird in bird_data %}
-                <div class="yearly-bar-row" data-species="{{ bird.species | lower }}" style="display: flex; align-items: center; margin-bottom: 12px;">
-                    <div style="width: 300px; min-width: 300px; display: flex; align-items: center; text-align: left; padding-right: 15px;">
-                        <img src="{{ url_for('static', filename=bird.icon) }}" style="width: 36px; height: 36px; object-fit: contain; margin-right: 10px; border-radius: 4px; background: #fff;">
-                        <span style="font-size: 0.95em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="{{ bird.species }} ({{ bird.formatted_count }})">
+                <div class="yearly-bar-row" data-species="{{ bird.species | lower }}"
+                     style="display: flex; align-items: center; margin-bottom: 12px;">
+                    <div style="width: 300px; min-width: 300px; display: flex; align-items: center;
+                                text-align: left; padding-right: 15px;">
+                        <img src="{{ url_for('static', filename=bird.icon) }}"
+                             style="width: 36px; height: 36px; object-fit: contain; margin-right: 10px;
+                                    border-radius: 4px; background: #fff;">
+                        <span style="font-size: 0.95em; white-space: nowrap; overflow: hidden;
+                                     text-overflow: ellipsis;" title="{{ bird.species }} ({{ bird.formatted_count }})">
                             {{ bird.species }} <span style="color: #aaa;">({{ bird.formatted_count }})</span>
                         </span>
                     </div>
                     <div style="flex-grow: 1; background: #333; height: 24px; border-radius: 4px; position: relative;">
-                        <div style="width: {{ bird.width_pct }}%; background: {{ bird.color }}; height: 100%; border-radius: 4px;"></div>
+                        <div style="width: {{ bird.width_pct }}%; background: {{ bird.color }};
+                                    height: 100%; border-radius: 4px;"></div>
                     </div>
                 </div>
                 {% endfor %}
             </div>
+        </div>
 
-            <script>
-            function filterYearlyBars() {
-                const query = document.getElementById('yearlySearchInput').value.toLowerCase();
-                const rows = document.querySelectorAll('.yearly-bar-row');
-                rows.forEach(row => {
-                    const species = row.getAttribute('data-species');
-                    if (species.includes(query)) {
-                        row.style.display = 'flex';
-                    } else {
-                        row.style.display = 'none';
-                    }
-                });
+        <!-- VIEW: First Seen -->
+        <div id="view-firstseen" style="display:none;">
+            {% if first_seen_data %}
+            <div style="margin-top: 15px; margin-bottom: 15px; text-align: left;">
+                <input type="text" id="fsSearchInput" placeholder="🔍 Vogelart suchen..."
+                    onkeyup="filterFirstSeen()"
+                    style="width: 100%; max-width: 400px; padding: 10px; border-radius: 4px;
+                           border: 1px solid #37474f; background: #263238; color: #fff;">
+            </div>
+            <div style="background: #1e1e1e; padding: 20px; border-radius: 8px; border: 1px solid #333; overflow-x: auto;">
+                <table class="first-seen-table">
+                    <thead>
+                        <tr>
+                            <th style="min-width:36px;"></th>
+                            <th>Vogelart</th>
+                            <th colspan="4" style="color:#aed581;">&#x1F7E2; Erstmals erkannt</th>
+                            <th class="fs-separator"></th>
+                            <th colspan="4" style="color:#90caf9;">&#x1F550; Zuletzt erkannt</th>
+                        </tr>
+                        <tr style="font-size:0.8em; color:#78909c;">
+                            <th></th>
+                            <th></th>
+                            <th>Datum &amp; Uhrzeit</th>
+                            <th>Konfidenz</th>
+                            <th>Probability</th>
+                            <th>SNR</th>
+                            <th class="fs-separator"></th>
+                            <th>Datum &amp; Uhrzeit</th>
+                            <th>Konfidenz</th>
+                            <th>Probability</th>
+                            <th>SNR</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for bird in first_seen_data %}
+                        <tr class="fs-row" data-species="{{ bird.species | lower }}">
+                            <td>
+                                <img src="{{ url_for('static', filename=bird.icon) }}"
+                                     style="width:32px; height:32px; object-fit:contain;
+                                            border-radius:4px; background:#fff; display:block;">
+                            </td>
+                            <td style="font-weight:bold;">{{ bird.species }}</td>
+
+                            <!-- First detection -->
+                            <td style="color:#aed581;">{{ bird.first_time }}</td>
+                            <td>
+                                {% if bird.first_conf is not none %}
+                                <span class="badge badge-conf">{{ bird.first_conf }}%</span>
+                                {% else %}<span class="badge badge-null">&#8211;</span>{% endif %}
+                            </td>
+                            <td>
+                                {% if bird.first_prob is not none %}
+                                <span class="badge badge-prob">{{ bird.first_prob }}%</span>
+                                {% else %}<span class="badge badge-null">&#8211;</span>{% endif %}
+                            </td>
+                            <td>
+                                {% if bird.first_snr is not none %}
+                                <span class="badge badge-snr">{{ bird.first_snr }} dB</span>
+                                {% else %}<span class="badge badge-null">&#8211;</span>{% endif %}
+                            </td>
+
+                            <!-- Separator -->
+                            <td class="fs-separator"></td>
+
+                            <!-- Last detection -->
+                            <td style="color:#90caf9;">
+                                {% if bird.last_time != bird.first_time %}
+                                    {{ bird.last_time }}
+                                {% else %}
+                                    <span style="color:#546e7a;">= Erstmals</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if bird.last_time != bird.first_time %}
+                                    {% if bird.last_conf is not none %}
+                                    <span class="badge badge-conf">{{ bird.last_conf }}%</span>
+                                    {% else %}<span class="badge badge-null">&#8211;</span>{% endif %}
+                                {% else %}
+                                    <span style="color:#546e7a;">&#8212;</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if bird.last_time != bird.first_time %}
+                                    {% if bird.last_prob is not none %}
+                                    <span class="badge badge-prob">{{ bird.last_prob }}%</span>
+                                    {% else %}<span class="badge badge-null">&#8211;</span>{% endif %}
+                                {% else %}
+                                    <span style="color:#546e7a;">&#8212;</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if bird.last_time != bird.first_time %}
+                                    {% if bird.last_snr is not none %}
+                                    <span class="badge badge-snr">{{ bird.last_snr }} dB</span>
+                                    {% else %}<span class="badge badge-null">&#8211;</span>{% endif %}
+                                {% else %}
+                                    <span style="color:#546e7a;">&#8212;</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p style="color: #ff9800; font-weight:bold;">Keine Daten für {{ selected_year }}.</p>
+            {% endif %}
+        </div>
+
+        <script>
+        function showView(view) {
+            const chartDiv = document.getElementById('view-chart');
+            const fsDiv    = document.getElementById('view-firstseen');
+            const btnChart = document.getElementById('btn-chart');
+            const btnFs    = document.getElementById('btn-firstseen');
+
+            if (view === 'chart') {
+                chartDiv.style.display = '';
+                fsDiv.style.display    = 'none';
+                btnChart.classList.add('active');
+                btnFs.classList.remove('active');
+                sessionStorage.setItem('yearlyView_{{ selected_year }}', 'chart');
+            } else {
+                chartDiv.style.display = 'none';
+                fsDiv.style.display    = '';
+                btnFs.classList.add('active');
+                btnChart.classList.remove('active');
+                sessionStorage.setItem('yearlyView_{{ selected_year }}', 'firstseen');
             }
-            </script>
+        }
+
+        // Restore last active tab after auto-refresh
+        (function() {
+            const saved = sessionStorage.getItem('yearlyView_{{ selected_year }}');
+            if (saved === 'firstseen') showView('firstseen');
+        })();
+
+        function filterYearlyBars() {
+            const query = document.getElementById('yearlySearchInput').value.toLowerCase();
+            document.querySelectorAll('.yearly-bar-row').forEach(row => {
+                row.style.display = row.getAttribute('data-species').includes(query) ? 'flex' : 'none';
+            });
+        }
+
+        function filterFirstSeen() {
+            const query = document.getElementById('fsSearchInput').value.toLowerCase();
+            document.querySelectorAll('.fs-row').forEach(row => {
+                row.style.display = row.getAttribute('data-species').includes(query) ? '' : 'none';
+            });
+        }
+        </script>
+
         {% else %}
         <p style="color: #ff9800; font-weight:bold;">Für das Jahr {{ selected_year }} sind keine Daten vorhanden.</p>
         {% endif %}

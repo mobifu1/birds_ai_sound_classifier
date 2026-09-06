@@ -1470,7 +1470,8 @@ def generate_weekly_heatmap_html(year_str=None):
             "Standvogel": "SV",
             "Teilzieher": "TZ",
             "Zugvogel": "ZV",
-            "Wintergast": "WG"
+            "Wintergast": "WG",
+            "Durchzieher": "DZ"
         }
 
         settings = load_settings()

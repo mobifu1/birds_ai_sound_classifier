@@ -936,7 +936,7 @@ class AudioMonitor:
 # --- FLASK ROUTEN ---
 @app.context_processor
 def inject_version():
-    return dict(version="V1.3.5-RC4", year="2026")
+    return dict(version="V1.3.5-RC5", year="2026")
 
 @app.route('/favicon.ico')
 def favicon():
@@ -1502,20 +1502,17 @@ def generate_weekly_heatmap_html(year_str=None):
 
             html_table += f'<tr><td style="text-align:left; font-weight:bold;"><div class="species-wrapper">{img_tag}<span>{display_species}</span></div></td>'
             
-            start_m, end_m = 0, 0
-            if aufenthalt and '-' in aufenthalt:
-                try:
-                    parts = aufenthalt.split('-')
-                    start_m = int(parts[0])
-                    end_m = int(parts[1])
-                except:
-                    pass
+            periods = []
+            if aufenthalt:
+                matches = re.findall(r'(\d+)\s*-\s*(\d+)', aufenthalt)
+                for s, e in matches:
+                    periods.append((int(s), int(e)))
             
             in_range_list = []
             for col_name in row.keys():
                 w_match = re.search(r"^(\d{2})<br>.*?\'(\d{2})</small>$", col_name)
                 is_in_range = False
-                if w_match and start_m and end_m:
+                if w_match and periods:
                     w = int(w_match.group(1))
                     y = 2000 + int(w_match.group(2))
                     try:
@@ -1526,12 +1523,13 @@ def generate_weekly_heatmap_html(year_str=None):
                         except:
                             month = ((w - 1) * 12) // 52 + 1
                     
-                    if start_m <= end_m:
-                        if start_m <= month <= end_m:
-                            is_in_range = True
-                    else:
-                        if month >= start_m or month <= end_m:
-                            is_in_range = True
+                    for start_m, end_m in periods:
+                        if start_m <= end_m:
+                            if start_m <= month <= end_m:
+                                is_in_range = True
+                        else:
+                            if month >= start_m or month <= end_m:
+                                is_in_range = True
                 in_range_list.append(is_in_range)
                 
             for i, (col_name, val) in enumerate(row.items()):
@@ -1543,7 +1541,8 @@ def generate_weekly_heatmap_html(year_str=None):
                 style = ''
                 
                 if is_in_range:
-                    if start_m and end_m and start_m > end_m:
+                    wraps = any(s > e for s, e in periods)
+                    if periods and wraps:
                         is_start = (i > 0) and not in_range_list[i-1]
                         is_end = (i < len(in_range_list) - 1) and not in_range_list[i+1]
                     else:
@@ -2629,6 +2628,8 @@ def api_save_settings():
     save_setting("barchart_max_calls_weekly", int(data.get("barchart_max_calls_weekly", 3000)))
     if "device_hostname" in data:
         save_setting("device_hostname", data.get("device_hostname", "bird-ai-sound-classifier"))
+    if "station_name" in data:
+        save_setting("station_name", data.get("station_name", ""))
     if "mic_index" in data:
         save_setting("mic_index", data.get("mic_index", -1))
     if "archive_species" in data:
@@ -2934,7 +2935,7 @@ def check_model_update():
 
 @app.route('/api/check_app_update')
 def check_app_update():
-    current_version = "V1.3.5-RC4"
+    current_version = "V1.3.5-RC5"
     try:
         import urllib.request
         import json

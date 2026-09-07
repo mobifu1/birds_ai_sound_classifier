@@ -260,6 +260,11 @@
             <label>Gerätename (Netzwerk):<br><small>Unter welchem Namen soll die App im Netzwerk erreichbar sein? (Vollständige Adresse: <span id="url_preview" style="color: #4CAF50; font-weight: bold;"></span>)</small></label>
             <input type="text" id="device_hostname" value="{{ s.get('device_hostname', 'bird-ai-sound-classifier') }}">
         </div>
+
+        <div class="row">
+            <label>Stationsname:<br><small>Optionaler Name für diese Station (wird im Dashboard statt des App-Namens angezeigt).</small></label>
+            <input type="text" id="station_name" value="{{ s.get('station_name', '') }}">
+        </div>
         <script>
             function updateUrlPreview() {
                 let host = document.getElementById('device_hostname').value.trim() || 'bird-ai-sound-classifier';
@@ -861,6 +866,7 @@
                 radar_snr_min: parseFloat(document.getElementById('radar_snr_min').value),
                 barchart_max_calls_weekly: parseInt(document.getElementById('barchart_max_calls_weekly').value),
                 device_hostname: document.getElementById('device_hostname').value,
+                station_name: document.getElementById('station_name').value,
                 mic_index: parseInt(document.getElementById('mic_index').value),
                 archive_species: document.getElementById('archive_species').value,
                 max_archive_files: parseInt(document.getElementById('max_archive_files').value) || 0,

@@ -3490,7 +3490,8 @@ def update_dictionary():
         if added > 0:
             save_dictionary(local_dict)
             
-        return jsonify({'success': True, 'msg': f'Update abgeschlossen. {added} neue Vögel dem Wörterbuch hinzugefügt.'})
+        total_entries = len(local_dict)
+        return jsonify({'success': True, 'msg': f'Update abgeschlossen. {added} neue Vögel hinzugefügt. (Gesamt: {total_entries} Einträge im Wörterbuch)'})
     except Exception as e:
         return jsonify({'success': False, 'msg': f'Fehler: {str(e)}'})
 

@@ -936,7 +936,7 @@ class AudioMonitor:
 # --- FLASK ROUTEN ---
 @app.context_processor
 def inject_version():
-    return dict(version="V1.3.5", year="2026")
+    return dict(version="V1.3.6-RC1", year="2026")
 
 @app.route('/favicon.ico')
 def favicon():
@@ -1974,6 +1974,195 @@ def api_intersection_data():
                 
     return jsonify({'data': venn_data})
 
+@app.route('/fft')
+def fft_page():
+    species_set = set(get_bird_dictionary().values())
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    try:
+        c.execute("SELECT DISTINCT species FROM detections")
+        for row in c.fetchall():
+            if row[0] != 'IGNORED_LOW_CONFIDENCE':
+                species_set.add(row[0])
+    except:
+        pass
+    all_species = sorted(list(species_set))
+    return render_template('fft.html', all_species=all_species, version="V1.3.6-RC1", year=datetime.datetime.now().year)
+
+@app.route('/api/fft_plot')
+def api_fft_plot():
+    species = request.args.get('species')
+    if not species:
+        return jsonify({"error": "No species provided"})
+    
+    bin_min = int(request.args.get('bin', 60))
+    threshold_pct = float(request.args.get('threshold', 15.0))
+    show_raw = int(request.args.get('raw', 1)) == 1
+    
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("SELECT timestamp, confidence, snr FROM detections WHERE species=? ORDER BY timestamp", (species,))
+    rows = c.fetchall()
+    conn.close()
+    
+    if not rows:
+        return jsonify({"error": f"Keine Detektionen für '{species}' gefunden."})
+        
+    fmt = "%Y-%m-%d %H:%M:%S"
+    parsed = []
+    for ts, conf, snr in rows:
+        try:
+            dt = datetime.datetime.strptime(ts, fmt)
+            parsed.append(dt)
+        except ValueError:
+            pass
+    
+    if not parsed:
+        return jsonify({"error": "Konnte Zeitstempel nicht parsen."})
+        
+    t0, t1 = parsed[0], parsed[-1]
+    n_bins = int((t1 - t0).total_seconds() / 60) // bin_min + 2
+    cnt = np.zeros(n_bins)
+    for dt in parsed:
+        i = min(int((dt - t0).total_seconds() / 60) // bin_min, n_bins - 1)
+        cnt[i] += 1
+        
+    sig = cnt
+    times = [t0 + datetime.timedelta(minutes=i * bin_min) for i in range(n_bins)]
+    
+    if len(sig) < 8:
+        return jsonify({"error": "Zu wenige Datenpunkte für eine FFT."})
+        
+    N = len(sig)
+    sc = sig - np.mean(sig)
+    w = np.hanning(N)
+    fft_v = np.fft.rfft(sc * w)
+    freqs = np.fft.rfftfreq(N, d=bin_min / 60.0)
+    power = (np.abs(fft_v) ** 2) / N
+    
+    freqs = freqs[1:]
+    power = power[1:]
+    
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+    import matplotlib.ticker as ticker
+    import io
+    import base64
+    
+    BG       = "#1e1e2e"
+    PANEL    = "#2a2a3e"
+    ACCENT   = "#7c9ded"
+    YELLOW   = "#f9e2af"
+    TEXT     = "#cdd6f4"
+    SUBTEXT  = "#a6adc8"
+    
+    fig = plt.figure(figsize=(10.8, 7.2), dpi=100)
+    fig.patch.set_facecolor(BG)
+    
+    if show_raw:
+        gs  = fig.add_gridspec(2,1,hspace=0.42,top=0.91,bottom=0.08,left=0.12,right=0.97,height_ratios=[1,2])
+        a0  = fig.add_subplot(gs[0])
+        a1  = fig.add_subplot(gs[1])
+        a0.set_facecolor(PANEL)
+        a0.plot(times, sig, color=ACCENT, lw=0.8, alpha=0.9)
+        a0.fill_between(times, sig, alpha=0.18, color=ACCENT)
+        a0.set_ylabel("Detektionen / Bin", fontsize=9, color=SUBTEXT)
+        a0.set_title("Zeitreihe (Eingangssignal)", fontsize=10, color=TEXT, pad=4)
+        a0.grid(True, color="#3a3a5e", linestyle="--", alpha=0.5)
+        a0.tick_params(axis="x", labelrotation=20, labelsize=8, colors=SUBTEXT)
+        a0.tick_params(axis="y", colors=SUBTEXT)
+        for spine in a0.spines.values(): spine.set_color(SUBTEXT)
+    else:
+        gs = fig.add_gridspec(1,1,top=0.91,bottom=0.10,left=0.12,right=0.97)
+        a1 = fig.add_subplot(gs[0])
+
+    a1.set_facecolor(PANEL)
+    a1.plot(freqs, power, color=ACCENT, lw=1.0, zorder=3)
+    a1.fill_between(freqs, power, alpha=0.22, color=ACCENT, zorder=2)
+    
+    if len(power) > 0:
+        local_max = np.where((power[1:-1] > power[:-2]) & (power[1:-1] > power[2:]))[0] + 1
+        min_dist = max(3, len(freqs) // 80)
+        candidates = sorted(local_max, key=lambda i: power[i], reverse=True)
+        selected = []
+        for pi in candidates:
+            if all(abs(pi - s) >= min_dist for s in selected):
+                selected.append(pi)
+        
+        if selected:
+            pct = max(0.1, threshold_pct) / 100.0
+            threshold = power[selected[0]] * pct
+            selected = [pi for pi in selected if power[pi] >= threshold][:6]
+            
+        ylims = a1.get_ylim()
+        y_range = ylims[1] - ylims[0]
+        offs = y_range * 0.10
+        total_peak_power = sum(power[pi] for pi in selected) if selected else 1.0
+        
+        for pi in selected:
+            fp, pp = freqs[pi], power[pi]
+            if fp <= 0: continue
+            ph = 1.0 / fp
+            if ph >= 24: period_str = f"{ph/24:.1f}d"
+            elif ph >= 1: period_str = f"{ph:.1f}h"
+            else: period_str = f"{ph*60:.0f}m"
+            share = pp / total_peak_power * 100.0
+            pl = f"{period_str}\n{share:.1f}%"
+            
+            if (pp + offs) > ylims[1] - y_range * 0.05:
+                y_text, va_text = pp - offs, "top"
+            else:
+                y_text, va_text = pp + offs, "bottom"
+                
+            a1.plot(fp, pp, "o", color=YELLOW, ms=5, zorder=6)
+            a1.annotate(pl, xy=(fp, pp), xytext=(fp, y_text),
+                        color=YELLOW, fontsize=8, ha="center", va=va_text,
+                        fontweight="bold", arrowprops=dict(arrowstyle="->", color=YELLOW, lw=0.8),
+                        annotation_clip=False, zorder=7)
+
+    def period_fmt(x, _):
+        if x <= 0: return ""
+        h = 1.0 / x
+        if h >= 720: return f"{h/24:.0f}d"
+        if h >= 24:  return f"{h/24:.1f}d"
+        if h >= 1:   return f"{h:.0f}h"
+        return f"{h*60:.0f}m"
+
+    a1.xaxis.set_major_formatter(ticker.FuncFormatter(period_fmt))
+    a1.set_xlabel("Periode  (d=Tage, h=Stunden, m=Minuten)", fontsize=10, color=TEXT)
+    a1.set_ylabel("Power  |X(f)|^2", fontsize=10, color=TEXT)
+    a1.set_title(f"Frequenzspektrum  --  {species}  |  Zeitauflösung: {bin_min} min", fontsize=11, color=TEXT, pad=10, fontweight="bold")
+    x_pad = (freqs.max() - freqs.min()) * 0.05
+    a1.set_xlim(freqs.min() - x_pad, freqs.max() + x_pad)
+    a1.grid(True, which="major", color="#3a3a5e", linestyle="--", alpha=0.5)
+    a1.tick_params(axis="x", colors=SUBTEXT)
+    a1.tick_params(axis="y", colors=SUBTEXT)
+    for spine in a1.spines.values(): spine.set_color(SUBTEXT)
+
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png', facecolor=fig.get_facecolor(), bbox_inches='tight')
+    plt.close(fig)
+    buf.seek(0)
+    image_base64 = base64.b64encode(buf.getvalue()).decode('utf-8')
+    
+    t0s = times[0].strftime("%d.%m.%Y")
+    t1s = times[-1].strftime("%d.%m.%Y")
+    nd  = (times[-1] - times[0]).days
+    
+    info_text = (
+        f"Art: {species}  |  "
+        f"Detektionen: {len(rows)}  |  "
+        f"Zeitraum: {t0s} - {t1s}  |  "
+        f"Dauer: {nd} Tage  |  "
+        f"Bins: {len(sig)} / FFT-Punkte: {len(freqs)}"
+    )
+    
+    return jsonify({
+        "info": info_text,
+        "image": image_base64
+    })
+
 @app.route('/species')
 
 def species_page():
@@ -2935,7 +3124,7 @@ def check_model_update():
 
 @app.route('/api/check_app_update')
 def check_app_update():
-    current_version = "V1.3.5"
+    current_version = "V1.3.6-RC1"
     try:
         import urllib.request
         import json

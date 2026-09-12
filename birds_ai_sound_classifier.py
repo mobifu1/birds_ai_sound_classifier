@@ -1976,17 +1976,22 @@ def api_intersection_data():
 
 @app.route('/fft')
 def fft_page():
-    species_set = set(get_bird_dictionary().values())
+    species_counts = {}
+    for species in get_bird_dictionary().values():
+        species_counts[species] = 0
+        
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
     try:
-        c.execute("SELECT DISTINCT species FROM detections")
+        c.execute("SELECT species, COUNT(*) FROM detections GROUP BY species")
         for row in c.fetchall():
             if row[0] != 'IGNORED_LOW_CONFIDENCE':
-                species_set.add(row[0])
+                species_counts[row[0]] = row[1]
     except:
         pass
-    all_species = sorted(list(species_set))
+        
+    all_species = [s for s, _ in sorted(species_counts.items(), key=lambda x: (-x[1], x[0]))]
+    
     return render_template('fft.html', all_species=all_species, version="V1.3.6-RC1", year=datetime.datetime.now().year)
 
 @app.route('/api/fft_plot')
@@ -2648,7 +2653,11 @@ def wiki_page():
     wiki_images = []
     if os.path.exists(wiki_dir):
         wiki_images = [f for f in os.listdir(wiki_dir) if f.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp'))]
-    return render_template('wiki.html', wiki_images=wiki_images)
+    
+    # Extract non-empty German names and sort them alphabetically
+    german_names = sorted(list(set(name for name in get_bird_dictionary().values() if name)))
+    
+    return render_template('wiki.html', wiki_images=wiki_images, german_names=german_names)
 
 @app.route('/prediction')
 def prediction_page():

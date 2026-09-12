@@ -183,6 +183,20 @@
             💡 <strong>Tipp:</strong> Klicke auf ein Bild, um es in der Vollansicht zu öffnen.
         </div>
 
+        <!-- Wikipedia Search -->
+        <div class="wiki-search-box" style="text-align:center; margin-bottom: 30px; background: #263238; padding: 20px; border-radius: 12px; border: 1px solid #37474f;">
+            <h3 style="color:#4fc3f7; margin-top: 0; margin-bottom: 15px;">🔍 Wikipedia Eintrag suchen</h3>
+            <div style="display:flex; justify-content:center; gap:10px; flex-wrap: wrap;">
+                <input type="text" id="wiki-bird-input" list="wiki-birds-list" placeholder="Vogelart auswählen..." style="padding:10px; border-radius:5px; border:1px solid #546e7a; background:#37474f; color:white; width:250px; font-size:1em;">
+                <datalist id="wiki-birds-list">
+                    {% for bird in german_names %}
+                        <option value="{{ bird }}">
+                    {% endfor %}
+                </datalist>
+                <button onclick="openWikipedia()" style="padding:10px 15px; background:#4CAF50; color:white; border:none; border-radius:5px; cursor:pointer; font-weight:bold; font-size:1em; transition: background 0.2s;">Auf Wikipedia lesen</button>
+            </div>
+        </div>
+
         <!-- Image Gallery -->
         <h2 style="text-align:center; margin-bottom: 20px;">📸 Referenzbilder</h2>
         <div class="wiki-gallery">
@@ -240,6 +254,16 @@
         document.addEventListener('keydown', function (e) {
             if (e.key === 'Escape') closeLightbox(null, true);
         });
+
+        function openWikipedia() {
+            const bird = document.getElementById("wiki-bird-input").value.trim();
+            if (bird) {
+                const wikiUrl = "https://de.wikipedia.org/wiki/" + encodeURIComponent(bird);
+                window.open(wikiUrl, "_blank");
+            } else {
+                alert("Bitte wähle zuerst eine Vogelart aus.");
+            }
+        }
     </script>
 </body>
 

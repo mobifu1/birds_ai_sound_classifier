@@ -7,6 +7,7 @@ birdweather_queue/
 birdweather.json
 debug_log.txt
 generate_pdf.py
+fft_analyzer.py
 missing_bird_pics.txt
 blocklist-log.txt
 release_notes.txt

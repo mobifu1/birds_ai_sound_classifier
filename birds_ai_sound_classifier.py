@@ -517,7 +517,7 @@ class AudioMonitor:
         ts_file = now_dt.strftime("%y-%m-%d-%H-%M-%S")
         save_detection(species, confidence, calculated_snr, ts_db, geo_prob)
         
-        threading.Thread(target=check_and_send_pushover, args=(species, confidence), daemon=True).start()
+        threading.Thread(target=check_and_send_pushover, args=(species, confidence, is_new_species), daemon=True).start()
         
         if is_new_species:
             full_bird_dict = load_dictionary()
@@ -2931,7 +2931,7 @@ def send_pushover_message(app_token, user_key, message, title=None):
     except Exception as e:
         update_log(f"Fehler beim Senden der Pushover-Nachricht: {e}")
 
-def check_and_send_pushover(species, confidence):
+def check_and_send_pushover(species, confidence, is_new_species=False):
     po = load_pushover_settings()
     if not po.get('pushover_active', False):
         return
@@ -2941,10 +2941,30 @@ def check_and_send_pushover(species, confidence):
         return
     
     birds_list = [b.strip().lower() for b in birds_str.split(',') if b.strip()]
-    if species.lower() in birds_list:
-        title = f"Seltener Vogel erkannt: {species}"
-        message = f"Die KI hat einen {species} mit einer Konfidenz von {confidence*100:.1f}% erkannt!"
-        
+    species_lower = species.lower()
+    
+    match_found = False
+    is_neu_match = False
+    
+    for b in birds_list:
+        if b == "neu":
+            if is_new_species:
+                match_found = True
+                is_neu_match = True
+                break
+        else:
+            if b in species_lower:
+                match_found = True
+                break
+
+    if match_found:
+        if is_neu_match:
+            title = f"Neuer Vogel in DB: {species}"
+            message = f"Die KI hat einen neuen Vogel erkannt: {species} mit einer Konfidenz von {confidence*100:.1f}%!"
+        else:
+            title = f"Seltener Vogel erkannt: {species}"
+            message = f"Die KI hat einen {species} mit einer Konfidenz von {confidence*100:.1f}% erkannt!"
+            
         # Senden
         app_token = po.get('pushover_api_token', '')
         user_key = po.get('pushover_user_key', '')

@@ -612,9 +612,10 @@ class AudioMonitor:
         
         archive_species_str = settings.get("archive_species", "")
         if archive_species_str:
-            archive_list = [s.strip().lower() for s in archive_species_str.split(',') if s.strip()]
-            should_archive = species.lower() in archive_list or "*" in archive_list or "alle" in archive_list
-            if not should_archive and "neu" in archive_list and is_new_species:
+            archive_list_raw = [s.strip() for s in archive_species_str.split(',') if s.strip()]
+            archive_list = [s.lower() for s in archive_list_raw]
+            should_archive = species.lower() in archive_list or "*" in archive_list or "alle" in archive_list or "Alle" in archive_list_raw
+            if not should_archive and ("neu" in archive_list or "Neu" in archive_list_raw) and is_new_species:
                 should_archive = True
 
             if should_archive:

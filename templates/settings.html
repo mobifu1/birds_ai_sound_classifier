@@ -300,6 +300,31 @@
         </div>
 
         <div class="section">
+            <h2>Pushover Benachrichtigungen</h2>
+            <div style="margin-bottom: 15px;">
+                <label style="display: flex; align-items: center; cursor: pointer;">
+                    <input type="checkbox" id="pushover_active" style="width: 20px; height: 20px; margin-right: 10px;" {% if s.get('pushover_active', False) %}checked{% endif %}>
+                    <span style="color: #ccc;"><strong>Aktivieren:</strong> Benachrichtigungen senden</span>
+                </label>
+            </div>
+            <div class="row">
+                <label>Pushover User Key:<br><small>Dein User Key aus der Pushover App.</small></label>
+                <input type="text" id="pushover_user_key" value="{{ s.get('pushover_user_key', '') }}" style="width: 100%;">
+            </div>
+            <div class="row">
+                <label>Pushover API Token:<br><small>Dein Application API Token.</small></label>
+                <div style="display: flex; gap: 10px;">
+                    <input type="text" id="pushover_api_token" value="{{ s.get('pushover_api_token', '') }}" style="flex: 1;">
+                    <button type="button" class="btn btn-blue" onclick="testPushover()" style="width: auto; padding: 10px 20px; margin: 0;">Testen</button>
+                </div>
+            </div>
+            <div class="row">
+                <label>Benachrichtigung für folgende Vogelarten (kommasepariert):<br><small>z.B. Eichelhäher,Buntspecht</small></label>
+                <input type="text" id="pushover_birds" value="{{ s.get('pushover_birds', '') }}" style="width: 100%;">
+            </div>
+        </div>
+
+        <div class="section">
             <h2>Vogelarten Wörterbuch (Dictionary) & Archivierung</h2>
             <div style="margin-bottom: 20px;">
                 <label>Audio Archivierung (Vogelarten):<br><small>Kommaseparierte Liste von Vogelarten. 'alle' archiviert jede Erkennung. 'neu' archiviert Vogelarten, die noch nicht in der Datenbank stehen. Kombinationen (z.B. 'neu, Amsel') sind möglich.</small></label>
@@ -880,6 +905,10 @@
                 nr_quality: document.getElementById('nr_quality').value,
                 birdweather_active: document.getElementById('birdweather_active').checked,
                 birdweather_id: document.getElementById('birdweather_id').value,
+                pushover_active: document.getElementById('pushover_active').checked,
+                pushover_user_key: document.getElementById('pushover_user_key').value,
+                pushover_api_token: document.getElementById('pushover_api_token').value,
+                pushover_birds: document.getElementById('pushover_birds').value,
                 log_blocklist: document.getElementById('log_blocklist').checked,
                 log_blocklist_prob_switch: document.getElementById('log_blocklist_prob_switch').checked,
                 bird_dictionary: birdDict
@@ -918,6 +947,34 @@
                 localStorage.setItem("spectrogram_enabled", "false");
             }
         }
+
+        function testPushover() {
+            const api_token = document.getElementById('pushover_api_token').value.trim();
+            const user_key = document.getElementById('pushover_user_key').value.trim();
+            if (!api_token || !user_key) {
+                alert("Bitte trage zuerst einen Pushover API Token und einen User Key ein.");
+                return;
+            }
+            
+            fetch('/api/pushover/test', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    pushover_api_token: api_token,
+                    pushover_user_key: user_key
+                })
+            })
+            .then(r => r.json())
+            .then(d => {
+                if(d.success) {
+                    alert("Erfolg: " + d.msg);
+                } else {
+                    alert("Fehlgeschlagen: " + d.msg);
+                }
+            })
+            .catch(e => alert("Netzwerkfehler: " + e));
+        }
+
 
         function testBirdWeather() {
             const token = document.getElementById('birdweather_id').value.trim();

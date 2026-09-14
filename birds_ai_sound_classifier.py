@@ -45,6 +45,7 @@ DB_FILE = "birds_audio_stats.db"
 SETTINGS_FILE = "settings.json"
 DICTIONARY_FILE = "dictionary.json"
 BIRDWEATHER_FILE = "birdweather.json"
+PUSHOVER_FILE = "pushover.json"
 BIRDWEATHER_QUEUE_DIR = "birdweather_queue"
 MAX_BIRDWEATHER_QUEUE = 500
 FLASK_PORT = 5001
@@ -238,6 +239,24 @@ def save_birdweather_setting(key, value):
     data[key] = value
     try:
         with open(BIRDWEATHER_FILE, 'w') as f:
+            json.dump(data, f)
+    except:
+        pass
+
+def load_pushover_settings():
+    if os.path.exists(PUSHOVER_FILE):
+        try:
+            with open(PUSHOVER_FILE, 'r') as f:
+                return json.load(f)
+        except:
+            pass
+    return {}
+
+def save_pushover_setting(key, value):
+    data = load_pushover_settings()
+    data[key] = value
+    try:
+        with open(PUSHOVER_FILE, 'w') as f:
             json.dump(data, f)
     except:
         pass
@@ -497,6 +516,8 @@ class AudioMonitor:
         ts_db = now_dt.strftime("%Y-%m-%d %H:%M:%S")
         ts_file = now_dt.strftime("%y-%m-%d-%H-%M-%S")
         save_detection(species, confidence, calculated_snr, ts_db, geo_prob)
+        
+        threading.Thread(target=check_and_send_pushover, args=(species, confidence), daemon=True).start()
         
         if is_new_species:
             full_bird_dict = load_dictionary()
@@ -936,7 +957,7 @@ class AudioMonitor:
 # --- FLASK ROUTEN ---
 @app.context_processor
 def inject_version():
-    return dict(version="V1.3.6-RC1", year="2026")
+    return dict(version="V1.3.6-RC2", year="2026")
 
 @app.route('/favicon.ico')
 def favicon():
@@ -960,6 +981,12 @@ def settings_page():
     bw = load_birdweather_settings()
     s['birdweather_id'] = bw.get('birdweather_id', '')
     s['birdweather_active'] = bw.get('birdweather_active', False)
+    
+    po = load_pushover_settings()
+    s['pushover_active'] = po.get('pushover_active', False)
+    s['pushover_user_key'] = po.get('pushover_user_key', '')
+    s['pushover_api_token'] = po.get('pushover_api_token', '')
+    s['pushover_birds'] = po.get('pushover_birds', '')
     s["bird_dictionary"] = load_dictionary()
     
     queue_size = 0
@@ -1992,7 +2019,7 @@ def fft_page():
         
     all_species = [s for s, _ in sorted(species_counts.items(), key=lambda x: (-x[1], x[0]))]
     
-    return render_template('fft.html', all_species=all_species, version="V1.3.6-RC1", year=datetime.datetime.now().year)
+    return render_template('fft.html', all_species=all_species, version="V1.3.6-RC2", year=datetime.datetime.now().year)
 
 @app.route('/api/fft_plot')
 def api_fft_plot():
@@ -2811,6 +2838,15 @@ def api_save_settings():
         save_birdweather_setting("birdweather_id", data.get("birdweather_id", ""))
     if "birdweather_active" in data:
         save_birdweather_setting("birdweather_active", bool(data.get("birdweather_active", False)))
+    
+    if "pushover_active" in data:
+        save_pushover_setting("pushover_active", bool(data.get("pushover_active", False)))
+    if "pushover_user_key" in data:
+        save_pushover_setting("pushover_user_key", data.get("pushover_user_key", ""))
+    if "pushover_api_token" in data:
+        save_pushover_setting("pushover_api_token", data.get("pushover_api_token", ""))
+    if "pushover_birds" in data:
+        save_pushover_setting("pushover_birds", data.get("pushover_birds", ""))
     save_setting("threshold", data.get("threshold", 30))
     save_setting("occurrence_threshold", float(data.get("occurrence_threshold", 0.03)))
     if "auto_season_lowering" in data:
@@ -2876,6 +2912,67 @@ def api_birdweather_test():
             return jsonify({"success": True, "msg": "Verbindung erfolgreich! Token ist gültig."})
         else:
             return jsonify({"success": False, "msg": f"Zugriff verweigert oder ungültiger Token. Meldung: {resp_data.get('message', 'Unbekannt')}"})
+    except Exception as e:
+        return jsonify({"success": False, "msg": f"Fehler bei der Verbindung: {e}"})
+
+def send_pushover_message(app_token, user_key, message, title=None):
+    if not app_token or not user_key:
+        return
+    url = "https://api.pushover.net/1/messages.json"
+    payload = {
+        "token": app_token,
+        "user": user_key,
+        "message": message,
+    }
+    if title:
+        payload["title"] = title
+    try:
+        requests.post(url, data=payload, timeout=10)
+    except Exception as e:
+        update_log(f"Fehler beim Senden der Pushover-Nachricht: {e}")
+
+def check_and_send_pushover(species, confidence):
+    po = load_pushover_settings()
+    if not po.get('pushover_active', False):
+        return
+    
+    birds_str = po.get('pushover_birds', '')
+    if not birds_str:
+        return
+    
+    birds_list = [b.strip().lower() for b in birds_str.split(',') if b.strip()]
+    if species.lower() in birds_list:
+        title = f"Seltener Vogel erkannt: {species}"
+        message = f"Die KI hat einen {species} mit einer Konfidenz von {confidence*100:.1f}% erkannt!"
+        
+        # Senden
+        app_token = po.get('pushover_api_token', '')
+        user_key = po.get('pushover_user_key', '')
+        send_pushover_message(app_token, user_key, message, title)
+
+@app.route('/api/pushover/test', methods=['POST'])
+def api_pushover_test():
+    data = request.json
+    app_token = data.get("pushover_api_token", "").strip()
+    user_key = data.get("pushover_user_key", "").strip()
+    if not app_token or not user_key:
+        return jsonify({"success": False, "msg": "API Token oder User Key fehlen."})
+    
+    url = "https://api.pushover.net/1/messages.json"
+    payload = {
+        "token": app_token,
+        "user": user_key,
+        "message": "Dies ist eine Testnachricht von deinem Bird AI Sound Classifier!",
+        "title": "Test Erfolgreich!"
+    }
+    try:
+        r = requests.post(url, data=payload, timeout=10)
+        resp_data = r.json()
+        if r.status_code == 200 and resp_data.get("status") == 1:
+            return jsonify({"success": True, "msg": "Testnachricht erfolgreich gesendet!"})
+        else:
+            err_msg = ", ".join(resp_data.get("errors", ["Unbekannter Fehler"]))
+            return jsonify({"success": False, "msg": f"Fehler von Pushover: {err_msg}"})
     except Exception as e:
         return jsonify({"success": False, "msg": f"Fehler bei der Verbindung: {e}"})
 
@@ -3133,7 +3230,7 @@ def check_model_update():
 
 @app.route('/api/check_app_update')
 def check_app_update():
-    current_version = "V1.3.6-RC1"
+    current_version = "V1.3.6-RC2"
     try:
         import urllib.request
         import json

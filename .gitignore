@@ -5,6 +5,7 @@ birdweather_queue/
 
 # Ignoriere Modell-Files/Database-Files
 birdweather.json
+pushover.json
 debug_log.txt
 generate_pdf.py
 fft_analyzer.py

@@ -988,6 +988,7 @@ def settings_page():
     s['pushover_user_key'] = po.get('pushover_user_key', '')
     s['pushover_api_token'] = po.get('pushover_api_token', '')
     s['pushover_birds'] = po.get('pushover_birds', '')
+    s['pushover_cooldown'] = po.get('pushover_cooldown', 300)
     s["bird_dictionary"] = load_dictionary()
     
     queue_size = 0
@@ -2848,6 +2849,8 @@ def api_save_settings():
         save_pushover_setting("pushover_api_token", data.get("pushover_api_token", ""))
     if "pushover_birds" in data:
         save_pushover_setting("pushover_birds", data.get("pushover_birds", ""))
+    if "pushover_cooldown" in data:
+        save_pushover_setting("pushover_cooldown", int(data.get("pushover_cooldown", 300)))
     save_setting("threshold", data.get("threshold", 30))
     save_setting("occurrence_threshold", float(data.get("occurrence_threshold", 0.03)))
     if "auto_season_lowering" in data:
@@ -2932,6 +2935,8 @@ def send_pushover_message(app_token, user_key, message, title=None):
     except Exception as e:
         update_log(f"Fehler beim Senden der Pushover-Nachricht: {e}")
 
+pushover_last_sent = {}
+
 def check_and_send_pushover(species, confidence, is_new_species=False):
     po = load_pushover_settings()
     if not po.get('pushover_active', False):
@@ -2959,6 +2964,16 @@ def check_and_send_pushover(species, confidence, is_new_species=False):
                 break
 
     if match_found:
+        cooldown = int(po.get('pushover_cooldown', 300))
+        current_time = time.time()
+        
+        if cooldown > 0:
+            last_sent = pushover_last_sent.get(species_lower, 0)
+            if current_time - last_sent < cooldown:
+                return # Blocked by cooldown
+                
+        pushover_last_sent[species_lower] = current_time
+
         if is_neu_match:
             title = f"Neuer Vogel in DB: {species}"
             message = f"Die KI hat einen neuen Vogel erkannt: {species} mit einer Konfidenz von {confidence*100:.1f}%!"

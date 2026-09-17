@@ -289,7 +289,7 @@
             <div class="row">
                 <label>BirdWeather ID (Token):<br><small>Trage hier deinen BirdWeather Token ein.</small></label>
                 <div style="display: flex; gap: 10px;">
-                    <input type="text" id="birdweather_id" value="{{ s.get('birdweather_id', '') }}" placeholder="z.B. abcdef1234567890" style="flex: 1;">
+                    <input type="text" id="birdweather_id" value="{% if s.get('birdweather_id', '') %}****{% else %}{% endif %}" placeholder="z.B. abcdef1234567890" style="flex: 1;">
                     <button type="button" class="btn btn-blue" onclick="testBirdWeather()" style="width: auto; padding: 10px 20px; margin: 0;">Testen</button>
                 </div>
             </div>
@@ -309,12 +309,12 @@
             </div>
             <div class="row">
                 <label>Pushover User Key:<br><small>Dein User Key aus der Pushover App.</small></label>
-                <input type="text" id="pushover_user_key" value="{{ s.get('pushover_user_key', '') }}" style="width: 100%;">
+                <input type="text" id="pushover_user_key" value="{% if s.get('pushover_user_key', '') %}****{% else %}{% endif %}" style="width: 100%;">
             </div>
             <div class="row">
                 <label>Pushover API Token:<br><small>Dein Application API Token.</small></label>
                 <div style="display: flex; gap: 10px;">
-                    <input type="text" id="pushover_api_token" value="{{ s.get('pushover_api_token', '') }}" style="flex: 1;">
+                    <input type="text" id="pushover_api_token" value="{% if s.get('pushover_api_token', '') %}****{% else %}{% endif %}" style="flex: 1;">
                     <button type="button" class="btn btn-blue" onclick="testPushover()" style="width: auto; padding: 10px 20px; margin: 0;">Testen</button>
                 </div>
             </div>

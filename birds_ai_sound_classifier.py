@@ -2837,16 +2837,22 @@ def prediction_page():
 def api_save_settings():
     data = request.json
     if "birdweather_id" in data:
-        save_birdweather_setting("birdweather_id", data.get("birdweather_id", ""))
+        bw_id = data.get("birdweather_id", "")
+        if bw_id != "****":
+            save_birdweather_setting("birdweather_id", bw_id)
     if "birdweather_active" in data:
         save_birdweather_setting("birdweather_active", bool(data.get("birdweather_active", False)))
     
     if "pushover_active" in data:
         save_pushover_setting("pushover_active", bool(data.get("pushover_active", False)))
     if "pushover_user_key" in data:
-        save_pushover_setting("pushover_user_key", data.get("pushover_user_key", ""))
+        po_uk = data.get("pushover_user_key", "")
+        if po_uk != "****":
+            save_pushover_setting("pushover_user_key", po_uk)
     if "pushover_api_token" in data:
-        save_pushover_setting("pushover_api_token", data.get("pushover_api_token", ""))
+        po_at = data.get("pushover_api_token", "")
+        if po_at != "****":
+            save_pushover_setting("pushover_api_token", po_at)
     if "pushover_birds" in data:
         save_pushover_setting("pushover_birds", data.get("pushover_birds", ""))
     if "pushover_cooldown" in data:
@@ -2902,6 +2908,8 @@ def api_save_settings():
 def api_birdweather_test():
     data = request.json
     token = data.get("birdweather_id", "").strip()
+    if token == "****":
+        token = load_birdweather_settings().get("birdweather_id", "")
     if not token:
         return jsonify({"success": False, "msg": "Kein Token angegeben."})
     try:
@@ -2990,7 +2998,11 @@ def check_and_send_pushover(species, confidence, is_new_species=False):
 def api_pushover_test():
     data = request.json
     app_token = data.get("pushover_api_token", "").strip()
+    if app_token == "****":
+        app_token = load_pushover_settings().get("pushover_api_token", "")
     user_key = data.get("pushover_user_key", "").strip()
+    if user_key == "****":
+        user_key = load_pushover_settings().get("pushover_user_key", "")
     if not app_token or not user_key:
         return jsonify({"success": False, "msg": "API Token oder User Key fehlen."})
     

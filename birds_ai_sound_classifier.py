@@ -621,27 +621,71 @@ class AudioMonitor:
             if should_archive:
                 import shutil
                 archive_dir = os.path.join(AUDIO_DIR, "archive")
+                highscore_dir = os.path.join(archive_dir, "highscore")
                 if not os.path.exists(archive_dir):
                     os.makedirs(archive_dir)
+                if not os.path.exists(highscore_dir):
+                    os.makedirs(highscore_dir)
                 
                 safe_species = species.replace(" ", "_").replace("/", "_")
                 max_archive_files = int(settings.get("max_archive_files", 0))
-                can_save = True
                 
                 if max_archive_files > 0:
-                    existing_files = [f for f in os.listdir(archive_dir) if f.startswith(safe_species + "_") and f.endswith(".wav")]
-                    if len(existing_files) >= max_archive_files:
-                        can_save = False
-                
-                if can_save:
+                    half_max = max(1, max_archive_files // 2)
+                    
+                    # 1. FIFO Logic in archive_dir
                     new_filename = f"{safe_species}_{ts_file}.wav"
                     new_filepath = os.path.join(archive_dir, new_filename)
                     
                     try:
                         shutil.copy(temp_commit_wav, new_filepath)
-                        update_log(f"Audio archiviert: {new_filename}")
+                        update_log(f"Audio archiviert (FIFO): {new_filename}")
                     except Exception as e:
                         update_log(f"Fehler beim Archivieren: {e}")
+                        
+                    existing_fifo = [f for f in os.listdir(archive_dir) if f.startswith(safe_species + "_") and f.endswith(".wav") and os.path.isfile(os.path.join(archive_dir, f))]
+                    if len(existing_fifo) > half_max:
+                        existing_fifo.sort(key=lambda x: os.path.getmtime(os.path.join(archive_dir, x)))
+                        files_to_delete = existing_fifo[:len(existing_fifo) - half_max]
+                        for f in files_to_delete:
+                            try:
+                                os.remove(os.path.join(archive_dir, f))
+                            except:
+                                pass
+                                
+                    # 2. Highscore Logic
+                    score = int((confidence * 100) + (calculated_snr * 2))
+                    highscore_filename = f"{safe_species}_{score}_{ts_file}.wav"
+                    highscore_filepath = os.path.join(highscore_dir, highscore_filename)
+                    
+                    existing_high = [f for f in os.listdir(highscore_dir) if f.startswith(safe_species + "_") and f.endswith(".wav") and os.path.isfile(os.path.join(highscore_dir, f))]
+                    
+                    if len(existing_high) < half_max:
+                        try:
+                            shutil.copy(temp_commit_wav, highscore_filepath)
+                            update_log(f"Audio archiviert (Highscore {score}): {highscore_filename}")
+                        except Exception as e:
+                            pass
+                    else:
+                        lowest_score = float('inf')
+                        lowest_file = None
+                        for f in existing_high:
+                            parts = f.replace(".wav", "").split("_")
+                            try:
+                                f_score = int(parts[-2])
+                                if f_score < lowest_score:
+                                    lowest_score = f_score
+                                    lowest_file = f
+                            except:
+                                pass
+                                
+                        if score > lowest_score and lowest_file is not None:
+                            try:
+                                os.remove(os.path.join(highscore_dir, lowest_file))
+                                shutil.copy(temp_commit_wav, highscore_filepath)
+                                update_log(f"Neuer Highscore ({score} > {lowest_score}), Audio archiviert.")
+                            except Exception as e:
+                                pass
 
     def loop_analyze(self):
         previous_detected_species = set()
@@ -958,7 +1002,7 @@ class AudioMonitor:
 # --- FLASK ROUTEN ---
 @app.context_processor
 def inject_version():
-    return dict(version="V1.3.6", year="2026")
+    return dict(version="V1.3.7-RC1", year="2026")
 
 @app.route('/favicon.ico')
 def favicon():
@@ -2021,7 +2065,7 @@ def fft_page():
         
     all_species = [s for s, _ in sorted(species_counts.items(), key=lambda x: (-x[1], x[0]))]
     
-    return render_template('fft.html', all_species=all_species, version="V1.3.6", year=datetime.datetime.now().year)
+    return render_template('fft.html', all_species=all_species, version="V1.3.7-RC1", year=datetime.datetime.now().year)
 
 @app.route('/api/fft_plot')
 def api_fft_plot():
@@ -2298,8 +2342,14 @@ def species_page():
         archive_path = os.path.join(AUDIO_DIR, "archive")
         if os.path.exists(archive_path):
             prefix = selected_species + "_"
-            wav_files = [f for f in os.listdir(archive_path) if f.startswith(prefix) and f.endswith('.wav')]
-            wav_files.sort(reverse=True) # newest first, assuming IDs might correlate with time or just standard sort
+            wav_files = [f for f in os.listdir(archive_path) if f.startswith(prefix) and f.endswith('.wav') and os.path.isfile(os.path.join(archive_path, f))]
+            wav_files.sort(reverse=True)
+            
+            highscore_path = os.path.join(archive_path, "highscore")
+            if os.path.exists(highscore_path):
+                hs_files = [f"highscore/{f}" for f in os.listdir(highscore_path) if f.startswith(prefix) and f.endswith('.wav') and os.path.isfile(os.path.join(highscore_path, f))]
+                hs_files.sort(reverse=True)
+                wav_files.extend(hs_files)
             
     conn.close()
     
@@ -2313,7 +2363,7 @@ def species_page():
         time_mode=time_mode
     )
 
-@app.route('/api/archive/audio/<filename>')
+@app.route('/api/archive/audio/<path:filename>')
 def serve_archive_audio(filename):
     archive_path = os.path.join(AUDIO_DIR, "archive")
     file_path = os.path.join(archive_path, filename)
@@ -2321,7 +2371,7 @@ def serve_archive_audio(filename):
         return send_file(file_path)
     abort(404)
 
-@app.route('/api/archive/spectrogram/<filename>')
+@app.route('/api/archive/spectrogram/<path:filename>')
 def serve_archive_spectrogram(filename):
     archive_path = os.path.join(AUDIO_DIR, "archive")
     file_path = os.path.join(archive_path, filename)
@@ -2366,7 +2416,7 @@ def serve_archive_spectrogram(filename):
         print(f"Error generating spectrogram: {e}")
         abort(500)
 
-@app.route('/api/archive/phase_spectrogram/<filename>')
+@app.route('/api/archive/phase_spectrogram/<path:filename>')
 def serve_archive_phase_spectrogram(filename):
     archive_path = os.path.join(AUDIO_DIR, "archive")
     file_path = os.path.join(archive_path, filename)
@@ -2435,7 +2485,7 @@ def serve_archive_phase_spectrogram(filename):
         print(f"Error generating phase spectrogram: {e}")
         abort(500)
 
-@app.route('/api/archive/waveform/<filename>')
+@app.route('/api/archive/waveform/<path:filename>')
 def serve_archive_waveform(filename):
     archive_path = os.path.join(AUDIO_DIR, "archive")
     file_path = os.path.join(archive_path, filename)
@@ -2487,7 +2537,7 @@ def serve_archive_waveform(filename):
         print(f"Error generating waveform: {e}")
         abort(500)
 
-@app.route('/api/archive/delete/<filename>', methods=['POST', 'DELETE'])
+@app.route('/api/archive/delete/<path:filename>', methods=['POST', 'DELETE'])
 def delete_archive_audio(filename):
     archive_path = os.path.join(AUDIO_DIR, "archive")
     file_path = os.path.join(archive_path, filename)
@@ -3278,7 +3328,7 @@ def check_model_update():
 
 @app.route('/api/check_app_update')
 def check_app_update():
-    current_version = "V1.3.6"
+    current_version = "V1.3.7-RC1"
     try:
         import urllib.request
         import json
@@ -3963,6 +4013,34 @@ def log_reader_thread():
 if __name__ == '__main__':
     mp.freeze_support()
     init_db()
+    
+    # Run migration/pruning on startup to enforce the new 50% limit
+    try:
+        archive_dir = os.path.join(AUDIO_DIR, "archive")
+        if os.path.exists(archive_dir):
+            local_settings = load_settings()
+            max_archive_files = int(local_settings.get("max_archive_files", 0))
+            if max_archive_files > 0:
+                half_max = max(1, max_archive_files // 2)
+                files = [f for f in os.listdir(archive_dir) if f.endswith('.wav') and os.path.isfile(os.path.join(archive_dir, f))]
+                species_dict = {}
+                for f in files:
+                    parts = f.rsplit('_', 1)
+                    if len(parts) == 2:
+                        sp = parts[0]
+                        species_dict.setdefault(sp, []).append(f)
+                        
+                for sp, sp_files in species_dict.items():
+                    if len(sp_files) > half_max:
+                        sp_files.sort(key=lambda x: os.path.getmtime(os.path.join(archive_dir, x)))
+                        to_del = sp_files[:len(sp_files) - half_max]
+                        for f in to_del:
+                            try:
+                                os.remove(os.path.join(archive_dir, f))
+                            except:
+                                pass
+    except Exception as e:
+        print("Fehler beim Pruning des Archivs beim Start:", e)
     
     # Initialize shared multiprocessing variables
     log_queue_global = mp.Queue()

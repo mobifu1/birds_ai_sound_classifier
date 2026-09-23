@@ -172,11 +172,27 @@
                 <h3 style="margin-top: 0;">Archivierte Audioaufnahmen</h3>
                 <p style="color: #aaa; margin-bottom: 15px;">Klicken Sie auf eine Datei, um das Spectrogramm anzuzeigen und die Audio-Datei abzuspielen.</p>
                 
+                <h4 style="color: #bbb; margin-top: 10px; margin-bottom: 5px;">Letzte Aufnahmen</h4>
+                <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 15px; max-height: 200px; overflow-y: auto; padding: 5px;">
+                    {% for wav in wav_files %}
+                        {% if not wav.startswith('highscore/') %}
+                        <button class="wav-btn" onclick="loadSpectrogram('{{ wav }}')" style="padding: 8px 12px; background: #37474f; color: white; border: 1px solid #546e7a; border-radius: 4px; cursor: pointer; transition: background 0.2s;">
+                            &#128190; {{ wav }}
+                        </button>
+                        {% endif %}
+                    {% endfor %}
+                </div>
+                
+                <hr style="border: 0; border-top: 1px solid #546e7a; margin: 20px 0;">
+                
+                <h4 style="color: #bbb; margin-bottom: 5px;">Beste Aufnahmen</h4>
                 <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px; max-height: 200px; overflow-y: auto; padding: 5px;">
                     {% for wav in wav_files %}
-                    <button class="wav-btn" onclick="loadSpectrogram('{{ wav }}')" style="padding: 8px 12px; background: #37474f; color: white; border: 1px solid #546e7a; border-radius: 4px; cursor: pointer; transition: background 0.2s;">
-                        &#128190; {{ wav }}
-                    </button>
+                        {% if wav.startswith('highscore/') %}
+                        <button class="wav-btn" onclick="loadSpectrogram('{{ wav }}')" style="padding: 8px 12px; background: #ff9800; color: white; border: 1px solid #e65100; border-radius: 4px; cursor: pointer; transition: background 0.2s;">
+                            &#127942; {{ wav.replace('highscore/', '') }}
+                        </button>
+                        {% endif %}
                     {% endfor %}
                 </div>
                 

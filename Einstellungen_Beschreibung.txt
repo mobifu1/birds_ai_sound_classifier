@@ -1,0 +1,175 @@
+# Einstellungen - Beschreibung
+
+## System Status & Live-Ansicht:
+- **Live Audio Pegel:** Zeigt in Echtzeit die Lautstaerke des Mikrofons an.
+- **Live Audio File Queue:** Zeigt an, wie viele Audio-Segmente gerade in der Warteschlange zur KI-Verarbeitung liegen.
+- **Live Spektrogramm:** Echtzeit-Visualisierung der Audiodaten als Wasserfall-Diagramm. Kann aktiviert/deaktiviert werden, um Systemressourcen zu sparen.
+- **Live Audio Player:** Spielt das aktuell aufgenommene Audio der letzten 3 Sekunden direkt im Browser ab.
+
+## BirdWeather Integration:
+- **Aktivieren (Daten an BirdWeather senden):** Schaltet die automatische Weiterleitung von erkannten Voegeln an die globale BirdWeather Plattform ein.
+- **BirdWeather ID (Token):** Dein persoenlicher Token, den du von BirdWeather bekommst, um deine Station eindeutig zuzuordnen. (Wird aus Sicherheitsgründen nach dem Speichern als "****" maskiert angezeigt. Solange die vier Sterne stehen bleiben, wird der alte Schlüssel beibehalten.)
+
+
+## Erkennungs-Einstellungen:
+- **Mindest-Konfidenz (Threshold %):** Prozentsatz der Sicherheit, ab der ein Vogel gespeichert wird.
+- **Mindest-SNR (dB):** Signal-Rausch-Verhaeltnis, ab dem ein Vogel gespeichert wird.
+- **Occurrence Threshold:** Historische eBird-Wahrscheinlichkeit fuer deinen Standort.
+- **Auto Season Lowering:** Ignoriert manuellen Threshold. Nutzt stattdessen kalenderwochenspezifische Werte (aus `auto_season_lowering.json`) oder einen Standardwert.
+- **GPS Breitengrad / Laengengrad:** Koordinaten fuer lokale Vogelarten-Filterung.
+- **Barchart Max Calls (woechentlich):** Bei wie vielen Rufen soll der Bargraf fuer die Wochen-Statistik das Maximum (100%) erreichen?
+- **Geraetename (Netzwerk):** Unter welchem Namen soll die App im lokalen Netzwerk erreichbar sein?
+- **Stationsname:** Optionaler Name fuer diese Station, der im Dashboard statt des App-Namens angezeigt wird.
+
+## Radar-Einstellungen:
+- **Radar Zoom-Faktor:** Groesse und Sichtbarkeit der Icons im Radar.
+- **Max. Voegel im Radar:** Maximale Anzahl gleichzeitig angezeigter Voegel.
+- **Radar Historie (Stunden):** Zeitraum in die Vergangenheit fuer das Radar.
+- **Radar Max SNR / Min SNR:** Steuert die Positionierung im Radar (Mitte vs. Rand).
+
+## Archivierung & Woerterbuch:
+- **Audio Archivierung (Vogelarten):** Liste zu archivierender Arten ('alle', 'neu', Kombinationen). Ein Minus (z.B. '-Amsel') schließt Arten aus (z.B. 'Alle, -Haussperling').
+- **Max. Archiv-Dateien pro Art (50/50 Ringpuffer & Highscore):** Begrenzung der gespeicherten Aufnahmen (0 = unbegrenzt). 
+  - *Das System arbeitet hier intelligent:* Die erste Hälfte des eingestellten Limits dient als klassischer, chronologischer Ringpuffer (FIFO - First In, First Out). Die neuesten Erkennungen überschreiben bei Platzmangel automatisch die ältesten Aufnahmen.
+  - Die zweite Hälfte des Limits reserviert das System für einen exklusiven **Highscore-Ordner**. Hier landen nur die Aufnahmen mit dem höchsten "Score" (eine Kombination aus KI-Konfidenz und Signal-Rausch-Verhältnis). Sobald der Ordner voll ist, verdrängt ein neuer Top-Ruf automatisch den bisher schwächsten Ruf aus der Bestenliste. So behalten Sie immer die historisch besten Aufnahmen UND die aktuellsten Besuche im Archiv!
+- **Vogelarten Woerterbuch:** Uebersetzung von englischen zu deutschen Bezeichnungen.
+- **Aufenthalt (Woerterbuch):** Aufenthaltszeitraum in Monaten (z.B. 4-10) fuer die Wochen-Statistik.
+- **Status (Woerterbuch):** Vogel-Klassifizierung (Standvogel, Zugvogel, etc.) fuer die Wochen-Statistik.
+- **Konf. % (Woerterbuch):** Individuelle Erkennungssicherheit, ueberschreibt globales Limit.
+- **Blocked (Woerterbuch):** Markierte Voegel ignorieren und nicht speichern/anzeigen.
+- **blocklist-log.txt:** Protokolliert Vogelarten, die aufgrund lokaler GPS-Filter oder Blockierung (Woerterbuch) aussortiert wurden.
+- **Blocklist-Log-Probability Umschalter:** Wenn aktiviert, werden nur Vogelarten mit Geo-Probability > 0% im blocklist-log protokolliert.
+- **Suche Vogelart in KI-Modell:** Oeffnet ein Suchfenster, um alle unterstuetzten Vogelnamen direkt im KI-Modell zu durchsuchen und zu kopieren.
+- **Probability Check:** Berechnet und zeigt fuer deinen Standort die exakten eBird-Wahrscheinlichkeiten der aktuellen Kalenderwoche an.
+
+## Pushover Benachrichtigungen:
+- **Pushover Aktivieren:** Schaltet Push-Benachrichtigungen auf dein Smartphone ein.
+- **Pushover User Key & API Token:** Zugangsdaten von deinem Pushover-Account, damit die App Nachrichten senden darf. (Werden aus Sicherheitsgründen nach dem Speichern als "****" maskiert angezeigt. Solange die vier Sterne stehen bleiben, wird der alte Schlüssel beibehalten.)
+- **Vogelarten (kommasepariert):** Liste von Vogelnamen, bei deren Erkennung du benachrichtigt werden willst (z.B. Eichelhäher, Buntspecht).
+  - *In-String-Suche:* Du kannst auch nur Wortteile wie "Häher" oder "Specht" angeben, um für alle Arten benachrichtigt zu werden, die dieses Wort im Namen haben (z.B. Tannenhäher, Grünspecht).
+  - *Codewort "Neu":* Wenn du "Neu" in diese Liste aufnimmst, bekommst du automatisch eine Nachricht, sobald eine für deine Datenbank völlig neue Vogelart erkannt wird (Titel: "Neuer Vogel in DB").
+- **Cooldown (Sekunden):** Zeitliche Sperre (z.B. 900 Sekunden = 15 Minuten), bevor für dieselbe Vogelart eine weitere Benachrichtigung versendet wird, um Spam zu vermeiden.
+- **Test Nachricht Senden:** Überprüft die eingegebenen Pushover-Zugangsdaten durch das Senden einer Testnachricht an dein Smartphone.
+
+## Audio Filter & System:
+- **High-Pass Filter:** Herausfiltern von tiefen Stoergeraeuschen (inkl. Grenzfrequenz in Hz).
+- **Low-Pass Filter:** Herausfiltern von hohen Stoergeraeuschen (inkl. Grenzfrequenz in Hz).
+- **Noise Reduction:** Rauschunterdrueckung aktivieren und Qualitaet einstellen.
+- **Mikrofon auswaehlen:** Auswahl des Audio-Eingabegeraets.
+- **Alarm-Ton aktivieren:** Akustisches Signal bei jeder neuen Erkennung.
+- **Klick-Ton aktivieren:** Dezentes akustisches Feedback im Browser bei Erkennungen.
+
+## Steuerung & Datenbank:
+- **Woerterbuch anwenden:** Wendet das Woerterbuch rueckwirkend auf alle Eintraege an (inkl. Dateiumbenennung).
+- **Datenbank synchronisieren:** Sortiert die komplette Datenbankliste chronologisch nach dem Zeitstempel.
+- **Einzelvorkommen loeschen:** Loescht alle Vogelarten (inkl. Dateien), die bisher nur ein einziges Mal erkannt wurden.
+- **Arten zusammenfuehren:** Benennt alle Eintraege und Audiodateien einer bestimmten Art in eine andere Art um.
+- **Art-Eintraege loeschen:** Loescht saemtliche Eintraege und Audiodateien einer bestimmten Vogelart.
+- **Datenbank Backup:** Erstellt sofort eine Sicherungskopie der aktuellen Datenbank-Datei.
+- **Datenbank zuruecksetzen:** Loescht alle Erkennungen aus der Datenbank und leert das komplette Audio-Archiv.
+- **Daten-Export (Wochen-Statistik):** Exportiert die aggregierten, woechentlichen Vogelstatistiken des gewaehlten Jahres als CSV-Datei fuer Excel oder andere Tools.
+- **Blocklist-Log loeschen:** Loescht dauerhaft das Protokoll (`blocklist-log.txt`) der vom System aussortierten Voegel.
+- **Software Updates (GitHub):** Prueft, ob eine neuere Version der Hauptanwendung (Source Code) vorliegt.
+- **Auf neuere Version pruefen (KI Modell):** Prueft, ob eine neuere Version des zugrundeliegenden BirdNET-Modells (.tflite) verfuegbar ist.
+
+## Audio-Erfassung & Auswertung (System-Intern):
+Die Soundanalyse wertet die Umgebungsgeraeusche in 3-Sekunden-Fenstern aus, die sich um jeweils 1,5 Sekunden ueberschneiden (Overlapping). Wird ein Vogel positiv erkannt, erfolgt die Speicherung nicht mehr sofort. Stattdessen wird die Erkennung zunaechst fuer genau ein Fenster (1,5 Sekunden) zurueckgehalten. In dieser Zeit wird das naechste, ueberlappende Audio-Fenster analysiert. Da sich der Vogelruf oft erst im zweiten Fenster in der zeitlichen Mitte befindet, liefert dieses haeufig einen besseren Konfidenzwert. Die KI vergleicht dann beide Erkennungen und speichert nur das Fenster mit der hoeheren Konfidenz in der Datenbank und im Archiv ab.
+
+Anschliessend greift ein automatischer Spam-Schutz fuer diese Vogelart. Fortlaufende, direkte Folge-Erkennungen desselben Vogels werden ignoriert, um die Datenbank nicht mit unzaehligen Eintraegen desselben Rufs zu ueberfluten.
+
+### Wie funktioniert der Spam-Schutz im Detail?
+Sobald eine Vogelart erfolgreich mit der hoechsten Konfidenz aus zwei ueberlappenden Fenstern gespeichert wurde, merkt sich das System diesen Vogel als "aktiv rufend". Solange dieser Vogel in den unmittelbar folgenden 3-Sekunden-Fenstern weiterhin ununterbrochen erkannt wird (auch wenn die Konfidenz schwankt), wird er ignoriert und nicht erneut in die Datenbank geschrieben. 
+
+Erst wenn in einem Fenster der Vogel nicht mehr erkannt wird oder die Konfidenz unter den eingestellten Schwellenwert (Threshold) faellt, gilt die durchgehende Erkennungs-Serie als beendet. Der Spam-Schutz fuer diese Vogelart wird dann zurueckgesetzt. Taucht der Vogel in einem spaeteren Fenster wieder auf, wird dies als komplett neuer, eigenstaendiger Ruf gewertet und der gesamte Prozess (inklusive 1-Fenster-Verzoegerung) beginnt von vorn.
+
+### Multitasking bei der Artenerkennung:
+Die Erkennung verfuegt nun ueber eine Multitasking-Faehigkeit. Das System wertet alle erkannten Vogelstimmen innerhalb eines 3-Sekunden-Fensters parallel aus. Rufen beispielsweise eine Amsel und ein Wiedehopf gleichzeitig, werden beide Arten individuell geprueft, aufgezeichnet und auf dem Radar angezeigt, sofern sie ihre jeweiligen Schwellenwerte uebertreffen. Der Spam-Schutz (Streak-Logik) laeuft fuer jeden erkannten Vogel voellig unabhaengig im Hintergrund ab.
+
+## Wie arbeitet das Birdnet-Modell (inkl. GPS Filter):
+Das BirdNET-Modell nutzt eine zweistufige Filterung, um Voegel in Audioaufnahmen zu erkennen und gleichzeitig Fehlalarme (False Positives) drastisch zu minimieren.
+
+**1. Stufe: Die reine KI-Erkennung (Raw Confidence)**
+Das neuronale Netz analysiert die Audiodatei und bewertet fuer jede Vogelart, wie sicher es ist, dass der Ruf uebereinstimmt (Konfidenz). Uebertrifft dieser Wert den eingestellten Schwellenwert (z. B. 70 %), gilt der Ruf vom reinen Audio her als erkannt.
+
+**2. Stufe: Der geografische Wahrscheinlichkeitsfilter (Location Filter)**
+Nach der akustischen Erkennung gleicht BirdNET das Ergebnis mit einer internen Datenbank (basierend auf weltweiten eBird-Beobachtungsdaten) ab. Dabei wird geprueft: Wie hoch ist die statistische Wahrscheinlichkeit, dass dieser Vogel an exakt den vorgegebenen GPS-Koordinaten in dieser spezifischen Kalenderwoche vorkommt?
+
+### Vorteile und Tuecken dieses Filters:
+Der Filter ist extrem hilfreich, da er z. B. verhindert, dass eine lokale Kohlmeise mit einem aehnlich klingenden suedamerikanischen Vogel verwechselt wird. Allerdings hat er auch Tuecken:
+
+- **Ausschluss trotz tatsaechlichem Vorkommen:** Es werden Gefangenschaftsfluechtlinge (Papageien), seltene Irrgaeste oder heimische Arten an schlecht dokumentierten Orten (z.B. ein Sommergoldhaehnchen) herausgefiltert. Ihre Wahrscheinlichkeit wird vom System als zu gering eingestuft, und die Erkennung wird intern verworfen, selbst wenn die KI sich zu 100 % sicher war.
+- **Protokollierung im Blocklist-Log:** Das System bemerkt diesen Widerspruch. Wenn ein Vogel vom Netz mit hoher Konfidenz gehoert, aber vom GPS-Filter blockiert wurde, erzeugt das System einen Eintrag in der `blocklist-log.txt` (Grund: "low probability for your area"). So siehst du, dass die Art gehoert, aber vom Filter aussortiert wurde.
+
+### Wie man den Filter deaktivieren oder gezielt umgehen kann:
+**1. Komplett deaktivieren:** 
+Wenn du moechtest, dass BirdNET alle ~6.000 Arten global erkennt, muesstest du die GPS-Koordinaten leer lassen.
+
+**2. Gezielt umgehen (Force-Funktion):** 
+Wenn du den Filter nutzen moechtest, aber weisst, dass eine blockierte Art (z. B. Wiedehopf oder Sommergoldhaehnchen) bei dir vorkommt, kannst du im "Vogelarten Woerterbuch" das Haekchen bei "Force" setzen. Der Geofence bleibt grundsaetzlich aktiv, aber der "Force"-Vogel wird bei ausreichender akustischer Konfidenz immer ins Endergebnis uebernommen, wodurch der geografische Filter fuer diesen spezifischen Vogel ignoriert wird.
+
+## Occurrence Threshold (Sichtbarkeits-Schwellwert):
+
+### Wie der Threshold funktioniert:
+Wenn du BirdNET Start-Koordinaten und ein Datum (die Kalenderwoche) gibst, fragt es intern im eBird-Datensatz ab: "Welche Voegel wurden in dieser Region (Raster) in dieser Kalenderwoche historisch gemeldet?" Hier kommt der Occurrence Threshold (Vorkommens-Schwellwert) ins Spiel. Dieser Wert ist keine "Audio-Sicherheit", sondern eine historische eBird-Statistik-Huerde.
+
+### Warum ist 0,03 (3 %) der Standardwert?
+Ein Threshold von 0.03 bedeutet: Von 100 Vogelbeobachtungs-Checklisten, die in dieser Kalenderwoche an diesem Ort bei eBird eingereicht wurden, musste die Vogelart auf mindestens 3 Checklisten gestanden haben. Das ist ein hervorragender Filter! Er streicht sofort alle exotischen Voegel und Sommergaeste im Winter raus. Aus 6.000 moeglichen Arten wird so eine sehr realistische Liste von vielleicht 50 bis 150 "erwartbaren" Kandidaten fuer genau diese Woche generiert. Alles, was unter 3 % Wahrscheinlichkeit liegt, wird vom Modell blind ignoriert - selbst wenn das Mikrofon es kristallklar hoert.
+
+### Warum ist das ein Problem fuer "Nachzuegler"?
+Wenn die Zugvogelsaison beginnt, sinkt die statistische Wahrscheinlichkeit in der eBird-Datenbank von Woche zu Woche rasant. Ein Vogel faellt dann z. B. von 15 % auf 5 %, in der naechsten Woche auf 1 % und dann auf 0,1 %. Sobald er unter die 3 %-Huerde faellt, existiert er fuer BirdNET nicht mehr. Ein Vogel, der eigentlich schon weg sein sollte, aber aufgrund des warmen Wetters noch da ist, wird dann nicht mehr erkannt.
+
+### Warum loest 0,005 (0,5 %) das Problem?
+Wenn du den Schwellwert auf 0.005 senkst, sagst du dem Modell: "Akzeptiere jeden Vogel auf der Kandidatenliste, der bei eBird auf mindestens 1 von 200 Checklisten (0,5 %) stand." Dadurch wird die Filterung deutlich lockerer. Voegel, die in dieser Woche extrem selten sind (wie spaete Nachzuegler, vereinzelte Ueberwinterer oder fruehe Rueckkehrer), rutschen nun wieder mit in die Kandidatenliste rein. Wenn das Modell den Vogel jetzt hoert, darf es ihn auch wieder offiziell als Treffer ausgeben.
+
+### Der Kompromiss:
+Wenn du den Wert von 0.03 auf 0.005 senkst, erkaufst du dir das Erkennen von Nachzueglern mit einem leicht erhoehten Risiko fuer Fehlerkennungen, da die interne Kandidatenliste fuer diese Woche nun wieder etwas groesser und "exotischer" wird. Fuer dein Problem (Vogel ist noch da, wird aber von der App abgewuergt) ist das Verringern dieses Wertes aber genau der richtige Hebel.
+
+## Spezies-Statistik (species.html):
+Die Seite `species.html` bietet detaillierte Auswertungen und Visualisierungen fuer jede erkannte Vogelart:
+
+- **Zeitradar:** Zeigt die ueber 24 Stunden aggregierte Aktivitaet der jeweiligen Vogelart als uebersichtlichen Chart an. So laesst sich auf einen Blick erkennen, zu welchen Tageszeiten die Art am aktivsten ist.
+- **Frequenzspektrum:** Visualisiert die aufgenommene Audiodatei, wobei die Frequenzen ueber die Zeit aufgetragen werden. Die Farbe zeigt die Intensitaet (Lautstaerke) an. Perfekt, um den akustischen "Fingerabdruck" des Vogelrufs zu sehen.
+- **Phasenstabilitaet:** Stellt die zeitliche Aenderung der Phase in Grad dar (-180 bis +180). Diese Ansicht dient vorrangig der forensischen Unterscheidung zwischen organischen Rufen und technischen Stoergeraeuschen (Maschinen, Pieptoene). Technische Laute erzeugen hier meist scharfe, homogene Linien, waehrend organische Rufe ein in sich unruhigeres, "waberndes" Phasenmuster aufweisen.
+- **Amplitudenverlauf:** Zeigt die Lautstaerke (Amplitude) des Audiosignals ueber die Zeit in Form einer klassischen Schwingungskurve an. Die Zeitachse verlaeuft exakt synchron zu den darueberliegenden Spektren.
+
+## Updates & Lokale Dateien:
+
+### 1. Settings.json und eigenes dictionary.json:
+Die Konfigurationen der Anwendung werden in der lokalen `settings.json` gespeichert. Das Vogelarten-Woerterbuch wurde in eine separate lokale `dictionary.json` ausgelagert. Dadurch bleiben persoenliche Einstellungen und Uebersetzungen unabhaengig vom Hauptprogramm erhalten.
+
+### 2. Bird Icons und Dictionary Updater:
+Auf der Einstellungsseite befinden sich nun zwei Update-Schaltflaechen: "Update Bird Icons" laedt nur fehlende Bilder fuer Vogelarten aus dem GitHub-Repository herunter. "Update Dictionary" fuegt der lokalen `dictionary.json` fehlende, neue Vogelarten aus GitHub hinzu, wobei ausschliesslich der englische Originalbegriff als Abgleich dient. Bereits vorhandene Eintraege werden gezielt nicht ueberschrieben.
+
+### 3. Woerterbuch Check (Dupletten):
+Mit der Schaltflaeche "Woerterbuch Check" laesst sich die `dictionary.json` auf unbeabsichtigte Doppelungen ueberpruefen. Das System meldet, falls englische Begriffe mehrfach als Schluessel existieren oder deutsche Uebersetzungen doppelt vergeben wurden. Etwaige Konflikte werden zur Kontrolle angezeigt, aber nicht automatisch veraendert.
+
+## FFT Fast Fourier Transformation:
+
+Hier ist die rein biologische Interpretation der Frequenz-Peaks:
+
+### 1. Die 30-Tage-Periode (Der lunare Zyklus)
+Biologisch gesehen ist das ein fast sicherer Beweis für Mond-Abhängigkeit (Lunar-Rhythmik).
+- **Nächtliche Aktivität:** Viele Arten (z. B. Ziegenmelker, Eulen, aber auch Spottdrosseln und Nachtigallen) singen und rufen in hellen, mondbeschienenen Nächten deutlich intensiver als in Neumondnächten. Sie nutzen das Licht zur Jagd oder zur Revierverteidigung.
+- **Vogelzug:** Viele Vögel ziehen nachts. Flugrufe, mit denen der Schwarm zusammengehalten wird, werden an hellen Tagen/Nächten des Vollmonds massiv häufiger registriert.
+
+### 2. Die 1-Tag-Periode (24h - Zirkadianer Rhythmus)
+Das ist die grundlegende biologische Uhr.
+- **Sonnen-Synchronisation:** Nahezu alle Vögel haben einen tief in der Genetik verankerten zirkadianen Rhythmus. Dieser Peak zeigt einfach den fundamentalen Wechsel zwischen Wach- und Schlafphase (Aktivität vs. Inaktivität), der durch das Tageslicht gesteuert wird. Er besagt: Die Spezies ist strikt tagaktiv (oder strikt nachtaktiv).
+
+### 3. Die 12-Stunden-Periode (Crepuskulär & Zirkatidal)
+Dieser Peak hat in der Biologie zwei völlig unterschiedliche, aber extrem faszinierende Ursachen, abhängig vom Lebensraum:
+- **Der Morgen- und Abendchor (Wälder/Land):** Vögel haben evolutiv gelernt, dass die akustische Übertragung (Schallausbreitung) in der kühlen, ruhigen Morgen- und Abendluft am besten funktioniert. Zudem müssen Reviere nach der Nacht neu markiert und vor der Nacht gesichert werden. Diese zwei enormen Ruf-Spitzen (Sonnenaufgang und Sonnenuntergang) liegen etwa 12 Stunden auseinander.
+- **Gezeiten-Rhythmus (Küsten/Ästuare):** Wenn die Rekorder an der Küste stehen, zeigt dieser Peak den zirkatidalen Rhythmus (ca. 12,4 Stunden). Watvögel (Limikolen) ignorieren oft den Tag-Nacht-Rhythmus und richten ihre Aktivität (und damit ihre Rufe zur Nahrungssuche und Schwarmbildung) zu 100 % danach aus, wann das Wasser niedrig ist und die Wattflächen frei sind.
+
+### 4. Die 8-Stunden- und 6-Stunden-Perioden (Metabolismus & Oberschwingungen)
+- **Die "Siesta" (Harmonische):** Selbst in einer rein biologischen Betrachtung beschreiben diese Peaks oft die "Form" des Tages. Singvögel singen morgens extrem viel, machen mittags (wenn es heiß ist und Greifvögel in der Thermik kreisen) eine lange Pause (Siesta) und werden abends wieder aktiv. Die FFT nutzt diese 8h- und 6h-Rhythmen, um diese tägliche "Mittagspause" der Vögel mathematisch abzubilden.
+- **Verdauungs- und Nahrungszyklen:** Bei Vögeln mit extrem hohem Stoffwechsel (sehr kleine Arten) oder bei Arten, die große Mengen fressen und verdauen müssen (z. B. Tauben mit ihrem Kropf), kann es 3- bis 4-mal am Tag zu intensiven Nahrungs- und Sozialphasen kommen.
+
+### 5. Die 5-Stunden-Periode (Spezifische Verhaltens-Zyklen)
+Wenn wir technische Ursachen völlig ausschließen, ist ein 5-Stunden-Peak (oder ähnliche, nicht-tägliche Rhythmen) biologisch hochgradig spezifisch und extrem spannend:
+- **Brut- und Schichtwechsel (Incubation Shifts):** Bei vielen Arten bebrüten beide Elternteile das Gelege. Ein 5-Stunden-Rhythmus könnte exakt anzeigen, dass alle 5 Stunden der Partner zum Nest zurückkehrt. Dieser Moment des Wechsels ist bei vielen Arten von intensiven, spezifischen "Begrüßungsrufen" oder Reviergesängen begleitet.
+- **Pendelflüge zur Nahrungsbeschaffung (Provisioning):** Seevögel (wie Seeschwalben, Papageientaucher) oder große Greifvögel müssen oft weite Strecken zu ihren Jagdgründen fliegen. Ein 5-Stunden-Peak könnte exakt die Zeit (Round-Trip) abbilden, die ein Altvogel benötigt, um aufs Meer zu fliegen, zu fischen und zum Nest zurückzukehren. Die Rufe wären dann die "Bettelrufe" der Küken und die "Futter-Rufe" der Eltern, die periodisch genau dann ausbrechen, wenn ein Elternteil ankommt.
+- **Thermoregulatorische Zyklen:** In sehr heißen Gebieten müssen manche Vögel in regelmäßigen Abständen Wasserlöcher aufsuchen. Die Rufe (oft Schwarm- und Kontaktrufe an Wasserstellen) könnten diesen physiologisch erzwungenen Rhythmus widerspiegeln.
+
+### 6. Zusammenfassung aus biologischer Sicht:
+Die großen Zyklen (30d, 1d) werden von Kosmos und Licht (Sonne, Mond) diktiert. Der 12h-Zyklus wird von der Atmosphärenphysik (beste Schallübertragung am Morgen/Abend) oder der Gravitation (Gezeiten) bestimmt. Die kurzen Zyklen wie 5h sind tiefere Einblicke in das Sozialverhalten, den Metabolismus und die elterliche Fürsorge (Schichtwechsel, Fütterungsflüge) der beobachteten Art.

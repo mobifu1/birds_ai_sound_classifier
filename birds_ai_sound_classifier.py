@@ -614,9 +614,13 @@ class AudioMonitor:
         if archive_species_str:
             archive_list_raw = [s.strip() for s in archive_species_str.split(',') if s.strip()]
             archive_list = [s.lower() for s in archive_list_raw]
-            should_archive = species.lower() in archive_list or "*" in archive_list or "alle" in archive_list or "Alle" in archive_list_raw
-            if not should_archive and ("neu" in archive_list or "Neu" in archive_list_raw) and is_new_species:
-                should_archive = True
+            exclude_str = f"-{species.lower()}"
+            if exclude_str in archive_list:
+                should_archive = False
+            else:
+                should_archive = species.lower() in archive_list or "*" in archive_list or "alle" in archive_list or "Alle" in archive_list_raw
+                if not should_archive and ("neu" in archive_list or "Neu" in archive_list_raw) and is_new_species:
+                    should_archive = True
 
             if should_archive:
                 import shutil

@@ -48,26 +48,41 @@ class MonitorApp:
         self.log_area.see(tk.END)
         self.log_area.config(state='disabled')
         
-    def is_app_running(self):
-        """Prüft, ob die Ziel-Anwendung derzeit ausgeführt wird."""
-        for p in psutil.process_iter(['name', 'cmdline']):
+    def get_running_instances(self):
+        """Findet alle laufenden Instanzen der Ziel-Anwendung, sortiert nach Alter (ältester zuerst)."""
+        instances = []
+        for p in psutil.process_iter(['name', 'cmdline', 'create_time']):
             try:
                 cmdline = p.info.get('cmdline')
                 if cmdline:
                     # Wandle Befehlszeile in String um für eine einfache Suche
                     cmd_str = ' '.join(cmdline).lower()
                     if TARGET_APP.lower() in cmd_str and "python" in p.info.get('name', '').lower():
-                        return True
+                        instances.append(p)
             except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
                 pass
-        return False
+        
+        # Sortiere aufsteigend nach Startzeit, damit wir die älteste Instanz behalten können
+        instances.sort(key=lambda x: x.info.get('create_time', 0))
+        return instances
         
     def monitor_loop(self):
         """Die Hauptschleife, die periodisch den Prozessstatus überprüft."""
         while self.running:
-            if not self.is_app_running():
+            instances = self.get_running_instances()
+            
+            if len(instances) == 0:
                 self.log_message(f"'{TARGET_APP}' läuft nicht. Starte neu...")
                 self.start_app()
+            elif len(instances) > 1:
+                self.log_message(f"Warnung: {len(instances)} Instanzen von '{TARGET_APP}' gefunden! Beende überzählige...")
+                # Die erste Instanz (älteste) bleibt, die anderen werden beendet
+                for p in instances[1:]:
+                    try:
+                        self.log_message(f"Beende Prozess PID {p.pid}...")
+                        p.terminate()
+                    except Exception as e:
+                        self.log_message(f"Fehler beim Beenden von PID {p.pid}: {e}")
             
             # Überprüfe jede Minute (60 Sekunden).
             # Wir verwenden eine Schleife mit kurzem Sleep, damit die App 

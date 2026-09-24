@@ -319,7 +319,7 @@
                 </div>
             </div>
             <div class="row">
-                <label>Benachrichtigung für folgende Vogelarten (kommasepariert):<br><small>z.B. Eichelhäher, Buntspecht. In-String Suche ist möglich (z.B. "Specht" für alle Spechtarten). "Neu" sendet eine Nachricht, wenn eine neue Art in der Datenbank erfasst wird.</small></label>
+                <label>Benachrichtigung für folgende Vogelarten:<br><small>"Neu" sendet eine Nachricht, wenn eine neue Art in der Datenbank erfasst wird | "Alle" sendet bei jeder Erkennung eine Nachricht | "Eichelhäher, Buntspecht" oder "Specht" für alle Spechtarten | "-Specht" Ein vorangestelltes Minus schließt diese Arten aus | kommaseparierte Kombinationen sind ebenfalls möglich</small></label>
                 <input type="text" id="pushover_birds" value="{{ s.get('pushover_birds', '') }}" style="width: 100%;">
             </div>
             <div class="row">
@@ -331,7 +331,7 @@
         <div class="section">
             <h2>Vogelarten Wörterbuch (Dictionary) & Archivierung</h2>
             <div style="margin-bottom: 20px;">
-                <label>Audio Archivierung (Vogelarten):<br><small>Kommaseparierte Liste von Vogelarten. 'Alle' archiviert jede Erkennung. 'Neu' archiviert Vogelarten, die noch nicht in der Datenbank stehen. Kombinationen (z.B. 'Neu, Amsel') sind möglich. Ein vorangestelltes Minus (z.B. '-Amsel') schließt Arten aus (z.B. 'Alle, -Haussperling').</small></label>
+                <label>Audio Archivierung für folgende Vogelarten:<br><small>"Neu" archiviert Vogelarten, die noch nicht in der Datenbank stehen | "Alle" archiviert jede Erkennung | "Eichelhäher, Buntspecht" oder "Specht" für alle Spechtarten | "-Specht" Ein vorangestelltes Minus schließt diese Arten aus | kommaseparierte Kombinationen sind ebenfalls möglich</small></label>
                 <textarea id="archive_species" placeholder="z.B. neu, Amsel, Rotkehlchen" rows="3" style="width: 100%; padding: 10px; border: 1px solid #444; border-radius: 5px; background: #1a1a1a; color: #fff; box-sizing: border-box; resize: vertical; font-family: inherit;">{{ s.get('archive_species', '') }}</textarea>
             </div>
 

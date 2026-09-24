@@ -28,8 +28,8 @@
 - **Radar Max SNR / Min SNR:** Steuert die Positionierung im Radar (Mitte vs. Rand).
 
 ## Archivierung & Woerterbuch:
-- **Audio Archivierung (Vogelarten):** Liste zu archivierender Arten ('alle', 'neu', Kombinationen). Ein Minus (z.B. '-Amsel') schließt Arten aus (z.B. 'Alle, -Haussperling').
-- **Max. Archiv-Dateien pro Art (50/50 Ringpuffer & Highscore):** Begrenzung der gespeicherten Aufnahmen (0 = unbegrenzt). 
+- **Audio Archivierung für folgende Vogelarten:** "Neu" archiviert Vogelarten, die noch nicht in der Datenbank stehen | "Alle" archiviert jede Erkennung | "Eichelhäher, Buntspecht" oder "Specht" für alle Spechtarten | "-Specht" Ein vorangestelltes Minus schließt diese Arten aus | kommaseparierte Kombinationen sind ebenfalls möglich
+- **Max. Archiv-Dateien pro Art (50% Ringpuffer & 50% Highscore):** Begrenzung der gespeicherten Aufnahmen (24 = standard, 0 = unbegrenzt). 
   - *Das System arbeitet hier intelligent:* Die erste Hälfte des eingestellten Limits dient als klassischer, chronologischer Ringpuffer (FIFO - First In, First Out). Die neuesten Erkennungen überschreiben bei Platzmangel automatisch die ältesten Aufnahmen.
   - Die zweite Hälfte des Limits reserviert das System für einen exklusiven **Highscore-Ordner**. Hier landen nur die Aufnahmen mit dem höchsten "Score" (eine Kombination aus KI-Konfidenz und Signal-Rausch-Verhältnis). Sobald der Ordner voll ist, verdrängt ein neuer Top-Ruf automatisch den bisher schwächsten Ruf aus der Bestenliste. So behalten Sie immer die historisch besten Aufnahmen UND die aktuellsten Besuche im Archiv!
 - **Vogelarten Woerterbuch:** Uebersetzung von englischen zu deutschen Bezeichnungen.
@@ -45,9 +45,7 @@
 ## Pushover Benachrichtigungen:
 - **Pushover Aktivieren:** Schaltet Push-Benachrichtigungen auf dein Smartphone ein.
 - **Pushover User Key & API Token:** Zugangsdaten von deinem Pushover-Account, damit die App Nachrichten senden darf. (Werden aus Sicherheitsgründen nach dem Speichern als "****" maskiert angezeigt. Solange die vier Sterne stehen bleiben, wird der alte Schlüssel beibehalten.)
-- **Vogelarten (kommasepariert):** Liste von Vogelnamen, bei deren Erkennung du benachrichtigt werden willst (z.B. Eichelhäher, Buntspecht).
-  - *In-String-Suche:* Du kannst auch nur Wortteile wie "Häher" oder "Specht" angeben, um für alle Arten benachrichtigt zu werden, die dieses Wort im Namen haben (z.B. Tannenhäher, Grünspecht).
-  - *Codewort "Neu":* Wenn du "Neu" in diese Liste aufnimmst, bekommst du automatisch eine Nachricht, sobald eine für deine Datenbank völlig neue Vogelart erkannt wird (Titel: "Neuer Vogel in DB").
+- **Benachrichtigung für folgende Vogelarten:** "Neu" sendet eine Nachricht, wenn eine neue Art in der Datenbank erfasst wird | "Alle" sendet bei jeder Erkennung eine Nachricht | "Eichelhäher, Buntspecht" oder "Specht" für alle Spechtarten | "-Specht" Ein vorangestelltes Minus schließt diese Arten aus | kommaseparierte Kombinationen sind ebenfalls möglich
 - **Cooldown (Sekunden):** Zeitliche Sperre (z.B. 900 Sekunden = 15 Minuten), bevor für dieselbe Vogelart eine weitere Benachrichtigung versendet wird, um Spam zu vermeiden.
 - **Test Nachricht Senden:** Überprüft die eingegebenen Pushover-Zugangsdaten durch das Senden einer Testnachricht an dein Smartphone.
 

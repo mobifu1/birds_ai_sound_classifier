@@ -3049,6 +3049,7 @@ def check_and_send_pushover(species, confidence, is_new_species=False):
     if match_found:
         cooldown = int(po.get('pushover_cooldown', 300))
         current_time = time.time()
+        species_lower = species.lower()
         
         if cooldown > 0:
             last_sent = pushover_last_sent.get(species_lower, 0)

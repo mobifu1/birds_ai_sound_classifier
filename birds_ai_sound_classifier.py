@@ -40,6 +40,9 @@ birdnetlib.analyzer.LABEL_PATH = os.path.join(local_model_dir, "BirdNET_GLOBAL_6
 from birdnetlib.analyzer import Analyzer
 from birdnetlib import Recording
 
+# Startzeit für Laufzeiterfassung speichern
+START_TIME = time.time()
+
 # --- KONFIGURATION ---
 DB_FILE = "birds_audio_stats.db"
 SETTINGS_FILE = "settings.json"
@@ -998,7 +1001,7 @@ class AudioMonitor:
 # --- FLASK ROUTEN ---
 @app.context_processor
 def inject_version():
-    return dict(version="V1.3.7-RC1", year="2026")
+    return dict(version="V1.3.7-RC2", year="2026")
 
 @app.route('/favicon.ico')
 def favicon():
@@ -2061,7 +2064,7 @@ def fft_page():
         
     all_species = [s for s, _ in sorted(species_counts.items(), key=lambda x: (-x[1], x[0]))]
     
-    return render_template('fft.html', all_species=all_species, version="V1.3.7-RC1", year=datetime.datetime.now().year)
+    return render_template('fft.html', all_species=all_species, version="V1.3.7-RC2", year=datetime.datetime.now().year)
 
 @app.route('/api/fft_plot')
 def api_fft_plot():
@@ -3310,11 +3313,17 @@ def api_status():
     
     conn.close()
 
+    uptime_seconds = int(time.time() - START_TIME)
+    days = uptime_seconds // 86400
+    hours = (uptime_seconds % 86400) // 3600
+    uptime_str = f"{days}d {hours}h"
+
     return jsonify({
         "status": "Online (Mikrofon aktiv)" if (monitor_running_event.is_set() if monitor_running_event else False) else "Offline (Gestoppt)",
         "total_detections": total_count,
         "today_detections": today_count,
-        "effective_occurrence_threshold": get_effective_occurrence_threshold()
+        "effective_occurrence_threshold": get_effective_occurrence_threshold(),
+        "uptime": uptime_str
     })
 
 @app.route('/api/check_model_update')
@@ -3354,7 +3363,7 @@ def check_model_update():
 
 @app.route('/api/check_app_update')
 def check_app_update():
-    current_version = "V1.3.7-RC1"
+    current_version = "V1.3.7-RC2"
     try:
         import urllib.request
         import json

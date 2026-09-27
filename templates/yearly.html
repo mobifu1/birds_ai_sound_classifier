@@ -194,6 +194,23 @@
                 </div>
                 {% endfor %}
             </div>
+
+            <!-- Neu: Probability Chart Bereich -->
+            <div id="yearly-probability-container" style="background: #1e1e1e; padding: 20px; border-radius: 8px; border: 1px solid #333; margin-top: 20px;">
+                <h3 style="margin-top: 0; color: #fff;">BirdNET Wahrscheinlichkeit (Wochenverlauf)</h3>
+                <div style="margin-bottom: 15px;">
+                    <select id="probSpeciesSelect" style="width: 100%; max-width: 400px; padding: 10px; border-radius: 4px; border: 1px solid #37474f; background: #263238; color: #fff;">
+                        <option value="">-- Vogelart auswählen --</option>
+                        {% for eng_key, trans_name in dictionary %}
+                        <option value="{{ eng_key }}">{{ trans_name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div id="probLoadingMsg" style="display: none; color: #ff9800; margin-top: 10px;">Lade Wahrscheinlichkeiten für 52 Wochen...</div>
+                <div class="chart-container" style="position: relative; height:300px; width:100%; display: none; margin-top: 20px;" id="probChartContainer">
+                    <canvas id="probChartYearly"></canvas>
+                </div>
+            </div>
         </div>
 
         <!-- VIEW: First Seen -->
@@ -376,6 +393,103 @@
             {{ version }} | {{ year }}
         </div>
     </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const probSelect = document.getElementById('probSpeciesSelect');
+            if(!probSelect) return;
+            
+            let probChart = null;
+            
+            probSelect.addEventListener('change', function() {
+                const speciesKey = this.value;
+                const container = document.getElementById('probChartContainer');
+                const loading = document.getElementById('probLoadingMsg');
+                
+                if(!speciesKey) {
+                    container.style.display = 'none';
+                    return;
+                }
+                
+                container.style.display = 'none';
+                loading.style.display = 'block';
+                
+                fetch('/api/weekly_probability', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ species_key: speciesKey })
+                })
+                .then(r => r.json())
+                .then(data => {
+                    loading.style.display = 'none';
+                    if(!data.success) {
+                        alert("Fehler: " + data.msg);
+                        return;
+                    }
+                    
+                    container.style.display = 'block';
+                    
+                    const ctx = document.getElementById('probChartYearly').getContext('2d');
+                    if(probChart) {
+                        probChart.destroy();
+                    }
+                    
+                    Chart.defaults.color = '#eceff1';
+                    Chart.defaults.font.family = 'Segoe UI, Tahoma, Geneva, Verdana, sans-serif';
+                    
+                    probChart = new Chart(ctx, {
+                        type: 'bar',
+                        data: {
+                            labels: data.weeks.map(w => 'KW ' + w),
+                            datasets: [{
+                                label: 'Probability (%)',
+                                data: data.probabilities,
+                                backgroundColor: '#4CAF50',
+                                borderColor: '#388E3C',
+                                borderWidth: 1
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            scales: {
+                                y: {
+                                    beginAtZero: true,
+                                    max: 100,
+                                    title: {
+                                        display: true,
+                                        text: 'Wahrscheinlichkeit (%)',
+                                        color: '#aaa'
+                                    }
+                                },
+                                x: {
+                                    ticks: {
+                                        maxRotation: 45,
+                                        minRotation: 45
+                                    }
+                                }
+                            },
+                            plugins: {
+                                legend: { display: false },
+                                tooltip: {
+                                    callbacks: {
+                                        label: function(context) {
+                                            return context.parsed.y + '%';
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    });
+                })
+                .catch(e => {
+                    loading.style.display = 'none';
+                    alert("Fehler bei der API-Anfrage: " + e);
+                });
+            });
+        });
+    </script>
 </body>
 
 </html>

@@ -2675,12 +2675,16 @@ def yearly_page():
         })
     conn2.close()
 
+    dictionary = get_bird_dictionary()
+    sorted_dict = sorted(dictionary.items(), key=lambda x: x[1].lower() if isinstance(x[1], str) else str(x[1]).lower())
+
     return render_template('yearly.html',
         bird_data=bird_data, selected_year=year, total_birds_year=total,
         prev_year=year-1, next_year=year+1,
         is_current_year=(year == today.year), current_year=today.year,
         unique_species_year=len(rows),
-        first_seen_data=first_seen_data
+        first_seen_data=first_seen_data,
+        dictionary=sorted_dict
     )
 
 @app.route('/manual_entry')
@@ -3922,6 +3926,58 @@ def update_dictionary():
         return jsonify({'success': True, 'msg': f'Update abgeschlossen. {added} neue Vögel hinzugefügt. (Gesamt: {total_entries} Einträge im Wörterbuch)'})
     except Exception as e:
         return jsonify({'success': False, 'msg': f'Fehler: {str(e)}'})
+
+@app.route('/api/weekly_probability', methods=['POST'])
+def weekly_probability_route():
+    try:
+        from birdnetlib.species import SpeciesList
+        import datetime
+        import contextlib
+        
+        data = request.json
+        target_species_key = data.get('species_key')
+        
+        if not target_species_key:
+            return jsonify({'success': False, 'msg': 'Keine Vogelart angegeben.'})
+
+        local_settings = load_settings()
+        lat = float(local_settings.get('gps_lat', 0.0))
+        lon = float(local_settings.get('gps_lon', 0.0))
+        
+        sci_name_target = None
+        parts = target_species_key.split('_')
+        if len(parts) >= 2:
+            sci_name_target = parts[0]
+            
+        current_year = datetime.datetime.now().year
+        
+        weekly_probs = []
+        
+        with open(os.devnull, 'w') as f, contextlib.redirect_stdout(f), contextlib.redirect_stderr(f):
+            for week in range(1, 53):
+                # Calculate a date in the given week (Monday)
+                d = datetime.date.fromisocalendar(current_year, week, 1)
+                
+                sl = SpeciesList()
+                predicted = sl.return_list(lat=lat, lon=lon, date=d, threshold=0.0)
+                
+                prob = 0.0
+                if sci_name_target:
+                    for p in predicted:
+                        if p['scientific_name'] == sci_name_target:
+                            prob = float(p['threshold'])
+                            break
+                else:
+                    for p in predicted:
+                        if p['scientific_name'] in target_species_key or p['common_name'] == target_species_key:
+                            prob = float(p['threshold'])
+                            break
+                            
+                weekly_probs.append(round(prob * 100, 2))
+                
+        return jsonify({'success': True, 'weeks': list(range(1, 53)), 'probabilities': weekly_probs})
+    except Exception as e:
+        return jsonify({'success': False, 'msg': str(e)})
 
 @app.route('/api/control/check_probability', methods=['GET'])
 def check_probability_route():

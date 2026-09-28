@@ -1788,6 +1788,9 @@ def weekly_page():
         year_str = str(year)
 
     weekly_chart = create_weekly_total_chart(year_str)
+    
+    dictionary = get_bird_dictionary()
+    sorted_dict = sorted(dictionary.items(), key=lambda x: x[1].lower() if isinstance(x[1], str) else str(x[1]).lower())
 
     return render_template('weekly.html', 
         table_content=generate_weekly_heatmap_html(year_str),
@@ -1796,7 +1799,8 @@ def weekly_page():
         prev_year=year-1,
         next_year=year+1,
         is_current_year=(year == today.year),
-        current_year=today.year
+        current_year=today.year,
+        dictionary=sorted_dict
     )
 
 def create_species_polar_chart(species, hourly_counts, time_mode='relative_sunrise'):

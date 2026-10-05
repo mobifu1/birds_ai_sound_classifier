@@ -362,9 +362,10 @@
                 <div style="flex: 1;">Übersetzung</div>
                 <div style="flex: 0.5;">Aufenthalt</div>
                 <div style="flex: 0.8;">Status</div>
-                <div style="flex: 0.5;" title="Individuelle Konfidenz in %. Überschreibt das globale Limit.">Konf. (%)</div>
-                <div style="width: 70px;" title="Vogelart trotz GPS-Filter erzwingen">Force</div>
-                <div style="width: 90px;">Blocked</div>
+                <div style="flex: 0.5;" title="Individuelle Konfidenz in %. Leer lassen für globale Einstellungen.">Konf. (%)</div>
+                <div style="flex: 0.5;" title="Individueller Sichtbarkeits-Schwellwert. Leer lassen für globale Einstellungen.">OccT</div>
+                <div style="width: 70px;" title="Vogelart bei Erkennung immer akzeptieren, unabhängig von Konfidenz oder Schwellenwert.">Force</div>
+                <div style="width: 90px;" title="Erkennung dieser Vogelart immer blockieren und verwerfen.">Blocked</div>
             </div>
             <div id="dictionary-container" style="display: flex; flex-direction: column; gap: 10px;">
                 <!-- Rows will be injected here via Javascript -->
@@ -555,6 +556,7 @@
             let blocklist = false;
             let forceActive = false;
             let indConf = '';
+            let indOccT = '';
 
             if (typeof data === 'string') {
                 transValue = data;
@@ -565,6 +567,7 @@
                 blocklist = data.blocklist || false;
                 forceActive = data.force_active || false;
                 indConf = data.ind_conf !== undefined && data.ind_conf !== null ? data.ind_conf : '';
+                indOccT = data.ind_occt !== undefined && data.ind_occt !== null ? data.ind_occt : '';
             }
 
             const row = document.createElement('div');
@@ -626,6 +629,15 @@
             inputIndConf.min = '0';
             inputIndConf.max = '100';
 
+            const inputIndOccT = document.createElement('input');
+            inputIndOccT.type = 'number';
+            inputIndOccT.value = indOccT;
+            inputIndOccT.className = 'dict-ind-occt';
+            inputIndOccT.style.flex = '0.5';
+            inputIndOccT.min = '0.00';
+            inputIndOccT.max = '0.09';
+            inputIndOccT.step = '0.01';
+
             const labelForceActive = document.createElement('label');
             labelForceActive.style.display = 'flex';
             labelForceActive.style.alignItems = 'center';
@@ -683,6 +695,7 @@
             row.appendChild(inputAuf);
             row.appendChild(selectStatus);
             row.appendChild(inputIndConf);
+            row.appendChild(inputIndOccT);
             row.appendChild(labelForceActive);
             row.appendChild(labelBlocklist);
             row.appendChild(delBtn);
@@ -863,6 +876,8 @@
                 const fa = row.querySelector('.dict-fa').checked;
                 const indConfStr = row.querySelector('.dict-ind-conf').value.trim();
                 const indConf = indConfStr !== '' ? parseInt(indConfStr) : null;
+                const indOccTStr = row.querySelector('.dict-ind-occt').value.trim();
+                const indOccT = indOccTStr !== '' ? parseFloat(indOccTStr) : null;
                 if (key) {
                     birdDict[key] = {
                         "translation": val,
@@ -870,7 +885,8 @@
                         "status": stat,
                         "blocklist": bl,
                         "force_active": fa,
-                        "ind_conf": indConf
+                        "ind_conf": indConf,
+                        "ind_occt": indOccT
                     };
                 }
             });

@@ -838,6 +838,7 @@ class AudioMonitor:
                         eng_species = raw_d.common_name
                         species_min_conf = app_min_conf
                         
+                        ind_occt_val = None
                         if eng_species in full_bird_dict and isinstance(full_bird_dict[eng_species], dict):
                             ind_conf_val = full_bird_dict[eng_species].get("ind_conf")
                             if ind_conf_val is not None and str(ind_conf_val).strip() != "":
@@ -845,16 +846,34 @@ class AudioMonitor:
                                     species_min_conf = float(ind_conf_val) / 100.0
                                 except (ValueError, TypeError):
                                     pass
+                                    
+                            ind_occt_str = full_bird_dict[eng_species].get("ind_occt")
+                            if ind_occt_str is not None and str(ind_occt_str).strip() != "":
+                                try:
+                                    ind_occt_val = float(ind_occt_str)
+                                except (ValueError, TypeError):
+                                    pass
 
                         if raw_d.label not in allowed_labels:
-                            if forced_species and eng_species in forced_species:
-                                if raw_d.confidence >= recording.minimum_confidence:
+                            is_forced = (forced_species and eng_species in forced_species)
+                            rescue = False
+                            
+                            if is_forced:
+                                rescue = True
+                            elif ind_occt_val is not None:
+                                geo_prob_val = geo_prob_dict.get(eng_species, 0.0)
+                                if geo_prob_val >= ind_occt_val:
+                                    rescue = True
+
+                            if rescue:
+                                conf_to_check = recording.minimum_confidence if is_forced else species_min_conf
+                                if raw_d.confidence >= conf_to_check:
                                     try:
                                         forced_dict = recording.return_detection_dict(raw_d)
                                         valid_detections.append(forced_dict)
                                         allowed_labels.add(raw_d.label)
                                     except Exception as e:
-                                        update_log(f"Fehler beim manuellen Hinzufügen von Force-Species: {e}")
+                                        update_log(f"Fehler beim manuellen Hinzufügen von Force/OccT-Species: {e}")
                             else:
                                 if raw_d.confidence >= species_min_conf:
                                     try:
@@ -895,13 +914,23 @@ class AudioMonitor:
                         full_bird_dict = load_dictionary()
 
                         is_blocklisted = False
+                        is_forced = False
+                        ind_occt_val = None
                         if eng_species in full_bird_dict and isinstance(full_bird_dict[eng_species], dict):
                             is_blocklisted = full_bird_dict[eng_species].get("blocklist", False)
+                            is_forced = full_bird_dict[eng_species].get("force_active", False)
                             
                             ind_conf_val = full_bird_dict[eng_species].get("ind_conf")
                             if ind_conf_val is not None and str(ind_conf_val).strip() != "":
                                 try:
                                     min_conf = float(ind_conf_val) / 100.0
+                                except (ValueError, TypeError):
+                                    pass
+                                    
+                            ind_occt_str = full_bird_dict[eng_species].get("ind_occt")
+                            if ind_occt_str is not None and str(ind_occt_str).strip() != "":
+                                try:
+                                    ind_occt_val = float(ind_occt_str)
                                 except (ValueError, TypeError):
                                     pass
 
@@ -928,46 +957,53 @@ class AudioMonitor:
                             if species in pending_detections:
                                 del pending_detections[species]
                                 
-                        elif confidence >= min_conf and calculated_snr > min_snr_val:
-                            current_detected_species.add(species)
-                            
-                            is_new_species = False
-                            try:
-                                conn_check = sqlite3.connect(DB_FILE)
-                                c_check = conn_check.cursor()
-                                c_check.execute("SELECT COUNT(*) FROM detections WHERE species = ?", (species,))
-                                if c_check.fetchone()[0] == 0:
-                                    is_new_species = True
-                                conn_check.close()
-                            except Exception as e:
-                                print(f"Fehler bei DB-Check für neue Art: {e}")
+                        else:
+                            passes_occt = True
+                            if not is_forced and ind_occt_val is not None:
+                                geo_prob_val = geo_prob_dict.get(eng_species, 0.0)
+                                if geo_prob_val < ind_occt_val:
+                                    passes_occt = False
+                                    
+                            if passes_occt and confidence >= min_conf and calculated_snr > min_snr_val:
+                                current_detected_species.add(species)
+                                
+                                is_new_species = False
+                                try:
+                                    conn_check = sqlite3.connect(DB_FILE)
+                                    c_check = conn_check.cursor()
+                                    c_check.execute("SELECT COUNT(*) FROM detections WHERE species = ?", (species,))
+                                    if c_check.fetchone()[0] == 0:
+                                        is_new_species = True
+                                    conn_check.close()
+                                except Exception as e:
+                                    print(f"Fehler bei DB-Check für neue Art: {e}")
 
-                            geo_prob_val = geo_prob_dict.get(eng_species, 0.0)
-                            current_det_data = {
-                                'species': species,
-                                'confidence': confidence,
-                                'snr': calculated_snr,
-                                'is_new_species': is_new_species,
-                                'raw_data': raw_data,
-                                'eng_species': eng_species,
-                                'best': best,
-                                'lat': lat,
-                                'lon': lon,
-                                'geo_prob': geo_prob_val,
-                                'settings': settings
-                            }
+                                geo_prob_val = geo_prob_dict.get(eng_species, 0.0)
+                                current_det_data = {
+                                    'species': species,
+                                    'confidence': confidence,
+                                    'snr': calculated_snr,
+                                    'is_new_species': is_new_species,
+                                    'raw_data': raw_data,
+                                    'eng_species': eng_species,
+                                    'best': best,
+                                    'lat': lat,
+                                    'lon': lon,
+                                    'geo_prob': geo_prob_val,
+                                    'settings': settings
+                                }
 
-                            if species in pending_detections:
-                                if confidence > pending_detections[species]['confidence']:
-                                    self._commit_detection(current_det_data)
+                                if species in pending_detections:
+                                    if confidence > pending_detections[species]['confidence']:
+                                        self._commit_detection(current_det_data)
+                                    else:
+                                        self._commit_detection(pending_detections[species])
+                                    previous_detected_species.add(species)
+                                    del pending_detections[species]
+                                elif species in previous_detected_species:
+                                    pass
                                 else:
-                                    self._commit_detection(pending_detections[species])
-                                previous_detected_species.add(species)
-                                del pending_detections[species]
-                            elif species in previous_detected_species:
-                                pass
-                            else:
-                                pending_detections[species] = current_det_data
+                                    pending_detections[species] = current_det_data
 
                     # Commit pending detections that are not in current chunk (they stopped singing or dropped below threshold)
                     for sp in list(pending_detections.keys()):
@@ -1001,7 +1037,7 @@ class AudioMonitor:
 # --- FLASK ROUTEN ---
 @app.context_processor
 def inject_version():
-    return dict(version="V1.3.7", year="2026")
+    return dict(version="V1.3.8-RC1", year="2026")
 
 @app.route('/favicon.ico')
 def favicon():
@@ -2068,7 +2104,7 @@ def fft_page():
         
     all_species = [s for s, _ in sorted(species_counts.items(), key=lambda x: (-x[1], x[0]))]
     
-    return render_template('fft.html', all_species=all_species, version="V1.3.7", year=datetime.datetime.now().year)
+    return render_template('fft.html', all_species=all_species, version="V1.3.8-RC1", year=datetime.datetime.now().year)
 
 @app.route('/api/fft_plot')
 def api_fft_plot():
@@ -3371,7 +3407,7 @@ def check_model_update():
 
 @app.route('/api/check_app_update')
 def check_app_update():
-    current_version = "V1.3.7"
+    current_version = "V1.3.8-RC1"
     try:
         import urllib.request
         import json

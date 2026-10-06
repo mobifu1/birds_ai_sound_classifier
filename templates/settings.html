@@ -28,6 +28,7 @@
         .btn-green { background: #4CAF50; width: auto; font-size: 0.9rem; }
         .btn-green:hover { background: #388E3C; }
         .control-row { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 15px; }
+        .dict-row input, .dict-row select { min-width: 0; }
     </style>
 </head>
 <body>
@@ -358,14 +359,15 @@
                 <input type="text" id="dict-search" placeholder="🔍 Wörterbuch durchsuchen (Englisch oder Deutsch)..." oninput="filterDictionary()" style="width: 100%; padding: 10px; border: 1px solid #4CAF50; border-radius: 5px; background: #1a1a1a; color: #fff; box-sizing: border-box; font-size: 1rem;">
             </div>
             <div style="display: flex; gap: 10px; margin-bottom: 5px; font-weight: bold; font-size: 0.9rem; color: #ccc; padding-right: 50px;">
-                <div style="flex: 1;">Englischer Begriff</div>
-                <div style="flex: 1;">Übersetzung</div>
-                <div style="flex: 0.5;">Aufenthalt</div>
-                <div style="flex: 0.8;">Status</div>
-                <div style="flex: 0.5;" title="Individuelle Konfidenz in %. Leer lassen für globale Einstellungen.">Konf. (%)</div>
-                <div style="flex: 0.5;" title="Individueller Sichtbarkeits-Schwellwert. Leer lassen für globale Einstellungen.">OccT</div>
-                <div style="width: 70px;" title="Vogelart bei Erkennung immer akzeptieren, unabhängig von Konfidenz oder Schwellenwert.">Force</div>
-                <div style="width: 90px;" title="Erkennung dieser Vogelart immer blockieren und verwerfen.">Blocked</div>
+                <div style="flex: 1; padding-left: 10px; box-sizing: border-box;">Englischer Begriff</div>
+                <div style="flex: 0 0 60px; text-align: center;">Prob %</div>
+                <div style="flex: 1; padding-left: 10px; box-sizing: border-box;">Übersetzung</div>
+                <div style="flex: 0.5; padding-left: 0px; position: relative; left: -10px; box-sizing: border-box;">Aufenthalt</div>
+                <div style="flex: 0.8; padding-left: 10px; box-sizing: border-box;">Status</div>
+                <div style="flex: 0.5; padding-left: 10px; box-sizing: border-box;" title="Individuelle Konfidenz in %. Leer lassen für globale Einstellungen.">Konf %</div>
+                <div style="flex: 0.5; padding-left: 10px; box-sizing: border-box;" title="Individueller Sichtbarkeits-Schwellwert. Leer lassen für globale Einstellungen.">OccT</div>
+                <div style="flex: 0 0 70px; text-align: center;" title="Vogelart bei Erkennung immer akzeptieren, unabhängig von Konfidenz oder Schwellenwert.">Force</div>
+                <div style="flex: 0 0 90px; text-align: center;" title="Erkennung dieser Vogelart immer blockieren und verwerfen.">Blocked</div>
             </div>
             <div id="dictionary-container" style="display: flex; flex-direction: column; gap: 10px;">
                 <!-- Rows will be injected here via Javascript -->
@@ -374,7 +376,6 @@
             <button type="button" class="btn btn-blue" onclick="addDictionaryRow('', '')" style="margin-top: 15px; width: auto;">+ Neuer Eintrag Wörterbuch</button>
             <button type="button" class="btn btn-orange" onclick="applyDictionary()" style="margin-top: 15px; margin-left: 10px; width: auto;">Wörterbuch auf DB anwenden</button>
             <button type="button" class="btn btn-blue" onclick="checkDictionary()" style="margin-top: 15px; margin-left: 10px; width: auto;" id="btn-check-dict">Wörterbuch Check</button>
-            <button type="button" class="btn btn-blue" onclick="checkProbability()" style="margin-top: 15px; margin-left: 10px; width: auto;" id="btn-check-prob">Probability Check</button>
         </div>
 
         <button type="button" class="btn" style="width: 200px; display: block; margin: 30px auto;" onclick="saveSettings()">Speichern</button>
@@ -398,9 +399,13 @@
                     const autoCheck = document.getElementById('auto_season_lowering');
                     const spanLow = document.getElementById('current_auto_lowering');
                     if (autoCheck && spanLow && data.effective_occurrence_threshold !== undefined) {
+                        window.currentEffectiveThreshold = data.effective_occurrence_threshold;
                         if (autoCheck.checked) {
                             spanLow.innerText = "(Aktuell: " + data.effective_occurrence_threshold + ")";
                             spanLow.style.display = 'inline';
+                            document.querySelectorAll('.dict-row').forEach(row => {
+                                if (typeof updateRowColor === 'function') updateRowColor(row);
+                            });
                         } else {
                             spanLow.style.display = 'none';
                         }
@@ -637,6 +642,9 @@
             inputIndOccT.min = '0.00';
             inputIndOccT.max = '0.09';
             inputIndOccT.step = '0.01';
+            inputIndOccT.addEventListener('input', () => {
+                if (typeof updateRowColor === 'function') updateRowColor(row);
+            });
 
             const labelForceActive = document.createElement('label');
             labelForceActive.style.display = 'flex';
@@ -645,7 +653,7 @@
             labelForceActive.style.margin = '0';
             labelForceActive.style.color = '#2196F3';
             labelForceActive.style.fontSize = '0.9rem';
-            labelForceActive.style.width = '70px';
+            labelForceActive.style.flex = '0 0 70px';
             
             const inputForceActive = document.createElement('input');
             inputForceActive.type = 'checkbox';
@@ -661,7 +669,7 @@
             labelBlocklist.style.margin = '0';
             labelBlocklist.style.color = '#F44336';
             labelBlocklist.style.fontSize = '0.9rem';
-            labelBlocklist.style.width = '90px';
+            labelBlocklist.style.flex = '0 0 90px';
             
             const inputBlocklist = document.createElement('input');
             inputBlocklist.type = 'checkbox';
@@ -674,23 +682,37 @@
                 if (this.checked) {
                     inputBlocklist.checked = false;
                 }
+                if (typeof updateRowColor === 'function') updateRowColor(row);
             };
             
             inputBlocklist.onchange = function() {
                 if (this.checked) {
                     inputForceActive.checked = false;
                 }
+                if (typeof updateRowColor === 'function') updateRowColor(row);
             };
 
             const delBtn = document.createElement('button');
             delBtn.innerText = 'X';
             delBtn.className = 'btn btn-red';
-            delBtn.style.width = '40px';
+            delBtn.style.flex = '0 0 40px';
             delBtn.style.padding = '10px 0';
             delBtn.style.margin = '0';
             delBtn.onclick = () => row.remove();
 
+            const probSpan = document.createElement('div');
+            probSpan.className = 'dict-prob';
+            probSpan.style.flex = '0 0 60px';
+            probSpan.style.display = 'flex';
+            probSpan.style.alignItems = 'center';
+            probSpan.style.justifyContent = 'center';
+            probSpan.style.fontSize = '0.85rem';
+            probSpan.style.fontWeight = 'bold';
+            probSpan.style.color = '#888';
+            probSpan.innerText = '-';
+
             row.appendChild(inputEng);
+            row.appendChild(probSpan);
             row.appendChild(inputTrans);
             row.appendChild(inputAuf);
             row.appendChild(selectStatus);
@@ -738,28 +760,86 @@
                 });
         }
 
-        function checkProbability() {
-            const btn = document.getElementById('btn-check-prob');
-            const originalText = btn.innerText;
-            btn.disabled = true;
-            btn.innerText = "Prüfe...";
+        function updateRowColor(row) {
+            const probSpan = row.querySelector('.dict-prob');
+            if (!probSpan) return;
+            
+            const prob = probSpan.dataset.prob ? parseFloat(probSpan.dataset.prob) : null;
+            const indOccTInput = row.querySelector('.dict-ind-occt');
+            const forceInput = row.querySelector('.dict-fa');
+            const blockedInput = row.querySelector('.dict-bl');
+            
+            const autoSeasonCheckbox = document.getElementById('auto_season_lowering');
+            const globalOccTInput = document.getElementById('occurrence_threshold');
+            
+            let globalThreshold = 0.03;
+            if (autoSeasonCheckbox && autoSeasonCheckbox.checked && window.currentEffectiveThreshold !== undefined) {
+                globalThreshold = window.currentEffectiveThreshold;
+            } else if (globalOccTInput) {
+                globalThreshold = parseFloat(globalOccTInput.value);
+            }
+            
+            let threshold = globalThreshold;
+            if (indOccTInput && indOccTInput.value.trim() !== '') {
+                threshold = parseFloat(indOccTInput.value);
+            }
+            
+            if (blockedInput && blockedInput.checked) {
+                probSpan.style.color = '#F44336';
+            } else if (forceInput && forceInput.checked) {
+                probSpan.style.color = '#4CAF50';
+            } else if (prob !== null && prob >= threshold) {
+                probSpan.style.color = '#4CAF50';
+            } else if (prob !== null && prob < threshold) {
+                probSpan.style.color = '#F44336';
+            } else {
+                probSpan.style.color = '#888';
+            }
+        }
+
+        function fetchAndApplyProbabilities() {
             fetch('/api/control/check_probability')
                 .then(r => r.json())
                 .then(d => {
-                    document.getElementById('probCheckResults').innerHTML = d.msg;
-                    document.getElementById('probCheckModal').style.display = 'flex';
-                    btn.disabled = false;
-                    btn.innerText = originalText;
+                    if (d.success && d.data) {
+                        const globalThreshold = d.global_threshold || 0.03;
+                        window.currentEffectiveThreshold = globalThreshold;
+                        const rows = document.querySelectorAll('.dict-row');
+                        rows.forEach(row => {
+                            const engKey = row.querySelector('.dict-key').value;
+                            const probSpan = row.querySelector('.dict-prob');
+                            
+                            if (d.data.hasOwnProperty(engKey)) {
+                                const prob = d.data[engKey];
+                                probSpan.dataset.prob = prob;
+                                probSpan.innerText = (prob * 100).toFixed(1) + '%';
+                                updateRowColor(row);
+                            }
+                        });
+                    }
                 })
-                .catch(e => {
-                    alert("Fehler bei der Anfrage: " + e);
-                    btn.disabled = false;
-                    btn.innerText = originalText;
-                });
+                .catch(e => console.error("Fehler beim Abrufen der Probabilities: ", e));
         }
 
-        function closeProbCheckModal() {
-            document.getElementById('probCheckModal').style.display = 'none';
+        // Wahrscheinlichkeiten nach dem Rendern der Tabelle laden
+        setTimeout(fetchAndApplyProbabilities, 500);
+
+        const globalOccT = document.getElementById('occurrence_threshold');
+        if (globalOccT) {
+            globalOccT.addEventListener('input', () => {
+                document.querySelectorAll('.dict-row').forEach(row => {
+                    if (typeof updateRowColor === 'function') updateRowColor(row);
+                });
+            });
+        }
+        
+        const autoSeasonCheck = document.getElementById('auto_season_lowering');
+        if (autoSeasonCheck) {
+            autoSeasonCheck.addEventListener('change', () => {
+                document.querySelectorAll('.dict-row').forEach(row => {
+                    if (typeof updateRowColor === 'function') updateRowColor(row);
+                });
+            });
         }
 
         function filterDictionary() {
@@ -1163,19 +1243,6 @@
             </div>
         </div>
     </div>
-    <div id="probCheckModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.7); z-index: 9999; align-items: center; justify-content: center;">
-        <div style="background-color: #1e1e1e; padding: 20px; border-radius: 8px; width: 80%; max-width: 600px; color: #fff; box-shadow: 0 4px 15px rgba(0,0,0,0.5); display: flex; flex-direction: column;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                <h3 style="margin: 0;">Aktuelle Wahrscheinlichkeiten (Zeit & Ort)</h3>
-                <span onclick="closeProbCheckModal()" style="cursor: pointer; font-size: 24px;">&times;</span>
-            </div>
-            <div id="probCheckResults" style="max-height: 400px; overflow-y: auto; background: #2a2a2a; border-radius: 4px; border: 1px solid #444; padding: 10px; white-space: pre-wrap; font-family: monospace;">
-                <!-- Results will be populated here -->
-            </div>
-            <div style="margin-top: 15px; text-align: right;">
-                <button type="button" class="btn" onclick="closeProbCheckModal()">Schließen</button>
-            </div>
-        </div>
-    </div>
+
 </body>
 </html>

@@ -1037,7 +1037,7 @@ class AudioMonitor:
 # --- FLASK ROUTEN ---
 @app.context_processor
 def inject_version():
-    return dict(version="V1.3.8-RC1", year="2026")
+    return dict(version="V1.3.8-RC2", year="2026")
 
 @app.route('/favicon.ico')
 def favicon():
@@ -2104,7 +2104,7 @@ def fft_page():
         
     all_species = [s for s, _ in sorted(species_counts.items(), key=lambda x: (-x[1], x[0]))]
     
-    return render_template('fft.html', all_species=all_species, version="V1.3.8-RC1", year=datetime.datetime.now().year)
+    return render_template('fft.html', all_species=all_species, version="V1.3.8-RC2", year=datetime.datetime.now().year)
 
 @app.route('/api/fft_plot')
 def api_fft_plot():
@@ -3407,7 +3407,7 @@ def check_model_update():
 
 @app.route('/api/check_app_update')
 def check_app_update():
-    current_version = "V1.3.8-RC1"
+    current_version = "V1.3.8-RC2"
     try:
         import urllib.request
         import json
@@ -4064,13 +4064,11 @@ def check_probability_route():
                 
         results.sort(key=lambda x: x[2], reverse=True)
         
-        msg_lines = []
+        data = {}
         for eng_name, trans_name, prob in results:
-            color = "#4CAF50" if prob >= threshold_val else "#F44336"
-            msg_lines.append(f'<div style="color: {color};">{eng_name} ({trans_name}): {prob*100:.1f}%</div>')
+            data[eng_name] = prob
             
-        msg = "".join(msg_lines)
-        return jsonify({'success': True, 'msg': msg})
+        return jsonify({'success': True, 'data': data, 'global_threshold': threshold_val})
         
     except Exception as e:
         return jsonify({'success': False, 'msg': f'Fehler: {str(e)}'})

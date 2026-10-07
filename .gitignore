@@ -4,6 +4,7 @@ backup_db/
 birdweather_queue/
 
 # Ignoriere Modell-Files/Database-Files
+settings.json
 birdweather.json
 pushover.json
 debug_log.txt

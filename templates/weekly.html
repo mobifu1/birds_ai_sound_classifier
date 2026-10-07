@@ -338,7 +338,52 @@
                         plugins: {
                             legend: { 
                                 display: compare && lastChartData.lowering_values ? true : false,
-                                labels: { color: '#ccc' }
+                                labels: { 
+                                    color: '#ccc',
+                                    usePointStyle: true,
+                                    generateLabels: function(chart) {
+                                        const labels = Chart.defaults.plugins.legend.labels.generateLabels(chart);
+                                        
+                                        // Erstelle den zweifarbigen Canvas, wenn er nicht existiert
+                                        if (!window.biColorLegendCanvas) {
+                                            const canvas = document.createElement('canvas');
+                                            canvas.width = 16;
+                                            canvas.height = 16;
+                                            const ctx = canvas.getContext('2d');
+                                            
+                                            // Grün (oben rechts)
+                                            ctx.fillStyle = '#4CAF50';
+                                            ctx.beginPath();
+                                            ctx.moveTo(0, 0);
+                                            ctx.lineTo(16, 0);
+                                            ctx.lineTo(16, 16);
+                                            ctx.fill();
+                                            
+                                            // Rot (unten links)
+                                            ctx.fillStyle = '#f44336';
+                                            ctx.beginPath();
+                                            ctx.moveTo(0, 0);
+                                            ctx.lineTo(16, 16);
+                                            ctx.lineTo(0, 16);
+                                            ctx.fill();
+                                            
+                                            // Rand
+                                            ctx.strokeStyle = '#555';
+                                            ctx.strokeRect(0, 0, 16, 16);
+                                            
+                                            window.biColorLegendCanvas = canvas;
+                                        }
+
+                                        labels.forEach(label => {
+                                            if (label.text === 'Probability') {
+                                                label.pointStyle = window.biColorLegendCanvas;
+                                            } else {
+                                                label.pointStyle = 'rect';
+                                            }
+                                        });
+                                        return labels;
+                                    }
+                                }
                             },
                             tooltip: {
                                 callbacks: {

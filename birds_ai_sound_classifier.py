@@ -25,7 +25,7 @@ import requests
 import soundfile as sf
 import base64
 
-from flask import Flask, render_template, jsonify, request, send_file, abort, send_from_directory
+from flask import Flask, render_template, jsonify, request, send_file, abort, send_from_directory, session, redirect, url_for, render_template_string
 from waitress import serve
 import librosa
 import librosa.display
@@ -65,6 +65,7 @@ TEMP_WAV = os.path.join(AUDIO_DIR, "temp.wav")
 
 
 app = Flask(__name__)
+app.secret_key = 'birdnet_super_secret_session_key'
 log_messages = deque(maxlen=100)
 latest_audio_level = 0
 latest_queue_length = 0
@@ -1054,10 +1055,47 @@ def index():
 @app.route('/manual_pdf')
 def manual_pdf():
     return send_from_directory(os.getcwd(), 'Einstellungen_Beschreibung.pdf')
+@app.route('/login', methods=['GET', 'POST'])
+def login_page():
+    if request.method == 'POST':
+        if request.form.get('password') == 'admin':
+            session['authenticated'] = True
+            return redirect(url_for('settings_page'))
+        else:
+            return render_template_string('''
+            <html><head><title>Login</title><style>body { font-family: sans-serif; background: #121212; color: #fff; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }</style></head>
+            <body><div style="background: #1e1e1e; padding: 30px; border-radius: 8px; text-align: center; border: 1px solid #333;">
+            <h2 style="color: #f44336; margin-top: 0;">Falsches Passwort!</h2>
+            <a href="/login" style="color: #4CAF50; text-decoration: none;">Erneut versuchen</a>
+            </div></body></html>
+            ''')
+    
+    return render_template_string('''
+    <html><head><title>Login - Kindersicherung</title><style>
+        body { font-family: sans-serif; background: #121212; color: #fff; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .box { background: #1e1e1e; padding: 30px; border-radius: 8px; text-align: center; border: 1px solid #333; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
+        input[type="password"] { padding: 10px; width: 200px; border-radius: 4px; border: 1px solid #444; background: #111; color: #fff; font-size: 16px; margin-bottom: 15px; }
+        button { padding: 10px 20px; background: #4CAF50; border: none; border-radius: 4px; color: white; cursor: pointer; font-size: 16px; }
+        button:hover { background: #45a049; }
+    </style></head>
+    <body><div class="box">
+        <h2 style="margin-top: 0;">Kindersicherung</h2>
+        <p style="color: #aaa; margin-bottom: 20px;">Bitte gib das Passwort ein, um die Einstellungen zu öffnen.</p>
+        <form method="POST">
+            <input type="password" name="password" placeholder="Passwort..." autofocus><br>
+            <button type="submit">Entsperren</button>
+        </form>
+        <div style="margin-top: 20px;"><a href="/" style="color: #81d4fa; text-decoration: none; font-size: 0.9em;">Zurück zur Startseite</a></div>
+    </div></body></html>
+    ''')
+
 
 @app.route('/settings')
 def settings_page():
     s = load_settings()
+    if s.get('settings_password', '') == 'admin' and not session.get('authenticated'):
+        return redirect(url_for('login_page'))
+    
     bw = load_birdweather_settings()
     s['birdweather_id'] = bw.get('birdweather_id', '')
     s['birdweather_active'] = bw.get('birdweather_active', False)
@@ -2993,6 +3031,8 @@ def api_save_settings():
         save_setting("log_blocklist", bool(data.get("log_blocklist", True)))
     if "log_blocklist_prob_switch" in data:
         save_setting("log_blocklist_prob_switch", bool(data.get("log_blocklist_prob_switch", False)))
+    if "settings_password" in data:
+        save_setting("settings_password", str(data.get("settings_password", "")))
     if "bird_dictionary" in data:
         save_dictionary(data.get("bird_dictionary", {}))
     return jsonify({"msg": "Einstellungen gespeichert!"})

@@ -3992,7 +3992,38 @@ def weekly_probability_route():
         current_year = datetime.datetime.now().year
         
         weekly_probs = []
+        weekly_thresholds = []
         
+        full_bird_dict = load_dictionary()
+        species_info = full_bird_dict.get(target_species_key, {})
+        is_forced = species_info.get("force_active", False)
+        is_blocklisted = species_info.get("blocklist", False)
+        
+        ind_occt_val = None
+        ind_occt_str = species_info.get("ind_occt")
+        if ind_occt_str is not None and str(ind_occt_str).strip() != "":
+            try:
+                ind_occt_val = float(ind_occt_str)
+            except (ValueError, TypeError):
+                pass
+                
+        auto_season_lowering_active = local_settings.get("auto_season_lowering", False)
+        global_occt = float(local_settings.get("occurrence_threshold", 0.03))
+        
+        lowering_weeks = {}
+        lowering_default = global_occt
+        lowering_file = "auto_season_lowering.json"
+        if os.path.exists(lowering_file):
+            try:
+                import json
+                with open(lowering_file, "r") as f:
+                    data_lowering = json.load(f)
+                lowering_weeks = data_lowering.get("weeks", {})
+                lowering_default = float(data_lowering.get("default", global_occt))
+            except Exception:
+                pass
+        
+        weekly_lowering = []
         with open(os.devnull, 'w') as f, contextlib.redirect_stdout(f), contextlib.redirect_stderr(f):
             for week in range(1, 53):
                 # Calculate a date in the given week (Monday)
@@ -4015,7 +4046,39 @@ def weekly_probability_route():
                             
                 weekly_probs.append(round(prob * 100, 2))
                 
-        return jsonify({'success': True, 'weeks': list(range(1, 53)), 'probabilities': weekly_probs})
+                week_thresh = global_occt
+                raw_lowering = lowering_default
+                if auto_season_lowering_active:
+                    cw_str = str(week)
+                    if cw_str in lowering_weeks:
+                        try:
+                            raw_lowering = float(lowering_weeks[cw_str])
+                        except:
+                            pass
+                
+                weekly_lowering.append(round(raw_lowering * 100, 2))
+
+                if is_forced:
+                    week_thresh = 0.0
+                elif is_blocklisted:
+                    week_thresh = 1.0 # Max probability is 1.0
+                elif ind_occt_val is not None:
+                    week_thresh = ind_occt_val
+                else:
+                    if auto_season_lowering_active:
+                        week_thresh = raw_lowering
+                
+                weekly_thresholds.append(round(week_thresh * 100, 2))
+                
+        settings_info = {
+            "global_occt": global_occt,
+            "auto_season_lowering_active": auto_season_lowering_active,
+            "is_forced": is_forced,
+            "is_blocklisted": is_blocklisted,
+            "ind_occt_val": ind_occt_val
+        }
+        
+        return jsonify({'success': True, 'weeks': list(range(1, 53)), 'probabilities': weekly_probs, 'thresholds': weekly_thresholds, 'settings_info': settings_info, 'lowering_values': weekly_lowering})
     except Exception as e:
         return jsonify({'success': False, 'msg': str(e)})
 

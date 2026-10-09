@@ -616,7 +616,7 @@ class AudioMonitor:
         
         archive_species_str = settings.get("archive_species", "")
         if archive_species_str:
-            should_archive = check_species_match(species, archive_species_str, is_new_species)
+            should_archive, _ = check_species_match(species, archive_species_str, is_new_species)
 
             if should_archive:
                 import shutil
@@ -3080,7 +3080,7 @@ pushover_last_sent = {}
 
 def check_species_match(species, rules_str, is_new_species=False):
     if not rules_str:
-        return False
+        return False, None
         
     rules = [r.strip().lower() for r in rules_str.split(',') if r.strip()]
     
@@ -3098,22 +3098,26 @@ def check_species_match(species, rules_str, is_new_species=False):
     # Check exclusions first.
     for ex in excludes:
         if ex in species_lower:
-            return False
+            return False, None
             
     # Check inclusions.
     if not includes:
-        return False
+        return False, None
         
     for inc in includes:
         if inc == "alle":
-            return True
+            return True, species_lower
         elif inc == "neu" and is_new_species:
-            return True
+            return True, species_lower
+        elif inc.startswith('*'):
+            group_name = inc[1:]
+            if group_name in species_lower:
+                return True, inc
         elif inc != "neu" and inc != "alle":
             if inc in species_lower:
-                return True
+                return True, species_lower
                 
-    return False
+    return False, None
 
 def check_and_send_pushover(species, confidence, is_new_species=False):
     po = load_pushover_settings()
@@ -3124,7 +3128,7 @@ def check_and_send_pushover(species, confidence, is_new_species=False):
     if not birds_str:
         return
     
-    match_found = check_species_match(species, birds_str, is_new_species)
+    match_found, match_key = check_species_match(species, birds_str, is_new_species)
     is_neu_match = False
     
     # For pushover notification title ("Neuer Vogel in DB" if it was because of "neu" rule)
@@ -3136,14 +3140,14 @@ def check_and_send_pushover(species, confidence, is_new_species=False):
     if match_found:
         cooldown = int(po.get('pushover_cooldown', 300))
         current_time = time.time()
-        species_lower = species.lower()
+        block_key = match_key if match_key else species.lower()
         
         if cooldown > 0:
-            last_sent = pushover_last_sent.get(species_lower, 0)
+            last_sent = pushover_last_sent.get(block_key, 0)
             if current_time - last_sent < cooldown:
                 return # Blocked by cooldown
                 
-        pushover_last_sent[species_lower] = current_time
+        pushover_last_sent[block_key] = current_time
 
         if is_neu_match:
             title = f"Neuer Vogel in DB: {species}"

@@ -3031,6 +3031,8 @@ def api_save_settings():
         save_setting("log_blocklist", bool(data.get("log_blocklist", True)))
     if "log_blocklist_prob_switch" in data:
         save_setting("log_blocklist_prob_switch", bool(data.get("log_blocklist_prob_switch", False)))
+    if "spectrogram_enabled" in data:
+        save_setting("spectrogram_enabled", bool(data.get("spectrogram_enabled", True)))
     if "settings_password" in data:
         save_setting("settings_password", str(data.get("settings_password", "")))
     if "bird_dictionary" in data:

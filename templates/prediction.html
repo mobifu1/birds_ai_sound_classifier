@@ -128,6 +128,24 @@
                     {% endfor %}
                 </div>
             </div>
+
+            <!-- 7. Nachtaktivitäten -->
+            <div class="metric-card">
+                <h3>7. Nachtaktivitäten</h3>
+                <p>Nachtzug &amp; Schwarmaktivität (1h vor Sonnenuntergang bis 1h nach Sonnenaufgang).</p>
+                <div style="background: #1e1e1e; padding: 15px; border-radius: 5px; border-left: 4px solid #ba68c8; font-size: 1.05em; line-height: 1.5; margin-bottom: 15px;">
+                    <div style="font-weight: bold; color: #ba68c8; margin-bottom: 8px;">
+                        🌙 Rückblick ({% if days == 1 %}letzte 24 Stunden{% else %}letzte {{ days }} Tage{% endif %}):
+                    </div>
+                    {{ nacht_rueckblick }}
+                </div>
+                <div style="background: #1e1e1e; padding: 15px; border-radius: 5px; border-left: 4px solid #ffd54f; font-size: 1.05em; line-height: 1.5;">
+                    <div style="font-weight: bold; color: #ffd54f; margin-bottom: 8px;">
+                        🔮 Vorhersage (heute Nacht ab {{ nacht_start_uhr }} Uhr bis morgen {{ nacht_ende_uhr }} Uhr):
+                    </div>
+                    {{ nacht_vorhersage }}
+                </div>
+            </div>
         </div>
 
         <div class="footer">

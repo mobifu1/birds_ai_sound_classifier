@@ -2948,6 +2948,177 @@ def prediction_page():
             })
             
     anomalies = sorted(anomalies, key=lambda x: x['status'])[:9] # max 9 anzeigen
+
+    # 7. Nachtaktivitäten (Nachtzug & Schwarmaktivität: 1h vor SU bis 1h nach SA)
+    settings = load_settings()
+    try:
+        lat = float(settings.get("gps_lat", 51.1))
+        lon = float(settings.get("gps_lon", 10.1))
+    except:
+        lat, lon = 51.1, 10.1
+    loc = LocationInfo(latitude=lat, longitude=lon)
+    local_tz = end_date.astimezone().tzinfo
+
+    try:
+        s_today = sun(loc.observer, date=end_date.date())
+        s_tomorrow = sun(loc.observer, date=end_date.date() + datetime.timedelta(days=1))
+        nacht_start_dt = s_today['sunset'].astimezone(local_tz) - datetime.timedelta(hours=1)
+        nacht_ende_dt = s_tomorrow['sunrise'].astimezone(local_tz) + datetime.timedelta(hours=1)
+        nacht_start_uhr = nacht_start_dt.strftime('%H:%M')
+        nacht_ende_uhr = nacht_ende_dt.strftime('%H:%M')
+    except:
+        nacht_start_uhr = "18:00"
+        nacht_ende_uhr = "08:00"
+
+    full_bird_dict = load_dictionary()
+    status_map = {}
+    aufenthalt_map = {}
+    for en_name, v in full_bird_dict.items():
+        tr = v.get('translation')
+        if tr:
+            status_map[tr] = v.get('status', 'Standvogel')
+            aufenthalt_map[tr] = v.get('aufenthalt', '')
+
+    def is_target_flock_bird(species):
+        sp_l = species.lower()
+        backyard = [
+            'haussperling', 'feldsperling', 'blaumeise', 'kohlmeise', 'tannenmeise', 
+            'haubenmeise', 'sumpfmeise', 'elster', 'eichelhäher', 'dohle', 'rabenkrähe', 
+            'nebelkrähe', 'saatkrähe', 'buntspecht', 'grünspecht', 'kleinspecht', 
+            'schwarzspecht', 'türkentaube', 'ringeltaube', 'felsentaube', 'straßentaube', 
+            'hausrotschwanz', 'gartenrotschwanz', 'rotkehlchen', 'zaunkönig', 'amsel', 
+            'buchfink', 'grünfink', 'stieglitz', 'gimpel', 'kleiber', 'baumläufer', 
+            'goldhähnchen', 'schwanzmeise'
+        ]
+        if any(sp_l == b or sp_l.startswith(b) for b in backyard):
+            return False, None
+            
+        st = status_map.get(species, 'Standvogel')
+        if any(k in sp_l for k in ['gans', 'gänse', 'schwan', 'schwäne']):
+            return True, 'Gänse & Schwäne'
+        if any(k in sp_l for k in ['ente', 'enten', 'säger']):
+            return True, 'Enten & Wasservögel'
+        if 'kranich' in sp_l:
+            return True, 'Kraniche'
+        if any(k in sp_l for k in ['singdrossel', 'rotdrossel', 'wacholderdrossel', 'misteldrossel', 'ringdrossel']):
+            return True, 'Zugdrosseln'
+        if any(k in sp_l for k in ['kiebitz', 'bekassine', 'schnepfe', 'brachvogel', 'regenpfeifer', 'strandläufer', 'wasserläufer', 'schenkel', 'knutt', 'kampfläufer']):
+            return True, 'Watvögel / Limikolen'
+        if any(k in sp_l for k in ['ralle', 'reiher', 'blässhuhn', 'teichhuhn', 'wachtel', 'dommel']):
+            return True, 'Rallen & Reiher'
+        if st in ['Durchzieher', 'Wintergast']:
+            return True, f'{st}'
+        return False, None
+
+    sun_cache = {}
+    def get_sun_window(d):
+        if d not in sun_cache:
+            try:
+                s_d = sun(loc.observer, date=d)
+                ss_minus_1 = s_d['sunset'].astimezone(local_tz) - datetime.timedelta(hours=1)
+                sr_plus_1 = s_d['sunrise'].astimezone(local_tz) + datetime.timedelta(hours=1)
+                sun_cache[d] = (ss_minus_1, sr_plus_1)
+            except:
+                sun_cache[d] = (None, None)
+        return sun_cache[d]
+
+    night_events = []
+    species_counts = Counter()
+    phase_counts = Counter()
+
+    for row in rows:
+        sp = row[0]
+        ts = row[1]
+        if not ts:
+            continue
+        try:
+            dt = datetime.datetime.strptime(ts, '%Y-%m-%d %H:%M:%S').replace(tzinfo=local_tz)
+            ss_minus_1, sr_plus_1 = get_sun_window(dt.date())
+            if ss_minus_1 and sr_plus_1:
+                if dt >= ss_minus_1 or dt <= sr_plus_1:
+                    is_flock, group = is_target_flock_bird(sp)
+                    if is_flock:
+                        night_events.append((dt, sp, group))
+                        species_counts[sp] += 1
+                        
+                        s_d = sun(loc.observer, date=dt.date())
+                        ss = s_d['sunset'].astimezone(local_tz)
+                        sr = s_d['sunrise'].astimezone(local_tz)
+                        if dt <= ss + datetime.timedelta(hours=2):
+                            phase_counts['Abenddämmerung'] += 1
+                        elif dt >= sr - datetime.timedelta(hours=2):
+                            phase_counts['Morgenzug'] += 1
+                        else:
+                            phase_counts['Kernnacht'] += 1
+        except:
+            pass
+
+    current_month = end_date.month
+    monate_namen = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"]
+    monat_str = monate_namen[current_month - 1]
+
+    season_candidates = []
+    priority_birds = ['Graugans', 'Blässgans', 'Saatgans', 'Weißwangengans', 'Kranich',
+                      'Rotdrossel', 'Singdrossel', 'Wacholderdrossel', 'Misteldrossel',
+                      'Pfeifente', 'Krickente', 'Spießente', 'Stockente', 'Reiherente', 'Tafelente',
+                      'Kiebitz', 'Bekassine', 'Singschwan', 'Höckerschwan']
+    for p_sp in priority_birds:
+        auf = aufenthalt_map.get(p_sp, '')
+        if '-' in auf:
+            parts = auf.split('-')
+            try:
+                sm = int(parts[0].strip().split()[-1])
+                em = int(parts[1].strip().split()[0])
+                in_s = (sm <= current_month <= em) if sm <= em else (current_month >= sm or current_month <= em)
+                if in_s:
+                    season_candidates.append(p_sp)
+            except:
+                pass
+
+    season_hint = ", ".join(season_candidates[:5]) if season_candidates else "Gänse, Enten, Kraniche und Drosseln"
+
+    total_calls = len(night_events)
+    days_str = "in den letzten 24 Stunden" if days == 1 else f"in den letzten {days} Tagen"
+
+    if total_calls > 0:
+        top_spp = [f"{sp} ({cnt}x)" for sp, cnt in species_counts.most_common(4)]
+        clusters = []
+        if len(night_events) >= 2:
+            last_dt, last_sp = night_events[0][0], night_events[0][1]
+            c_cnt = 1
+            for dt, sp, grp in night_events[1:]:
+                if sp == last_sp and (dt - last_dt).total_seconds() <= 1200:
+                    c_cnt += 1
+                else:
+                    if c_cnt >= 3:
+                        clusters.append((last_sp, c_cnt, last_dt.strftime('%d.%m. um %H:%M Uhr')))
+                    c_cnt = 1
+                    last_dt, last_sp = dt, sp
+            if c_cnt >= 3:
+                clusters.append((last_sp, c_cnt, last_dt.strftime('%d.%m. um %H:%M Uhr')))
+
+        nacht_rueckblick = f"{days_str.capitalize()} wurden insgesamt {total_calls} Rufe von nacht- und dämmerungsaktiven Zug- und Schwarmvögeln registriert. "
+        nacht_rueckblick += f"Am häufigsten vertreten waren {', '.join(top_spp)}. "
+        if clusters:
+            c_texts = [f"ein Formationsüberflug von {cl[0]} ({cl[1]} Rufe am {cl[2]})" for cl in clusters[:2]]
+            nacht_rueckblick += f"Besonderes Ereignis: Es konnten typische Schwarm-Überflüge erkannt werden, u.a. {', '.join(c_texts)}. "
+        if phase_counts:
+            main_phase = phase_counts.most_common(1)[0][0]
+            if main_phase == 'Abenddämmerung':
+                nacht_rueckblick += "Der Hauptteil der Rufe konzentrierte sich auf die verlängerte Abenddämmerung kurz vor und nach Sonnenuntergang (typisch für den Abflug von Enten und Gänsen). "
+            elif main_phase == 'Morgenzug':
+                nacht_rueckblick += "Die Aktivität ballte sich in den frühen Morgenstunden rund um den Sonnenaufgang. "
+            else:
+                nacht_rueckblick += "Die Rufe verteilten sich über die tiefe Kernnacht (typischer NocMig-Nachtzug). "
+    else:
+        nacht_rueckblick = f"{days_str.capitalize()} wurden keine Rufe von klassischen Schwarm- oder Zugvögeln (wie Gänsen, Enten, Kranichen oder Zugdrosseln) im Nachtfenster erfasst. Der Nachthimmel über dem Mikrofon war diesbezüglich ruhig."
+
+    if total_calls >= 5:
+        nacht_vorhersage = f"Hohe Zugerwartung für die kommende Nacht ({nacht_start_uhr} bis morgen früh {nacht_ende_uhr} Uhr): Aufgrund der jüngsten Erfassungen ist erneut mit Überflügen zu rechnen. Halten Sie ab {nacht_start_uhr} Uhr (1h vor Sonnenuntergang) Ausschau nach tief fliegenden Enten und Gänsen. In der Kernnacht bestehen sehr gute Chancen auf Nachtzieher wie {', '.join(list(species_counts.keys())[:3])}."
+    elif total_calls > 0:
+        nacht_vorhersage = f"Mäßige bis gute Chancen für heute Nacht ({nacht_start_uhr} bis morgen {nacht_ende_uhr} Uhr): Einzelne Zugrufe oder kleine Trupps sind wahrscheinlich. Im aktuellen Monat {monat_str} befinden sich insbesondere {season_hint} auf dem Durchzug oder beziehen ihre Winterquartiere. Höchste Aktivität wird 1h vor Sonnenuntergang sowie 1h nach Sonnenaufgang erwartet."
+    else:
+        nacht_vorhersage = f"Prognose für heute Nacht ({nacht_start_uhr} bis morgen {nacht_ende_uhr} Uhr): Aktuell herrscht ruhiger Nachtzug am Standort. Dennoch ist zur jetzigen Jahreszeit (Hauptzugzeit im {monat_str}) jederzeit mit spontanen Truppüberflügen von {season_hint} zu rechnen – insbesondere im Dämmerungsfenster ab {nacht_start_uhr} Uhr sowie im morgendlichen Zugfenster."
         
     conn.close()
     
@@ -2962,7 +3133,11 @@ def prediction_page():
                            selten_text=selten_text,
                            zugvogel_text=zugvogel_text,
                            tagesbericht=bericht,
-                           anomalies=anomalies)
+                           anomalies=anomalies,
+                           nacht_rueckblick=nacht_rueckblick,
+                           nacht_vorhersage=nacht_vorhersage,
+                           nacht_start_uhr=nacht_start_uhr,
+                           nacht_ende_uhr=nacht_ende_uhr)
 
 @app.route('/api/settings/save', methods=['POST'])
 def api_save_settings():

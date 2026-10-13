@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Probability Check</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #1a1a1a;
+            color: #fff;
+            margin: 0;
+            padding: 20px;
+        }
+        h1 {
+            text-align: center;
+            color: #4CAF50;
+            margin-top: 10px;
+            margin-bottom: 25px;
+        }
+        .container {
+            max-width: 1100px;
+            margin: 20px auto;
+            background: #2c2c2c;
+            padding: 25px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+        .btn {
+            display: inline-block;
+            padding: 10px 20px;
+            background: #4CAF50;
+            color: #fff;
+            text-decoration: none;
+            border-radius: 5px;
+            border: none;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: 500;
+            text-align: center;
+            transition: background 0.2s;
+        }
+        .btn:hover { background: #45a049; }
+        .btn-gray { background: #555; width: auto; font-size: 0.9rem; margin-bottom: 20px; }
+        .btn-gray:hover { background: #666; }
+        .btn-green { background: #4CAF50; }
+        .btn-green:hover { background: #388E3C; }
+        .btn-blue { background: #2196F3; }
+        .btn-blue:hover { background: #1976d2; }
+
+        .card {
+            background: #333;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 25px;
+            border: 1px solid #444;
+        }
+        .controls-row {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            flex-wrap: wrap;
+            margin-top: 15px;
+        }
+        .controls-row label {
+            font-size: 1rem;
+            color: #ccc;
+        }
+        .controls-row input[type="number"] {
+            width: 90px;
+            padding: 10px;
+            border: 1px solid #555;
+            border-radius: 5px;
+            background: #1a1a1a;
+            color: #fff;
+            font-size: 1.1rem;
+            font-weight: bold;
+            text-align: center;
+        }
+
+        .summary-bar {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+        }
+        .stat-pill {
+            background: #263238;
+            padding: 10px 18px;
+            border-radius: 6px;
+            border: 1px solid #37474f;
+            font-size: 0.95rem;
+        }
+        .stat-pill strong {
+            color: #81d4fa;
+        }
+        .stat-pill.highlight {
+            border-color: #f44336;
+            background: #332020;
+        }
+        .stat-pill.highlight strong {
+            color: #ff8a80;
+        }
+
+        .filter-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 15px;
+            flex-wrap: wrap;
+            margin-bottom: 15px;
+        }
+        .search-input {
+            flex: 1;
+            min-width: 250px;
+            padding: 10px 15px;
+            border: 1px solid #444;
+            border-radius: 5px;
+            background: #1a1a1a;
+            color: #fff;
+            font-size: 0.95rem;
+        }
+        .search-input:focus {
+            outline: none;
+            border-color: #4CAF50;
+        }
+
+        .filter-buttons {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .filter-btn {
+            background: #37474f;
+            color: #ccc;
+            border: 1px solid #455a64;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            transition: all 0.2s;
+        }
+        .filter-btn:hover {
+            background: #455a64;
+            color: #fff;
+        }
+        .filter-btn.active {
+            background: #4CAF50;
+            border-color: #4CAF50;
+            color: #fff;
+            font-weight: bold;
+        }
+
+        .prob-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+            background: #222;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .prob-table th, .prob-table td {
+            padding: 12px 14px;
+            text-align: left;
+            border-bottom: 1px solid #333;
+            font-size: 0.95rem;
+        }
+        .prob-table th {
+            background: #37474f;
+            color: #eceff1;
+            font-weight: 600;
+        }
+        .prob-table tbody tr:hover {
+            background: #2b3033;
+        }
+        .prob-table tbody tr:last-child td {
+            border-bottom: none;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 0.85rem;
+            font-weight: bold;
+            white-space: nowrap;
+        }
+        .badge-blocked {
+            background: rgba(244, 67, 54, 0.2);
+            color: #ff8a80;
+            border: 1px solid #d32f2f;
+        }
+        .badge-notfound {
+            background: rgba(255, 152, 0, 0.2);
+            color: #ffcc80;
+            border: 1px solid #f57c00;
+        }
+        .badge-occt {
+            background: rgba(156, 39, 176, 0.2);
+            color: #ce93d8;
+            border: 1px solid #ab47bc;
+        }
+        .badge-lowering {
+            background: rgba(0, 188, 212, 0.2);
+            color: #80deea;
+            border: 1px solid #00acc1;
+        }
+        .badge-global {
+            background: rgba(33, 150, 243, 0.2);
+            color: #90caf9;
+            border: 1px solid #1e88e5;
+        }
+
+        .species-name {
+            font-weight: 600;
+            color: #fff;
+        }
+        .species-sub {
+            font-size: 0.82rem;
+            color: #888;
+            margin-top: 2px;
+        }
+
+        #loading-box {
+            display: none;
+            text-align: center;
+            padding: 40px;
+            background: #333;
+            border-radius: 8px;
+            border: 1px solid #444;
+            margin-top: 20px;
+        }
+        .spinner {
+            border: 4px solid rgba(255,255,255,0.1);
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            border-left-color: #4CAF50;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        #empty-info {
+            text-align: center;
+            padding: 40px;
+            color: #aaa;
+            font-size: 1.05rem;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <a href="/settings" class="btn btn-gray">&laquo; Zurück zu den Einstellungen</a>
+        <h1>📊 Probability Check</h1>
+
+        <div class="card">
+            <h3 style="margin-top: 0; color: #81d4fa;">Funktionsweise & Simulation</h3>
+            <p style="color: #ccc; margin-bottom: 15px; line-height: 1.5; font-size: 0.95rem;">
+                Dieser Check überprüft alle Vogelarten des Wörterbuchs (<code>dictionary.json</code>) anhand des GPS-Standorts und der aktuellen Einstellungen (Blocklist, Force, individuelle OccT, Auto Season Lowering, globaler Schwellwert).
+                Er ermittelt genau diejenigen Arten, die an deinem Standort in mehr als der eingestellten Prozentzahl an Kalenderwochen <strong>nicht angezeigt werden würden</strong>.
+            </p>
+            <div class="controls-row">
+                <label for="threshold_pct">
+                    <strong>Schwellwert (% der Wochen unter Grenzwert):</strong>
+                </label>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <input type="number" id="threshold_pct" value="50" min="1" max="100" step="1">
+                    <span style="font-weight: bold; color: #ccc;">%</span>
+                </div>
+                <button type="button" class="btn btn-green" id="btn-start" onclick="startCheck()">
+                    Berechnung starten
+                </button>
+            </div>
+            <small style="color: #888; display: block; margin-top: 8px;">
+                Standard: 50%. Liegt eine Vogelart in mehr als dieser Prozentzahl aller Wochen unter der Mindestwahrscheinlichkeit, erscheint sie in der Ergebnisliste.
+            </small>
+        </div>
+
+        <div id="loading-box">
+            <div class="spinner"></div>
+            <div style="font-size: 1.1rem; color: #81d4fa; font-weight: bold;" id="loading-text">Berechne wöchentliche Modell-Wahrscheinlichkeiten...</div>
+            <div style="color: #aaa; margin-top: 8px; font-size: 0.9rem;">Dies kann einen kurzen Moment dauern.</div>
+        </div>
+
+        <div id="results-container" style="display: none;">
+            <div class="summary-bar" id="summary-bar">
+                <!-- Stat pills injected here -->
+            </div>
+
+            <div class="filter-row">
+                <input type="text" id="search-input" class="search-input" placeholder="🔍 Ergebnisse filtern (Name oder Reason)..." oninput="applyFilters()">
+                <div class="filter-buttons" id="filter-buttons">
+                    <button type="button" class="filter-btn active" data-filter="all" onclick="setReasonFilter('all', this)">Alle</button>
+                    <button type="button" class="filter-btn" data-filter="Blocked" onclick="setReasonFilter('Blocked', this)">Blocked</button>
+                    <button type="button" class="filter-btn" data-filter="Nicht im Modell gefunden" onclick="setReasonFilter('Nicht im Modell gefunden', this)">Nicht im Modell</button>
+                    <button type="button" class="filter-btn" data-filter="strong individual OccT" onclick="setReasonFilter('strong individual OccT', this)">Indiv. OccT</button>
+                    <button type="button" class="filter-btn" data-filter="strong global Auto Season Lowering" onclick="setReasonFilter('strong global Auto Season Lowering', this)">Auto Lowering</button>
+                    <button type="button" class="filter-btn" data-filter="strong global Occurrence Threshold" onclick="setReasonFilter('strong global Occurrence Threshold', this)">Global OccT</button>
+                </div>
+            </div>
+
+            <div style="overflow-x: auto;">
+                <table class="prob-table" id="results-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 45px; text-align: center;">#</th>
+                            <th>Deutscher Name</th>
+                            <th>Reason</th>
+                            <th>Verwendete Schwelle</th>
+                            <th style="text-align: center;">Wochen unter Schwelle</th>
+                            <th style="text-align: center;">Max. Probability</th>
+                        </tr>
+                    </thead>
+                    <tbody id="table-body">
+                        <!-- Rows injected here -->
+                    </tbody>
+                </table>
+            </div>
+            <div id="no-filter-match" style="display: none; text-align: center; padding: 30px; color: #888;">
+                Keine Einträge entsprechen dem Suchfilter.
+            </div>
+        </div>
+
+        <div id="empty-info">
+            Klicke oben auf <strong>„Berechnung starten“</strong>, um die Überprüfung durchzuführen.
+        </div>
+    </div>
+
+    <script>
+        let allResults = [];
+        let activeFilter = 'all';
+
+        function startCheck() {
+            const btn = document.getElementById('btn-start');
+            const pctInput = document.getElementById('threshold_pct');
+            let pct = parseFloat(pctInput.value);
+            if (isNaN(pct) || pct < 1 || pct > 100) {
+                alert("Bitte einen gültigen Schwellwert zwischen 1 und 100 % eingeben.");
+                return;
+            }
+
+            btn.disabled = true;
+            document.getElementById('empty-info').style.display = 'none';
+            document.getElementById('results-container').style.display = 'none';
+            document.getElementById('loading-box').style.display = 'block';
+
+            fetch('/api/probability_check', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ threshold_pct: pct })
+            })
+            .then(r => r.json())
+            .then(data => {
+                document.getElementById('loading-box').style.display = 'none';
+                btn.disabled = false;
+
+                if (!data.success) {
+                    alert("Fehler bei der Berechnung: " + (data.msg || "Unbekannter Fehler"));
+                    document.getElementById('empty-info').style.display = 'block';
+                    return;
+                }
+
+                allResults = data.results || [];
+                renderSummary(data);
+                activeFilter = 'all';
+                document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+                const allBtn = document.querySelector('.filter-btn[data-filter="all"]');
+                if (allBtn) allBtn.classList.add('active');
+                document.getElementById('search-input').value = '';
+                
+                document.getElementById('results-container').style.display = 'block';
+                applyFilters();
+            })
+            .catch(err => {
+                document.getElementById('loading-box').style.display = 'none';
+                btn.disabled = false;
+                document.getElementById('empty-info').style.display = 'block';
+                alert("Netzwerkfehler: " + err);
+            });
+        }
+
+        function renderSummary(data) {
+            const bar = document.getElementById('summary-bar');
+            bar.innerHTML = `
+                <div class="stat-pill highlight">
+                    Gefilterte Vogelarten: <strong>${data.filtered_species_count}</strong> von ${data.total_species}
+                </div>
+                <div class="stat-pill">
+                    Berechnete Kalenderwochen: <strong>${data.total_weeks} Wochen</strong> (${data.year})
+                </div>
+                <div class="stat-pill">
+                    Prüf-Schwellwert: <strong>&gt; ${data.threshold_pct}% der Wochen</strong>
+                </div>
+            `;
+        }
+
+        function getBadgeClass(reason) {
+            if (reason === 'Blocked') return 'badge-blocked';
+            if (reason === 'Nicht im Modell gefunden') return 'badge-notfound';
+            if (reason.includes('OccT') && reason.includes('individual')) return 'badge-occt';
+            if (reason.includes('Auto Season Lowering')) return 'badge-lowering';
+            return 'badge-global';
+        }
+
+        function setReasonFilter(filterVal, el) {
+            activeFilter = filterVal;
+            document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+            el.classList.add('active');
+            applyFilters();
+        }
+
+        function applyFilters() {
+            const query = document.getElementById('search-input').value.toLowerCase().trim();
+            const tbody = document.getElementById('table-body');
+            tbody.innerHTML = '';
+
+            let visibleCount = 0;
+            allResults.forEach((item, index) => {
+                if (activeFilter !== 'all' && item.reason !== activeFilter) {
+                    return;
+                }
+
+                const deName = item.german_name ? item.german_name.toLowerCase() : '';
+                const enName = item.english_name ? item.english_name.toLowerCase() : '';
+                const reason = item.reason ? item.reason.toLowerCase() : '';
+                const thresh = item.used_threshold ? item.used_threshold.toLowerCase() : '';
+
+                if (query && !deName.includes(query) && !enName.includes(query) && !reason.includes(query) && !thresh.includes(query)) {
+                    return;
+                }
+
+                visibleCount++;
+                const row = document.createElement('tr');
+                const badgeClass = getBadgeClass(item.reason);
+
+                row.innerHTML = `
+                    <td style="text-align: center; color: #888;">${item.dict_index !== undefined ? item.dict_index : (index + 1)}</td>
+                    <td>
+                        <div class="species-name">${escapeHtml(item.german_name)}</div>
+                        <div class="species-sub">${escapeHtml(item.english_name)}</div>
+                    </td>
+                    <td>
+                        <span class="badge ${badgeClass}">${escapeHtml(item.reason)}</span>
+                    </td>
+                    <td style="color: #ccc;">${escapeHtml(item.used_threshold)}</td>
+                    <td style="text-align: center; font-weight: bold; color: ${item.weeks_under === '–' ? '#888' : '#ffb74d'};">${escapeHtml(item.weeks_under)}</td>
+                    <td style="text-align: center; font-weight: bold; color: ${item.max_prob === '–' ? '#888' : '#81c4fa'};">${escapeHtml(item.max_prob)}</td>
+                `;
+                tbody.appendChild(row);
+            });
+
+            const noMatch = document.getElementById('no-filter-match');
+            if (visibleCount === 0) {
+                noMatch.style.display = 'block';
+            } else {
+                noMatch.style.display = 'none';
+            }
+        }
+
+        function escapeHtml(text) {
+            if (!text && text !== 0) return '';
+            return String(text)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+    </script>
+</body>
+</html>

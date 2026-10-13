@@ -4303,6 +4303,322 @@ def weekly_probability_route():
     except Exception as e:
         return jsonify({'success': False, 'msg': str(e)})
 
+@app.route('/probability_check')
+def probability_check_page():
+    s = load_settings()
+    if s.get('settings_password', '') == 'admin' and not session.get('authenticated'):
+        return redirect(url_for('login_page'))
+    return render_template('probability_check.html')
+
+@app.route('/api/probability_check', methods=['POST'])
+def api_probability_check():
+    s = load_settings()
+    if s.get('settings_password', '') == 'admin' and not session.get('authenticated'):
+        return jsonify({'success': False, 'msg': 'Nicht authentifiziert.'}), 401
+        
+    try:
+        from birdnetlib.species import SpeciesList
+        import datetime
+        
+        req_data = request.get_json(silent=True) or {}
+        threshold_pct = float(req_data.get('threshold_pct', 50.0))
+        if threshold_pct < 0 or threshold_pct > 100:
+            threshold_pct = 50.0
+            
+        local_settings = load_settings()
+        lat = float(local_settings.get('gps_lat', 0.0))
+        lon = float(local_settings.get('gps_lon', 0.0))
+        
+        if not os.path.exists(DICTIONARY_FILE):
+            return jsonify({'success': False, 'msg': 'dictionary.json existiert nicht.'})
+        with open(DICTIONARY_FILE, 'r', encoding='utf-8') as f:
+            dictionary = json.load(f)
+            
+        current_year = datetime.datetime.now().year
+        # Echte Anzahl Kalenderwochen des laufenden Jahres (ISO 8601, z. B. 53 für 2026)
+        num_weeks = datetime.date(current_year, 12, 28).isocalendar()[1]
+        
+        auto_season_lowering_active = bool(local_settings.get("auto_season_lowering", False))
+        global_occt_raw = local_settings.get("occurrence_threshold")
+        global_occt = None
+        if global_occt_raw is not None and str(global_occt_raw).strip() != "":
+            try:
+                parsed_global = float(global_occt_raw)
+                if parsed_global > 0:
+                    global_occt = parsed_global
+            except (ValueError, TypeError):
+                pass
+                
+        lowering_weeks = {}
+        lowering_default = global_occt if global_occt is not None else 0.03
+        lowering_file = "auto_season_lowering.json"
+        if os.path.exists(lowering_file):
+            try:
+                with open(lowering_file, "r", encoding="utf-8") as f:
+                    data_lowering = json.load(f)
+                lowering_weeks = data_lowering.get("weeks", {})
+                lowering_default = float(data_lowering.get("default", lowering_default))
+            except Exception:
+                pass
+
+        # Labels aus Modell laden
+        model_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'model')
+        labels_path = None
+        if os.path.exists(model_dir):
+            for file in os.listdir(model_dir):
+                if file.endswith('_Labels.txt') or file.endswith('Labels.txt'):
+                    labels_path = os.path.join(model_dir, file)
+                    break
+        if not labels_path and hasattr(birdnetlib.analyzer, 'LABEL_PATH') and os.path.exists(birdnetlib.analyzer.LABEL_PATH):
+            labels_path = birdnetlib.analyzer.LABEL_PATH
+
+        model_labels_raw = []
+        if labels_path and os.path.exists(labels_path):
+            with open(labels_path, 'r', encoding='utf-8') as f:
+                model_labels_raw = [line.strip() for line in f if line.strip()]
+
+        common_to_model = {}
+        sci_to_model = {}
+        for l in model_labels_raw:
+            parts = l.split('_', 1)
+            sci = parts[0].strip() if len(parts) > 1 else ""
+            com = parts[1].strip() if len(parts) > 1 else l.strip()
+            if com:
+                common_to_model[com.lower()] = (sci, com)
+                common_to_model[com.lower().replace('-', ' ')] = (sci, com)
+            if sci:
+                sci_to_model[sci.lower()] = (sci, com)
+
+        def resolve_model_species(name):
+            clean = name.strip().lower()
+            if clean in common_to_model:
+                return common_to_model[clean]
+            if clean in sci_to_model:
+                return sci_to_model[clean]
+            
+            clean_norm = clean.replace('-', ' ')
+            if clean_norm in common_to_model:
+                return common_to_model[clean_norm]
+                
+            # US/UK Schreibweise (Grey <-> Gray)
+            if 'grey' in clean_norm:
+                us = clean_norm.replace('grey', 'gray')
+                if us in common_to_model:
+                    return common_to_model[us]
+            if 'gray' in clean_norm:
+                uk = clean_norm.replace('gray', 'grey')
+                if uk in common_to_model:
+                    return common_to_model[uk]
+                    
+            # Präfixe (z. B. Eurasian / European / Common)
+            prefixes = ['eurasian ', 'european ', 'common ', 'northern ', 'western ', 'eastern ']
+            for p in prefixes:
+                cand = p + clean_norm
+                if cand in common_to_model:
+                    return common_to_model[cand]
+                if clean_norm.startswith(p):
+                    cand2 = clean_norm[len(p):]
+                    if cand2 in common_to_model:
+                        return common_to_model[cand2]
+            return None
+
+        # Wöchentliche Wahrscheinlichkeiten für alle KW einmalig berechnen (Performance!)
+        weekly_preds = {}
+        with open(os.devnull, 'w') as f_null, contextlib.redirect_stdout(f_null), contextlib.redirect_stderr(f_null):
+            for week in range(1, num_weeks + 1):
+                d = datetime.date.fromisocalendar(current_year, week, 1)
+                sl = SpeciesList()
+                pred_list = sl.return_list(lat=lat, lon=lon, date=d, threshold=0.0)
+                by_sci = {}
+                by_com = {}
+                for p in pred_list:
+                    s_name = p.get('scientific_name', '')
+                    c_name = p.get('common_name', '')
+                    thresh_val = float(p.get('threshold', 0.0))
+                    if s_name:
+                        by_sci[s_name.lower()] = thresh_val
+                    if c_name:
+                        by_com[c_name.lower()] = thresh_val
+                        by_com[c_name.lower().replace('-', ' ')] = thresh_val
+                weekly_preds[week] = {'by_sci': by_sci, 'by_com': by_com}
+
+        def get_species_weekly_probs(model_info, raw_key):
+            probs = []
+            sci = model_info[0].lower() if model_info and model_info[0] else None
+            com = model_info[1].lower() if model_info and model_info[1] else raw_key.lower()
+            com_norm = com.replace('-', ' ')
+            
+            for week in range(1, num_weeks + 1):
+                w_data = weekly_preds[week]
+                prob = 0.0
+                if sci and sci in w_data['by_sci']:
+                    prob = w_data['by_sci'][sci]
+                elif com in w_data['by_com']:
+                    prob = w_data['by_com'][com]
+                elif com_norm in w_data['by_com']:
+                    prob = w_data['by_com'][com_norm]
+                probs.append(prob)
+            return probs
+
+        results = []
+        dict_index = 0
+
+        # Iteration in originaler Dictionary-Reihenfolge
+        for eng_name, props in dictionary.items():
+            dict_index += 1
+            if not isinstance(props, dict):
+                props = {"translation": str(props)}
+
+            de_name = props.get("translation", "")
+            if not str(de_name).strip():
+                de_name = eng_name
+
+            is_blocked = bool(props.get("blocklist", False))
+            is_forced = bool(props.get("force_active", False))
+
+            ind_occt_val = None
+            ind_occt_str = props.get("ind_occt")
+            if ind_occt_str is not None and str(ind_occt_str).strip() != "":
+                try:
+                    ind_occt_val = float(ind_occt_str)
+                except (ValueError, TypeError):
+                    pass
+
+            model_info = resolve_model_species(eng_name)
+
+            # 1. Blocked Prüfung
+            if is_blocked:
+                if model_info:
+                    probs = get_species_weekly_probs(model_info, eng_name)
+                    max_p = max(probs) if probs else 0.0
+                    max_prob_str = f"{max_p * 100:.2f} %"
+                    
+                    if ind_occt_val is not None:
+                        w_under = sum(1 for p in probs if p < ind_occt_val)
+                        used_th = f"Blocked (OccT {ind_occt_val * 100:.2f} %)"
+                    elif auto_season_lowering_active:
+                        w_under = sum(1 for w, p in enumerate(probs, 1) if p < float(lowering_weeks.get(str(w), lowering_default)))
+                        used_th = "Blocked (Auto Season Lowering)"
+                    elif global_occt is not None:
+                        w_under = sum(1 for p in probs if p < global_occt)
+                        used_th = f"Blocked (Global {global_occt * 100:.2f} %)"
+                    else:
+                        w_under = num_weeks
+                        used_th = "Blocked"
+                    weeks_under_str = f"{w_under}/{num_weeks}"
+                else:
+                    weeks_under_str = "–"
+                    max_prob_str = "–"
+                    used_th = "Blocked"
+
+                results.append({
+                    "dict_index": dict_index,
+                    "english_name": eng_name,
+                    "german_name": de_name,
+                    "reason": "Blocked",
+                    "used_threshold": used_th,
+                    "weeks_under": weeks_under_str,
+                    "max_prob": max_prob_str
+                })
+                continue
+
+            # 2. Modell-Prüfung
+            if not model_info:
+                results.append({
+                    "dict_index": dict_index,
+                    "english_name": eng_name,
+                    "german_name": de_name,
+                    "reason": "Nicht im Modell gefunden",
+                    "used_threshold": "–",
+                    "weeks_under": "–",
+                    "max_prob": "–"
+                })
+                continue
+
+            # 3. Force Prüfung
+            if is_forced:
+                # Force rettet die Vogelart -> Prüfung Ende, nicht auf Result-Liste
+                continue
+
+            probs = get_species_weekly_probs(model_info, eng_name)
+            max_p = max(probs) if probs else 0.0
+            max_prob_str = f"{max_p * 100:.2f} %"
+
+            # 4. Individuelles OccT
+            if ind_occt_val is not None:
+                weeks_under = sum(1 for p in probs if p < ind_occt_val)
+                pct_under = (weeks_under / num_weeks) * 100.0
+                if pct_under > threshold_pct:
+                    results.append({
+                        "dict_index": dict_index,
+                        "english_name": eng_name,
+                        "german_name": de_name,
+                        "reason": "strong individual OccT",
+                        "used_threshold": f"OccT {ind_occt_val * 100:.2f} %",
+                        "weeks_under": f"{weeks_under}/{num_weeks}",
+                        "max_prob": max_prob_str
+                    })
+                continue
+
+            # 5. Globales Auto Season Lowering
+            if auto_season_lowering_active:
+                weeks_under = 0
+                lowering_vals = []
+                for w, p in enumerate(probs, 1):
+                    cw_str = str(w)
+                    try:
+                        th = float(lowering_weeks.get(cw_str, lowering_default))
+                    except:
+                        th = lowering_default
+                    lowering_vals.append(th)
+                    if p < th:
+                        weeks_under += 1
+                pct_under = (weeks_under / num_weeks) * 100.0
+                if pct_under > threshold_pct:
+                    min_low = min(lowering_vals) * 100.0
+                    max_low = max(lowering_vals) * 100.0
+                    low_th_str = f"Lowering {min_low:.1f}–{max_low:.1f} %" if abs(min_low - max_low) > 0.01 else f"Lowering {min_low:.1f} %"
+                    results.append({
+                        "dict_index": dict_index,
+                        "english_name": eng_name,
+                        "german_name": de_name,
+                        "reason": "strong global Auto Season Lowering",
+                        "used_threshold": low_th_str,
+                        "weeks_under": f"{weeks_under}/{num_weeks}",
+                        "max_prob": max_prob_str
+                    })
+                continue
+
+            # 6. Globaler Occurrence Threshold
+            if global_occt is not None:
+                weeks_under = sum(1 for p in probs if p < global_occt)
+                pct_under = (weeks_under / num_weeks) * 100.0
+                if pct_under > threshold_pct:
+                    results.append({
+                        "dict_index": dict_index,
+                        "english_name": eng_name,
+                        "german_name": de_name,
+                        "reason": "strong global Occurrence Threshold",
+                        "used_threshold": f"Global OccT {global_occt * 100:.2f} %",
+                        "weeks_under": f"{weeks_under}/{num_weeks}",
+                        "max_prob": max_prob_str
+                    })
+                continue
+
+        return jsonify({
+            'success': True,
+            'year': current_year,
+            'total_weeks': num_weeks,
+            'threshold_pct': threshold_pct,
+            'total_species': len(dictionary),
+            'filtered_species_count': len(results),
+            'results': results
+        })
+
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({'success': False, 'msg': f"Fehler bei der Berechnung: {str(e)}"})
+
 @app.route('/api/control/check_probability', methods=['GET'])
 def check_probability_route():
     try:

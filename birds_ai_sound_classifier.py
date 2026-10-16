@@ -548,6 +548,17 @@ class AudioMonitor:
         except Exception as e:
             update_log(f"Fehler beim Speichern der temporären Audio-Datei: {e}")
             return
+
+        # Immer die jeweils letzte Aufnahme pro Vogelart für das Radar vorhalten (Variante A)
+        try:
+            import shutil
+            latest_dir = os.path.join(AUDIO_DIR, "latest")
+            os.makedirs(latest_dir, exist_ok=True)
+            safe_species_latest = species.replace(" ", "_").replace("/", "_")
+            latest_species_filepath = os.path.join(latest_dir, f"{safe_species_latest}.wav")
+            shutil.copy(temp_commit_wav, latest_species_filepath)
+        except Exception as e:
+            update_log(f"Fehler beim Speichern der letzten Art-Audio-Datei: {e}")
             
         bw_settings = load_birdweather_settings()
         birdweather_id = bw_settings.get("birdweather_id", "").strip()
@@ -1038,7 +1049,7 @@ class AudioMonitor:
 # --- FLASK ROUTEN ---
 @app.context_processor
 def inject_version():
-    return dict(version="V1.3.8", year="2026")
+    return dict(version="V1.3.9-RC1", year="2026")
 
 @app.route('/favicon.ico')
 def favicon():
@@ -2142,7 +2153,7 @@ def fft_page():
         
     all_species = [s for s, _ in sorted(species_counts.items(), key=lambda x: (-x[1], x[0]))]
     
-    return render_template('fft.html', all_species=all_species, version="V1.3.8", year=datetime.datetime.now().year)
+    return render_template('fft.html', all_species=all_species, version="V1.3.9-RC1", year=datetime.datetime.now().year)
 
 @app.route('/api/fft_plot')
 def api_fft_plot():
@@ -2446,6 +2457,33 @@ def serve_archive_audio(filename):
     file_path = os.path.join(archive_path, filename)
     if os.path.exists(file_path):
         return send_file(file_path)
+    abort(404)
+
+@app.route('/api/latest_species_audio/<path:species>')
+def serve_latest_species_audio(species):
+    from flask import make_response
+    safe_species = species.replace(" ", "_").replace("/", "_")
+    latest_path = os.path.join(AUDIO_DIR, "latest", f"{safe_species}.wav")
+    if os.path.exists(latest_path) and os.path.isfile(latest_path):
+        resp = make_response(send_file(latest_path, mimetype="audio/wav"))
+        resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        return resp
+
+    # Fallback: neueste Datei aus dem Archiv verwenden, falls vorhanden
+    archive_path = os.path.join(AUDIO_DIR, "archive")
+    if os.path.exists(archive_path):
+        prefix = f"{safe_species}_"
+        candidates = [
+            os.path.join(archive_path, f)
+            for f in os.listdir(archive_path)
+            if f.startswith(prefix) and f.endswith(".wav") and os.path.isfile(os.path.join(archive_path, f))
+        ]
+        if candidates:
+            newest_file = max(candidates, key=os.path.getmtime)
+            resp = make_response(send_file(newest_file, mimetype="audio/wav"))
+            resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+            return resp
+
     abort(404)
 
 @app.route('/api/archive/spectrogram/<path:filename>')
@@ -3382,6 +3420,7 @@ def api_control_apply_dictionary():
         else:
             archive_files = []
 
+        latest_dir = os.path.join(AUDIO_DIR, "latest")
         for eng, trans in bird_dict.items():
             if eng != trans and trans.strip():
                 # DB Update
@@ -3404,6 +3443,15 @@ def api_control_apply_dictionary():
                             renamed_files_count += 1
                         except Exception as e:
                             print(f"Fehler beim Umbenennen von {f}: {e}")
+
+                if os.path.exists(latest_dir):
+                    old_latest = os.path.join(latest_dir, f"{safe_eng}.wav")
+                    new_latest = os.path.join(latest_dir, f"{safe_trans}.wav")
+                    if os.path.exists(old_latest):
+                        try:
+                            os.replace(old_latest, new_latest)
+                        except Exception:
+                            pass
                             
         # Re-list files if needed for subsequent operations, but not strictly necessary here.
         conn.commit()
@@ -3443,9 +3491,10 @@ def api_control_delete_single_occurrences():
         conn.commit()
 
         archive_dir = os.path.join(AUDIO_DIR, "archive")
-        if os.path.exists(archive_dir):
-            for species, ts in rows:
-                safe_species = species.replace(" ", "_").replace("/", "_")
+        latest_dir = os.path.join(AUDIO_DIR, "latest")
+        for species, ts in rows:
+            safe_species = species.replace(" ", "_").replace("/", "_")
+            if os.path.exists(archive_dir):
                 prefix = f"{safe_species}_"
                 for filename in os.listdir(archive_dir):
                     if filename.startswith(prefix) and filename.endswith(".wav"):
@@ -3455,6 +3504,13 @@ def api_control_delete_single_occurrences():
                             deleted_files += 1
                         except:
                             pass
+            if os.path.exists(latest_dir):
+                latest_fp = os.path.join(latest_dir, f"{safe_species}.wav")
+                if os.path.exists(latest_fp):
+                    try:
+                        os.remove(latest_fp)
+                    except:
+                        pass
 
     except Exception as e:
         conn.rollback()
@@ -3494,6 +3550,13 @@ def api_control_bulk_delete_species():
                         deleted_files += 1
                     except:
                         pass
+
+        latest_fp = os.path.join(AUDIO_DIR, "latest", f"{safe_species}.wav")
+        if os.path.exists(latest_fp):
+            try:
+                os.remove(latest_fp)
+            except:
+                pass
 
     except Exception as e:
         conn.rollback()
@@ -3537,6 +3600,16 @@ def api_control_bulk_rename_species():
                         renamed_files += 1
                     except Exception as fe:
                         print(f"Failed to rename {filename}: {fe}")
+
+        latest_dir = os.path.join(AUDIO_DIR, "latest")
+        if os.path.exists(latest_dir):
+            old_latest = os.path.join(latest_dir, f"{safe_old_species}.wav")
+            new_latest = os.path.join(latest_dir, f"{safe_new_species}.wav")
+            if os.path.exists(old_latest):
+                try:
+                    os.replace(old_latest, new_latest)
+                except Exception:
+                    pass
 
     except Exception as e:
         conn.rollback()
@@ -3628,7 +3701,7 @@ def check_model_update():
 
 @app.route('/api/check_app_update')
 def check_app_update():
-    current_version = "V1.3.8"
+    current_version = "V1.3.9-RC1"
     try:
         import urllib.request
         import json
@@ -3644,8 +3717,8 @@ def check_app_update():
             latest_version = data[0].get('name', '')
             html_url = f"https://github.com/mobifu1/birds_ai_sound_classifier/releases/tag/{latest_version}"
             
-            cur_norm = current_version.lower().replace('v', '').strip()
-            lat_norm = latest_version.lower().replace('v', '').strip()
+            cur_norm = current_version.lower().replace('v', '').split('-')[0].strip()
+            lat_norm = latest_version.lower().replace('v', '').split('-')[0].strip()
             
             is_newer = False
             if lat_norm and cur_norm:
@@ -3797,15 +3870,16 @@ def api_control_dbreset():
         conn.close()
         
         deleted_files = 0
-        archive_dir = os.path.join(AUDIO_DIR, "archive")
-        if os.path.exists(archive_dir):
-            for f in os.listdir(archive_dir):
-                if f.endswith(".wav"):
-                    try:
-                        os.remove(os.path.join(archive_dir, f))
-                        deleted_files += 1
-                    except:
-                        pass
+        for sub in ("archive", "latest"):
+            sub_dir = os.path.join(AUDIO_DIR, sub)
+            if os.path.exists(sub_dir):
+                for f in os.listdir(sub_dir):
+                    if f.endswith(".wav"):
+                        try:
+                            os.remove(os.path.join(sub_dir, f))
+                            deleted_files += 1
+                        except:
+                            pass
 
         return jsonify({"msg": f"Datenbank wurde erfolgreich geleert! {deleted_files} Dateien wurden gelöscht."})
     except Exception as e:

@@ -37,21 +37,91 @@
             transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
             box-shadow: 0 4px 10px rgba(0,0,0,0.5);
             z-index: 5;
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            user-select: none;
+            touch-action: manipulation;
         }
-        .bird-node:hover {
+        .bird-node:hover,
+        .bird-node.show-tooltip {
             transform: translate(-50%, -50%) scale(1.2);
             border-color: #81c784;
             box-shadow: 0 0 15px rgba(129, 199, 132, 0.6);
-            z-index: 12;
+            z-index: 22;
+        }
+        @keyframes audioPlayPulse {
+            0% {
+                box-shadow: 0 0 0 0 rgba(255, 193, 7, 0.85), 0 0 18px rgba(255, 193, 7, 0.9);
+            }
+            70% {
+                box-shadow: 0 0 0 16px rgba(255, 193, 7, 0), 0 0 22px rgba(255, 193, 7, 1);
+            }
+            100% {
+                box-shadow: 0 0 0 0 rgba(255, 193, 7, 0), 0 0 18px rgba(255, 193, 7, 0.9);
+            }
+        }
+        .bird-node.playing-audio {
+            transform: translate(-50%, -50%) scale(1.22) !important;
+            border-color: #ffc107 !important;
+            animation: audioPlayPulse 1.1s infinite !important;
+            z-index: 25 !important;
+        }
+        .bird-audio-badge {
+            position: absolute;
+            top: -6px;
+            right: -6px;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background: #ffc107;
+            color: #111;
+            font-size: 13px;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.6);
+            border: 1.5px solid #fff;
+            pointer-events: none;
+            z-index: 26;
+        }
+        .bird-node.playing-audio .bird-audio-badge {
+            display: flex;
+        }
+        .bird-tooltip {
+            position: absolute;
+            top: -34px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(15, 15, 15, 0.94);
+            color: #e0f7fa;
+            padding: 4px 9px;
+            border-radius: 8px;
+            font-size: 0.72rem;
+            font-family: 'Inter', sans-serif;
+            white-space: nowrap;
+            border: 1px solid #4CAF50;
+            box-shadow: 0 3px 8px rgba(0,0,0,0.7);
+            pointer-events: none;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.2s ease, visibility 0.2s ease;
+            z-index: 30;
+        }
+        .bird-node:hover .bird-tooltip,
+        .bird-node.show-tooltip .bird-tooltip {
+            opacity: 1;
+            visibility: visible;
         }
         .latest-node {
             border-color: #03a9f4 !important;
             box-shadow: 0 0 15px rgba(3, 169, 244, 0.6) !important;
             z-index: 10 !important;
         }
-        .latest-node:hover {
+        .latest-node:hover,
+        .latest-node.show-tooltip {
             border-color: #29b6f6 !important;
             box-shadow: 0 0 20px rgba(41, 182, 246, 0.8) !important;
+            z-index: 22 !important;
         }
         .bird-img {
             width: 52px;
@@ -59,6 +129,10 @@
             border-radius: 50%;
             object-fit: cover;
             background-color: #666666;
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            user-select: none;
+            pointer-events: none;
         }
         .bird-label {
             position: absolute;
@@ -86,6 +160,12 @@
             stroke: rgba(129, 199, 132, 0.8);
             stroke-width: 3px;
             stroke-dasharray: 0;
+        }
+        .radar-line.playing-line {
+            stroke: #ffc107 !important;
+            stroke-width: 3px !important;
+            stroke-dasharray: 0 !important;
+            filter: drop-shadow(0 0 6px rgba(255, 193, 7, 0.8));
         }
         .radar-line.latest-line {
             stroke: #03a9f4;
@@ -187,6 +267,12 @@
         const archiveSpeciesList = archiveSpeciesStr.split(',').map(s => s.trim().toLowerCase()).filter(s => s.length > 0);
 
         let globalAudioCtx = null;
+        let currentSpeciesAudioSource = null;
+        let currentSpeciesAudioEl = null;
+        let currentlyPlayingSpecies = null;
+        let activeTooltipSpecies = null;
+        let isPressingNode = false;
+        let pendingRadarArgs = null;
 
         function initAudio() {
             if (!globalAudioCtx) {
@@ -214,6 +300,168 @@
         
         document.addEventListener('click', handleFirstInteraction);
         document.addEventListener('touchstart', handleFirstInteraction);
+
+        // Klick oder Touch auf freien Radar-Hintergrund schließt geöffnete Info-Anzeige (T/K/P/SNR)
+        function handleRadarBackgroundTap(e) {
+            if (!e.target.closest('.bird-node') && activeTooltipSpecies !== null) {
+                activeTooltipSpecies = null;
+                syncNodeStates();
+            }
+        }
+        document.getElementById('radar-container').addEventListener('click', handleRadarBackgroundTap);
+        document.getElementById('radar-container').addEventListener('touchstart', handleRadarBackgroundTap, { passive: true });
+
+        function syncNodeStates() {
+            document.querySelectorAll('.bird-node').forEach(node => {
+                const sp = node.dataset.species;
+                const lineId = node.dataset.lineId;
+                const line = lineId ? document.getElementById(lineId) : null;
+
+                if (sp === currentlyPlayingSpecies) {
+                    node.classList.add('playing-audio');
+                    if (line) line.classList.add('playing-line');
+                } else {
+                    node.classList.remove('playing-audio');
+                    if (line) line.classList.remove('playing-line');
+                }
+
+                if (sp === activeTooltipSpecies) {
+                    node.classList.add('show-tooltip');
+                    if (line) line.classList.add('active');
+                } else {
+                    node.classList.remove('show-tooltip');
+                    if (line) line.classList.remove('active');
+                }
+            });
+        }
+
+        function stopCurrentSpeciesAudio() {
+            if (currentSpeciesAudioSource) {
+                try {
+                    currentSpeciesAudioSource.onended = null;
+                    currentSpeciesAudioSource.stop();
+                    currentSpeciesAudioSource.disconnect();
+                } catch (e) {}
+                currentSpeciesAudioSource = null;
+            }
+            if (currentSpeciesAudioEl) {
+                try {
+                    currentSpeciesAudioEl.pause();
+                    currentSpeciesAudioEl.currentTime = 0;
+                } catch (e) {}
+                currentSpeciesAudioEl = null;
+            }
+            currentlyPlayingSpecies = null;
+            syncNodeStates();
+        }
+
+        function showNoAudioFeedback(species) {
+            document.querySelectorAll('.bird-node').forEach(node => {
+                if (node.dataset.species === species) {
+                    const tip = node.querySelector('.bird-tooltip');
+                    if (tip) {
+                        const originalText = tip.dataset.originalText || tip.innerText;
+                        tip.dataset.originalText = originalText;
+                        tip.innerText = '🔇 Keine Aufnahme verfügbar';
+                        activeTooltipSpecies = species;
+                        syncNodeStates();
+                        setTimeout(() => {
+                            if (tip.dataset.originalText) {
+                                tip.innerText = tip.dataset.originalText;
+                            }
+                            if (activeTooltipSpecies === species) {
+                                activeTooltipSpecies = null;
+                                syncNodeStates();
+                            }
+                        }, 2000);
+                    }
+                }
+            });
+        }
+
+        function playSpeciesAudio(species) {
+            initAudio();
+            stopCurrentSpeciesAudio();
+
+            currentlyPlayingSpecies = species;
+            syncNodeStates();
+
+            const audioUrl = `/api/latest_species_audio/${encodeURIComponent(species)}?t=${Date.now()}`;
+
+            fetch(audioUrl)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Keine Audiodatei gefunden');
+                    }
+                    return response.arrayBuffer();
+                })
+                .then(arrayBuffer => {
+                    if (currentlyPlayingSpecies !== species) return;
+
+                    if (globalAudioCtx) {
+                        if (globalAudioCtx.state === 'suspended') {
+                            globalAudioCtx.resume().catch(() => {});
+                        }
+                        globalAudioCtx.decodeAudioData(
+                            arrayBuffer,
+                            function(audioBuffer) {
+                                if (currentlyPlayingSpecies !== species) return;
+                                const source = globalAudioCtx.createBufferSource();
+                                source.buffer = audioBuffer;
+                                source.connect(globalAudioCtx.destination);
+                                currentSpeciesAudioSource = source;
+                                source.onended = function() {
+                                    if (currentSpeciesAudioSource === source) {
+                                        currentSpeciesAudioSource = null;
+                                        currentlyPlayingSpecies = null;
+                                        syncNodeStates();
+                                    }
+                                };
+                                source.start(0);
+                            },
+                            function() {
+                                // Fallback über HTML5 Audio, falls decodeAudioData fehlschlägt
+                                playSpeciesAudioFallback(audioUrl, species);
+                            }
+                        );
+                    } else {
+                        playSpeciesAudioFallback(audioUrl, species);
+                    }
+                })
+                .catch(() => {
+                    if (currentlyPlayingSpecies === species) {
+                        currentlyPlayingSpecies = null;
+                        syncNodeStates();
+                        showNoAudioFeedback(species);
+                    }
+                });
+        }
+
+        function playSpeciesAudioFallback(audioUrl, species) {
+            const audio = new Audio(audioUrl);
+            currentSpeciesAudioEl = audio;
+            audio.onended = function() {
+                if (currentSpeciesAudioEl === audio) {
+                    currentSpeciesAudioEl = null;
+                    currentlyPlayingSpecies = null;
+                    syncNodeStates();
+                }
+            };
+            audio.onerror = function() {
+                if (currentSpeciesAudioEl === audio) {
+                    currentSpeciesAudioEl = null;
+                    currentlyPlayingSpecies = null;
+                    syncNodeStates();
+                }
+            };
+            audio.play().catch(() => {
+                if (currentSpeciesAudioEl === audio) {
+                    currentSpeciesAudioEl = null;
+                    currentlyPlayingSpecies = null;
+                    syncNodeStates();
+                }
+            });
+        }
 
         function playAlarmSound() {
             if (!globalAudioCtx) {
@@ -287,6 +535,12 @@
         }
 
         function updateRadar(topDetections, latestSpecies, latestId, todayTotalCount, radarTimeRange) {
+            if (isPressingNode) {
+                pendingRadarArgs = [topDetections, latestSpecies, latestId, todayTotalCount, radarTimeRange];
+                return;
+            }
+            pendingRadarArgs = null;
+
             const container = document.getElementById('radar-container');
             const nodesContainer = document.getElementById('radar-nodes');
             const svg = document.getElementById('radar-lines');
@@ -365,8 +619,16 @@
                 
                 const node = document.createElement('div');
                 node.className = 'bird-node';
+                node.dataset.species = det.species;
+                node.dataset.lineId = `line-${i}`;
                 if (det.species === latestSpecies) {
                     node.classList.add('latest-node');
+                }
+                if (det.species === currentlyPlayingSpecies) {
+                    node.classList.add('playing-audio');
+                }
+                if (det.species === activeTooltipSpecies) {
+                    node.classList.add('show-tooltip');
                 }
                 node.style.left = `${x}px`;
                 node.style.top = `${y}px`;
@@ -386,11 +648,13 @@
                 let snrStr = det.snr !== undefined ? det.snr.toFixed(1) + 'dB' : '--dB';
                 let geoStr = det.geo_prob !== undefined ? Math.round(det.geo_prob * 100) + '%' : '--%';
                 
-                node.title = `(T: ${timeStr} | K: ${confStr} | P: ${geoStr} | SNR: ${snrStr})`;
+                const infoText = `(T: ${timeStr} | K: ${confStr} | P: ${geoStr} | SNR: ${snrStr})`;
 
                 node.innerHTML = `
+                    <div class="bird-tooltip">${infoText}</div>
+                    <div class="bird-audio-badge">🔊</div>
                     ${isUnknown 
-                        ? `<div style="width: 52px; height: 52px; border-radius: 50%; background: #333; display: flex; align-items: center; justify-content: center; font-size: 1.8rem; font-weight: bold; color: #ffb74d;">?</div>`
+                        ? `<div style="width: 52px; height: 52px; border-radius: 50%; background: #333; display: flex; align-items: center; justify-content: center; font-size: 1.8rem; font-weight: bold; color: #ffb74d; pointer-events: none;">?</div>`
                         : `<img src="${iconSrc}" class="bird-img" alt="${det.species}">`
                     }
                     <div class="bird-label">${det.species} (${det.count})</div>
@@ -403,6 +667,13 @@
                 line.setAttribute('y2', y);
                 line.setAttribute('class', 'radar-line');
                 line.id = `line-${i}`;
+
+                if (det.species === currentlyPlayingSpecies) {
+                    line.classList.add('playing-line');
+                }
+                if (det.species === activeTooltipSpecies) {
+                    line.classList.add('active');
+                }
                 
                 if (det.species === latestSpecies && isNewLatest) {
                     line.classList.add('latest-line');
@@ -417,7 +688,128 @@
                     line.classList.add('active');
                 });
                 node.addEventListener('mouseleave', () => {
-                    line.classList.remove('active');
+                    if (activeTooltipSpecies !== det.species) {
+                        line.classList.remove('active');
+                    }
+                });
+
+                // Langdruck (500ms -> Audio abspielen) & Kurztipp (T/K/P/SNR anzeigen) für iPad & Desktop
+                let pressTimer = null;
+                let longPressTriggered = false;
+                let touchMoved = false;
+                let startX = 0;
+                let startY = 0;
+                let lastTouchEndTime = 0;
+
+                function startPress(clientX, clientY) {
+                    initAudio();
+                    isPressingNode = true;
+                    longPressTriggered = false;
+                    touchMoved = false;
+                    startX = clientX;
+                    startY = clientY;
+                    if (pressTimer) clearTimeout(pressTimer);
+                    pressTimer = setTimeout(() => {
+                        longPressTriggered = true;
+                        playSpeciesAudio(det.species);
+                    }, 500);
+                }
+
+                function cancelPress() {
+                    if (pressTimer) {
+                        clearTimeout(pressTimer);
+                        pressTimer = null;
+                    }
+                    if (isPressingNode) {
+                        isPressingNode = false;
+                        if (pendingRadarArgs) {
+                            const args = pendingRadarArgs;
+                            pendingRadarArgs = null;
+                            setTimeout(() => updateRadar(...args), 50);
+                        }
+                    }
+                }
+
+                function endPress(isTouch) {
+                    if (pressTimer) {
+                        clearTimeout(pressTimer);
+                        pressTimer = null;
+                    }
+                    const wasLongPress = longPressTriggered;
+                    const wasMoved = touchMoved;
+                    isPressingNode = false;
+
+                    if (!wasLongPress && !wasMoved) {
+                        // Kurzer Tipp: Anzeige (T / K / P / SNR) umschalten
+                        if (activeTooltipSpecies === det.species) {
+                            activeTooltipSpecies = null;
+                        } else {
+                            activeTooltipSpecies = det.species;
+                        }
+                        syncNodeStates();
+                    }
+
+                    if (pendingRadarArgs) {
+                        const args = pendingRadarArgs;
+                        pendingRadarArgs = null;
+                        setTimeout(() => updateRadar(...args), 50);
+                    }
+                }
+
+                node.addEventListener('contextmenu', (e) => {
+                    e.preventDefault();
+                });
+
+                node.addEventListener('touchstart', (e) => {
+                    if (e.touches.length > 1) {
+                        cancelPress();
+                        return;
+                    }
+                    const t = e.touches[0];
+                    startPress(t.clientX, t.clientY);
+                }, { passive: true });
+
+                node.addEventListener('touchmove', (e) => {
+                    if (!pressTimer && !isPressingNode) return;
+                    const t = e.touches[0];
+                    if (Math.abs(t.clientX - startX) > 15 || Math.abs(t.clientY - startY) > 15) {
+                        touchMoved = true;
+                        cancelPress();
+                    }
+                }, { passive: true });
+
+                node.addEventListener('touchend', (e) => {
+                    lastTouchEndTime = Date.now();
+                    if (e.cancelable) e.preventDefault();
+                    endPress(true);
+                });
+
+                node.addEventListener('touchcancel', () => {
+                    lastTouchEndTime = Date.now();
+                    cancelPress();
+                });
+
+                node.addEventListener('mousedown', (e) => {
+                    if (Date.now() - lastTouchEndTime < 500 || e.button !== 0) return;
+                    startPress(e.clientX, e.clientY);
+                });
+
+                node.addEventListener('mousemove', (e) => {
+                    if (!isPressingNode || Date.now() - lastTouchEndTime < 500) return;
+                    if (Math.abs(e.clientX - startX) > 15 || Math.abs(e.clientY - startY) > 15) {
+                        touchMoved = true;
+                        cancelPress();
+                    }
+                });
+
+                node.addEventListener('mouseup', (e) => {
+                    if (Date.now() - lastTouchEndTime < 500 || e.button !== 0) return;
+                    endPress(false);
+                });
+
+                node.addEventListener('mouseleave', () => {
+                    if (Date.now() - lastTouchEndTime < 500) return;
+                    cancelPress();
                 });
                 
                 svg.appendChild(line);

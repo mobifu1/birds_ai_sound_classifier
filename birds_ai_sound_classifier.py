@@ -2456,7 +2456,13 @@ def serve_archive_audio(filename):
     archive_path = os.path.join(AUDIO_DIR, "archive")
     file_path = os.path.join(archive_path, filename)
     if os.path.exists(file_path):
-        return send_file(file_path)
+        as_attachment = request.args.get('download') == '1'
+        return send_file(
+            file_path,
+            mimetype="audio/wav",
+            as_attachment=as_attachment,
+            download_name=os.path.basename(file_path)
+        )
     abort(404)
 
 @app.route('/api/latest_species_audio/<path:species>')

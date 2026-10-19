@@ -503,6 +503,8 @@
             fetch('/api/control/dbbackup', { method: 'POST' }).then(r => r.json()).then(d => alert(d.msg));
         }
 
+        let latestGithubReleaseTag = '';
+
         function checkAppUpdate() {
             const btn = document.getElementById('btn-check-app-update');
             const resDiv = document.getElementById('app-update-result');
@@ -516,26 +518,262 @@
                     btn.disabled = false;
                     btn.innerText = "Software Updates (GitHub)";
                     resDiv.style.display = 'block';
+                    resDiv.style.background = '#222';
+                    resDiv.style.border = '1px solid #4CAF50';
+                    resDiv.style.padding = '18px';
+
+                    const curVer = data.current_version || 'Unbekannt';
+                    const hasRelease = data.success && data.latest_version;
+                    latestGithubReleaseTag = hasRelease ? data.latest_version : '';
+
+                    let versionBannerHtml = '';
                     if (!data.success) {
-                        resDiv.style.background = '#F44336';
-                        resDiv.innerHTML = "Fehler bei der Prüfung: " + data.error;
+                        versionBannerHtml = `
+                            <div style="background: #3a2a1d; border-left: 4px solid #FF9800; padding: 10px 12px; border-radius: 4px; margin-bottom: 15px;">
+                                <strong>Installierte Version:</strong> ${curVer}<br>
+                                <span style="color: #ffb74d; font-size: 0.9rem;">Hinweis bei Release-Abfrage: ${data.error || 'Keine Release-Tags gefunden.'} (Entwicklungsstand kann dennoch geladen werden)</span>
+                            </div>`;
+                    } else if (data.is_newer) {
+                        versionBannerHtml = `
+                            <div style="background: #3d2c12; border-left: 4px solid #f57c00; padding: 10px 12px; border-radius: 4px; margin-bottom: 15px;">
+                                <strong style="color: #ffb74d;">✨ Neue Software-Version verfügbar!</strong><br>
+                                <span>Installierte Version: <strong>${curVer}</strong> &nbsp;|&nbsp; Letzte Release-Version auf GitHub: <strong style="color: #4CAF50;">${data.latest_version}</strong></span>
+                                ${data.download_url ? `<br><a href="${data.download_url}" target="_blank" style="color: #81d4fa; font-size: 0.85rem; text-decoration: underline;">Release-Notes auf GitHub ansehen</a>` : ''}
+                            </div>`;
                     } else {
-                        if (data.is_newer) {
-                            resDiv.style.background = '#f57c00';
-                            resDiv.innerHTML = `<strong>Neue Software-Version verfügbar!</strong> (Aktuell: ${data.current_version}, Neu: ${data.latest_version})<br><br><a href="${data.download_url}" target="_blank" style="color: #fff; text-decoration: underline; font-weight: bold;">Hier klicken um zur GitHub Release-Seite zu gelangen</a>`;
-                        } else {
-                            resDiv.style.background = '#4CAF50';
-                            resDiv.innerHTML = `Die Software ist auf dem neuesten Stand! (Aktuell: ${data.current_version})`;
-                        }
+                        versionBannerHtml = `
+                            <div style="background: #1e3320; border-left: 4px solid #4CAF50; padding: 10px 12px; border-radius: 4px; margin-bottom: 15px;">
+                                <strong style="color: #81c784;">✔ Software ist auf dem Stand der letzten Release-Version</strong><br>
+                                <span>Installierte Version: <strong>${curVer}</strong> &nbsp;|&nbsp; Letzte Release-Version auf GitHub: <strong>${data.latest_version}</strong></span>
+                            </div>`;
                     }
+
+                    resDiv.innerHTML = `
+                        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #444; padding-bottom: 10px; margin-bottom: 15px;">
+                            <h3 style="margin: 0; color: #4CAF50; font-size: 1.15rem;">🔄 Software Update (GitHub Repository)</h3>
+                            <button type="button" onclick="closeAppUpdateBox()" style="background: transparent; border: none; color: #aaa; font-size: 1.4rem; cursor: pointer; line-height: 1;" title="Schließen">&times;</button>
+                        </div>
+
+                        ${versionBannerHtml}
+
+                        <div style="background: #2c2c2c; padding: 14px; border-radius: 6px; border: 1px solid #3d3d3d; margin-bottom: 15px;">
+                            <div style="font-weight: bold; color: #fff; margin-bottom: 10px;">Bitte wählen Sie die gewünschte Update-Option:</div>
+
+                            <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; padding: 8px; border-radius: 4px; background: #222; margin-bottom: 8px; border: 1px solid #3a3a3a;">
+                                <input type="checkbox" id="update-opt-release" ${hasRelease ? 'checked' : 'disabled'} onchange="toggleUpdateSource('release')" style="width: 18px; height: 18px; cursor: pointer;">
+                                <span style="color: #fff;"><strong>a) Die letzte Release-Version aus dem Repository laden</strong> ${hasRelease ? `<span style="color: #4CAF50;">(${data.latest_version})</span>` : '<span style="color: #888;">(nicht verfügbar)</span>'}</span>
+                            </label>
+
+                            <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; padding: 8px; border-radius: 4px; background: #222; margin-bottom: 12px; border: 1px solid #3a3a3a;">
+                                <input type="checkbox" id="update-opt-dev" ${!hasRelease ? 'checked' : ''} onchange="toggleUpdateSource('dev')" style="width: 18px; height: 18px; cursor: pointer;">
+                                <span style="color: #fff;"><strong>b) Den letzten Entwicklungsstand aus dem Repository laden</strong> <span style="color: #aaa; font-size: 0.85rem;">(main-Branch)</span></span>
+                            </label>
+
+                            <div style="border-top: 1px solid #444; padding-top: 10px; margin-top: 6px;">
+                                <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; padding: 8px; border-radius: 4px; background: #222; border: 1px solid #3a3a3a;">
+                                    <input type="checkbox" id="update-opt-dict" onchange="toggleUpdateDictWarning()" style="width: 18px; height: 18px; cursor: pointer;">
+                                    <span style="color: #fff;"><strong>c) Soll das gesamte Dictionary durch die Version aus dem Repository ersetzt werden</strong></span>
+                                </label>
+                                <div id="update-dict-warning" style="display: none; margin-top: 8px; padding: 8px 10px; background: #4a2618; border-left: 4px solid #F44336; border-radius: 4px; color: #ffab91; font-size: 0.88rem;">
+                                    ⚠️ <strong>Achtung:</strong> Wenn aktiviert, wird Ihre lokale <code>dictionary.json</code> inkl. eigener Anpassungen (Force, Blocked, individuelle Schwellenwerte) <strong>vollständig durch die Version aus dem Repository überschrieben</strong>!
+                                </div>
+                            </div>
+                        </div>
+
+                        <div style="background: #1b2836; border-left: 4px solid #2196F3; padding: 12px 14px; border-radius: 5px; margin-bottom: 15px; font-size: 0.9rem; color: #d0e4f7; line-height: 1.45;">
+                            <strong>🔒 Wichtiger Hinweis zu Ihren persönlichen Daten & Einstellungen:</strong><br>
+                            Beim Update werden die Programmdateien (<code>birds_ai_sound_classifier.py</code>, Ordner <code>templates/</code>, <code>static/</code>, <code>auto_season_lowering.json</code> sowie Hilfe-Dokumente) aktualisiert.<br>
+                            Folgende persönliche Daten und Einstellungen werden <strong>lokal nicht verändert</strong>:
+                            <ul style="margin: 6px 0 0 18px; padding: 0;">
+                                <li><strong>Datenbank</strong> (<code>birds_audio_stats.db</code>)</li>
+                                <li><strong>Audio-Records / Aufnahmen</strong> (<code>audio_temp/archive</code> &amp; <code>latest</code>)</li>
+                                <li><strong>Settings</strong> (<code>settings.json</code> – Ihre allgemeinen Einstellungen)</li>
+                                <li><strong>BirdWeather &amp; Pushover</strong> (<code>birdweather.json</code>, <code>pushover.json</code> – persönliche Einstellungen &amp; API-Keys)</li>
+                                <li><strong>Blocklist-Log</strong> (<code>blocklist-log.txt</code>)</li>
+                                <li><strong>Dictionary</strong> (<code>dictionary.json</code>) – <em>bleibt komplett unverändert erhalten, sofern Checkbox c) oben <u>nicht</u> aktiviert ist (kein automatisches Zusammenführen/Merge).</em></li>
+                            </ul>
+                        </div>
+
+                        <div id="app-update-progress" style="display: none; margin-bottom: 15px; padding: 12px; border-radius: 5px; background: #263238; color: #fff; font-weight: bold;"></div>
+
+                        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                            <button type="button" id="btn-execute-app-update" class="btn btn-green" style="width: auto; padding: 10px 20px; font-size: 1rem;" onclick="executeAppUpdate()">
+                                🚀 Update jetzt installieren &amp; Webserver neu starten
+                            </button>
+                            <button type="button" id="btn-cancel-app-update" class="btn btn-gray" style="width: auto; padding: 10px 18px; margin: 0; font-size: 0.95rem;" onclick="closeAppUpdateBox()">
+                                Abbrechen
+                            </button>
+                        </div>
+                    `;
                 })
                 .catch(e => {
                     btn.disabled = false;
                     btn.innerText = "Software Updates (GitHub)";
                     resDiv.style.display = 'block';
                     resDiv.style.background = '#F44336';
-                    resDiv.innerHTML = "Netzwerkfehler: " + e;
+                    resDiv.innerHTML = "Netzwerkfehler bei der Update-Prüfung: " + e;
                 });
+        }
+
+        function toggleUpdateSource(selected) {
+            const cbRelease = document.getElementById('update-opt-release');
+            const cbDev = document.getElementById('update-opt-dev');
+            if (!cbRelease || !cbDev) return;
+
+            if (selected === 'release') {
+                if (cbRelease.checked) {
+                    cbDev.checked = false;
+                } else {
+                    cbDev.checked = true;
+                }
+            } else if (selected === 'dev') {
+                if (cbDev.checked) {
+                    cbRelease.checked = false;
+                } else if (!cbRelease.disabled) {
+                    cbRelease.checked = true;
+                } else {
+                    cbDev.checked = true;
+                }
+            }
+        }
+
+        function toggleUpdateDictWarning() {
+            const cbDict = document.getElementById('update-opt-dict');
+            const warnDiv = document.getElementById('update-dict-warning');
+            if (cbDict && warnDiv) {
+                warnDiv.style.display = cbDict.checked ? 'block' : 'none';
+            }
+        }
+
+        function closeAppUpdateBox() {
+            const resDiv = document.getElementById('app-update-result');
+            if (resDiv) {
+                resDiv.style.display = 'none';
+            }
+        }
+
+        function executeAppUpdate() {
+            const cbRelease = document.getElementById('update-opt-release');
+            const cbDev = document.getElementById('update-opt-dev');
+            const cbDict = document.getElementById('update-opt-dict');
+
+            if ((!cbRelease || !cbRelease.checked) && (!cbDev || !cbDev.checked)) {
+                alert("Bitte wählen Sie entweder Option a) (Release-Version) oder Option b) (Entwicklungsstand) aus.");
+                return;
+            }
+
+            const source = (cbRelease && cbRelease.checked) ? 'release' : 'dev';
+            const replaceDict = cbDict ? cbDict.checked : false;
+            const sourceText = source === 'release'
+                ? `die letzte Release-Version (${latestGithubReleaseTag || 'GitHub'})`
+                : 'den letzten Entwicklungsstand (main-Branch)';
+            const dictText = replaceDict
+                ? 'JA – Ihr lokales Dictionary wird vollständig durch die Repository-Version ERSETZT!'
+                : 'NEIN – Ihr lokales Dictionary bleibt unverändert erhalten.';
+
+            const confirmMsg = `Möchten Sie das System-Update jetzt durchführen?\n\n` +
+                `• Quelle: ${sourceText}\n` +
+                `• Dictionary ersetzen: ${dictText}\n\n` +
+                `Datenbank, Audio-Records, Settings, BirdWeather, Pushover und Blocklist-Log bleiben unverändert.\n` +
+                `Nach dem Update startet der Webserver automatisch neu.`;
+
+            if (!confirm(confirmMsg)) {
+                return;
+            }
+
+            const btnExec = document.getElementById('btn-execute-app-update');
+            const btnCancel = document.getElementById('btn-cancel-app-update');
+            const progDiv = document.getElementById('app-update-progress');
+
+            if (btnExec) btnExec.disabled = true;
+            if (btnCancel) btnCancel.disabled = true;
+            if (cbRelease) cbRelease.disabled = true;
+            if (cbDev) cbDev.disabled = true;
+            if (cbDict) cbDict.disabled = true;
+
+            if (progDiv) {
+                progDiv.style.display = 'block';
+                progDiv.style.background = '#1565C0';
+                progDiv.innerHTML = '⏳ Update wird von GitHub heruntergeladen und installiert... Bitte warten Sie einen Moment.';
+            }
+
+            fetch('/api/control/perform_app_update', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    source: source,
+                    replace_dictionary: replaceDict,
+                    tag: latestGithubReleaseTag
+                })
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (!data.success) {
+                    if (progDiv) {
+                        progDiv.style.background = '#F44336';
+                        progDiv.innerHTML = '❌ Fehler beim Update: ' + (data.msg || 'Unbekannter Fehler');
+                    }
+                    if (btnExec) btnExec.disabled = false;
+                    if (btnCancel) btnCancel.disabled = false;
+                    if (cbRelease && latestGithubReleaseTag) cbRelease.disabled = false;
+                    if (cbDev) cbDev.disabled = false;
+                    if (cbDict) cbDict.disabled = false;
+                } else {
+                    if (progDiv) {
+                        progDiv.style.background = '#f57c00';
+                        progDiv.innerHTML = `🔄 ${data.msg}<br><br><span id="restart-wait-timer">⏳ Warte auf Neustart durch autostart_monitor.py... (bitte bis zu 60 Sekunden Geduld, Seite lädt automatisch neu)</span>`;
+                    }
+                    waitForServerRestart();
+                }
+            })
+            .catch(e => {
+                // Falls die Verbindung exakt beim Beenden abbricht, trotzdem auf Wiederanlauf prüfen
+                if (progDiv) {
+                    progDiv.style.background = '#f57c00';
+                    progDiv.innerHTML = '🔄 Webserver wurde für das Update beendet. <span id="restart-wait-timer">⏳ Warte auf Neustart durch autostart_monitor.py... (bis zu 60s)</span>';
+                }
+                waitForServerRestart();
+            });
+        }
+
+        function waitForServerRestart() {
+            const progDiv = document.getElementById('app-update-progress');
+            let attempts = 0;
+            const maxAttempts = 55; // ca. 110 Sekunden (autostart_monitor prüft alle 60s + Startzeit)
+
+            setTimeout(() => {
+                const pollInterval = setInterval(() => {
+                    attempts++;
+                    const elapsedSec = attempts * 2 + 4;
+                    const timerSpan = document.getElementById('restart-wait-timer');
+                    if (timerSpan) {
+                        timerSpan.innerText = `⏳ Warte auf Neustart durch autostart_monitor.py... (${elapsedSec}s vergangen – dauert i.d.R. bis zu 60–75s, Seite lädt automatisch neu)`;
+                    }
+
+                    fetch('/api/status?t=' + new Date().getTime(), { cache: 'no-store' })
+                        .then(r => {
+                            if (r.ok) {
+                                clearInterval(pollInterval);
+                                if (progDiv) {
+                                    progDiv.style.background = '#4CAF50';
+                                    progDiv.innerHTML = '✅ Webserver erfolgreich neu gestartet! Seite wird jetzt neu geladen...';
+                                }
+                                setTimeout(() => {
+                                    window.location.reload();
+                                }, 1000);
+                            }
+                        })
+                        .catch(() => {
+                            if (attempts >= maxAttempts) {
+                                clearInterval(pollInterval);
+                                if (progDiv) {
+                                    progDiv.style.background = '#FF9800';
+                                    progDiv.innerHTML = '⚠️ Der automatische Neustart dauert länger als erwartet (bitte prüfen, ob autostart_monitor.py läuft) oder Seite manuell neu laden (F5).';
+                                }
+                            }
+                        });
+                }, 2000);
+            }, 4000);
         }
 
         function exportWeeklyCSV() {

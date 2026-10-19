@@ -77,6 +77,8 @@ shared_queue_length_global = None
 shared_waterfall_global = None
 monitor_running_event = None
 monitor_process = None
+zc = None
+zc_info = None
 # -------------------------------
 WATERFALL_HEIGHT = 150
 MAX_FREQ = 20000
@@ -1049,7 +1051,7 @@ class AudioMonitor:
 # --- FLASK ROUTEN ---
 @app.context_processor
 def inject_version():
-    return dict(version="V1.3.9-RC1", year="2026")
+    return dict(version="V1.3.9-RC2", year="2026")
 
 @app.route('/favicon.ico')
 def favicon():
@@ -2153,7 +2155,7 @@ def fft_page():
         
     all_species = [s for s, _ in sorted(species_counts.items(), key=lambda x: (-x[1], x[0]))]
     
-    return render_template('fft.html', all_species=all_species, version="V1.3.9-RC1", year=datetime.datetime.now().year)
+    return render_template('fft.html', all_species=all_species, version="V1.3.9-RC2", year=datetime.datetime.now().year)
 
 @app.route('/api/fft_plot')
 def api_fft_plot():
@@ -3707,7 +3709,7 @@ def check_model_update():
 
 @app.route('/api/check_app_update')
 def check_app_update():
-    current_version = "V1.3.9-RC1"
+    current_version = "V1.3.9-RC2"
     try:
         import urllib.request
         import json
@@ -3718,7 +3720,11 @@ def check_app_update():
         with urllib.request.urlopen(req, timeout=5) as response:
             data = json.loads(response.read().decode())
             if not data:
-                return jsonify({"success": False, "error": "Keine Tags/Versionen auf GitHub gefunden."})
+                return jsonify({
+                    "success": False,
+                    "current_version": current_version,
+                    "error": "Keine Tags/Versionen auf GitHub gefunden."
+                })
                 
             latest_version = data[0].get('name', '')
             html_url = f"https://github.com/mobifu1/birds_ai_sound_classifier/releases/tag/{latest_version}"
@@ -3743,6 +3749,11 @@ def check_app_update():
                         elif l < c:
                             is_newer = False
                             break
+                    else:
+                        if '-' in current_version and '-' not in latest_version:
+                            is_newer = True
+                        elif current_version.lower().strip() != latest_version.lower().strip() and latest_version.lower().strip() > current_version.lower().strip():
+                            is_newer = True
                 except ValueError:
                     # Fallback
                     if lat_norm != cur_norm and lat_norm > cur_norm:
@@ -3756,7 +3767,229 @@ def check_app_update():
                 "download_url": html_url
             })
     except Exception as e:
-        return jsonify({"success": False, "error": str(e)})
+        return jsonify({
+            "success": False,
+            "current_version": current_version,
+            "error": str(e)
+        })
+
+
+@app.route('/api/control/perform_app_update', methods=['POST'])
+def perform_app_update():
+    s = load_settings()
+    if s.get('settings_password', '') == 'admin' and not session.get('authenticated'):
+        return jsonify({'success': False, 'msg': 'Nicht authentifiziert.'}), 401
+
+    import zipfile
+    import shutil
+    import py_compile
+
+    req_data = request.get_json(silent=True) or {}
+    update_source = req_data.get('source', 'release')  # 'release' oder 'dev'
+    replace_dict = bool(req_data.get('replace_dictionary', False))
+    requested_tag = str(req_data.get('tag', '')).strip()
+
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    update_temp_dir = os.path.join(base_dir, "update_temp")
+
+    try:
+        # 1. Ziel-URL für das GitHub-ZIP bestimmen
+        if update_source == 'release':
+            target_tag = requested_tag
+            if not target_tag:
+                tags_resp = requests.get(
+                    "https://api.github.com/repos/mobifu1/birds_ai_sound_classifier/tags",
+                    headers={'User-Agent': 'Mozilla/5.0'},
+                    timeout=10
+                )
+                if tags_resp.status_code != 200 or not tags_resp.json():
+                    return jsonify({
+                        'success': False,
+                        'msg': f'Konnte letzte Release-Version nicht von GitHub abrufen (Status: {tags_resp.status_code}).'
+                    })
+                target_tag = tags_resp.json()[0].get('name', '').strip()
+                if not target_tag:
+                    return jsonify({'success': False, 'msg': 'Kein gültiger Release-Tag auf GitHub gefunden.'})
+
+            zip_urls = [
+                f"https://github.com/mobifu1/birds_ai_sound_classifier/archive/refs/tags/{target_tag}.zip",
+                f"https://api.github.com/repos/mobifu1/birds_ai_sound_classifier/zipball/{target_tag}"
+            ]
+            version_label = f"Release-Version ({target_tag})"
+        else:
+            zip_urls = [
+                "https://github.com/mobifu1/birds_ai_sound_classifier/archive/refs/heads/main.zip",
+                "https://api.github.com/repos/mobifu1/birds_ai_sound_classifier/zipball/main"
+            ]
+            version_label = "Entwicklungsstand (main-Branch)"
+
+        # 2. ZIP-Archiv herunterladen
+        zip_content = None
+        last_status = None
+        for url in zip_urls:
+            try:
+                resp = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=60)
+                last_status = resp.status_code
+                if resp.status_code == 200 and len(resp.content) > 1000:
+                    zip_content = resp.content
+                    break
+            except Exception:
+                continue
+
+        if not zip_content:
+            return jsonify({
+                'success': False,
+                'msg': f'Fehler beim Herunterladen des Update-Pakets von GitHub (Status: {last_status}).'
+            })
+
+        # 3. In temporären Ordner entpacken
+        if os.path.exists(update_temp_dir):
+            shutil.rmtree(update_temp_dir, ignore_errors=True)
+        os.makedirs(update_temp_dir, exist_ok=True)
+
+        with zipfile.ZipFile(io.BytesIO(zip_content)) as zf:
+            zf.extractall(update_temp_dir)
+
+        entries = [os.path.join(update_temp_dir, e) for e in os.listdir(update_temp_dir)]
+        subdirs = [e for e in entries if os.path.isdir(e)]
+        extracted_root = subdirs[0] if len(subdirs) == 1 else update_temp_dir
+
+        # 4. Integritäts- und Syntax-Check vor dem Überschreiben
+        new_main_py = os.path.join(extracted_root, "birds_ai_sound_classifier.py")
+        new_templates_dir = os.path.join(extracted_root, "templates")
+
+        if not os.path.isfile(new_main_py) or not os.path.isdir(new_templates_dir):
+            shutil.rmtree(update_temp_dir, ignore_errors=True)
+            return jsonify({
+                'success': False,
+                'msg': 'Update-Paket unvollständig: birds_ai_sound_classifier.py oder Ordner templates fehlt.'
+            })
+
+        try:
+            py_compile.compile(new_main_py, doraise=True)
+        except Exception as syn_err:
+            shutil.rmtree(update_temp_dir, ignore_errors=True)
+            return jsonify({
+                'success': False,
+                'msg': f'Sicherheitsabbruch: Heruntergeladene Programmdatei enthält einen Syntaxfehler ({syn_err}).'
+            })
+
+        # Hilfsfunktion zum Aktualisieren von Verzeichnissen (ohne fremde lokale Dateien zu löschen)
+        def copy_dir_contents(src_dir, dst_dir):
+            os.makedirs(dst_dir, exist_ok=True)
+            for root_path, dirs, files in os.walk(src_dir):
+                rel_path = os.path.relpath(root_path, src_dir)
+                target_dir = dst_dir if rel_path == '.' else os.path.join(dst_dir, rel_path)
+                os.makedirs(target_dir, exist_ok=True)
+                for file_name in files:
+                    src_file = os.path.join(root_path, file_name)
+                    dst_file = os.path.join(target_dir, file_name)
+                    shutil.copy2(src_file, dst_file)
+
+        # 5. Dateien kontrolliert aktualisieren
+        #    Geschützte lokale Dateien (Datenbank, Audio-Records, settings.json, birdweather.json,
+        #    pushover.json, blocklist-log.txt) werden NIEMALS angefasst!
+        updated_items = []
+
+        # a) templates/ aktualisieren
+        copy_dir_contents(new_templates_dir, os.path.join(base_dir, "templates"))
+        updated_items.append("templates/")
+
+        # b) static/ aktualisieren (neue Icons, Sounds, Assets)
+        new_static_dir = os.path.join(extracted_root, "static")
+        if os.path.isdir(new_static_dir):
+            copy_dir_contents(new_static_dir, os.path.join(base_dir, "static"))
+            updated_items.append("static/")
+
+        # c) auto_season_lowering.json aktualisieren (falls im Repo vorhanden)
+        new_lowering_file = os.path.join(extracted_root, "auto_season_lowering.json")
+        if os.path.isfile(new_lowering_file):
+            shutil.copy2(new_lowering_file, os.path.join(base_dir, "auto_season_lowering.json"))
+            updated_items.append("auto_season_lowering.json")
+
+        # d) start.bat aktualisieren (falls im Repo vorhanden)
+        new_start_bat = os.path.join(extracted_root, "start.bat")
+        if os.path.isfile(new_start_bat):
+            shutil.copy2(new_start_bat, os.path.join(base_dir, "start.bat"))
+
+        # e) PDF-Dokumentationen im Hauptverzeichnis (z. B. Einstellungen_Beschreibung.pdf) aktualisieren
+        for item_name in os.listdir(extracted_root):
+            if item_name.lower().endswith(".pdf"):
+                src_pdf = os.path.join(extracted_root, item_name)
+                if os.path.isfile(src_pdf):
+                    shutil.copy2(src_pdf, os.path.join(base_dir, item_name))
+                    updated_items.append(item_name)
+
+        # f) dictionary.json NUR ersetzen, wenn vom Nutzer explizit per Checkbox c) gewünscht (kein Merge!)
+        if replace_dict:
+            new_dict_file = os.path.join(extracted_root, "dictionary.json")
+            if os.path.isfile(new_dict_file):
+                shutil.copy2(new_dict_file, os.path.join(base_dir, DICTIONARY_FILE))
+                updated_items.append("dictionary.json (vollständig ersetzt)")
+
+        # g) Hauptprogramm birds_ai_sound_classifier.py aktualisieren
+        shutil.copy2(new_main_py, os.path.join(base_dir, "birds_ai_sound_classifier.py"))
+        updated_items.insert(0, "birds_ai_sound_classifier.py")
+
+        # Temporäres Verzeichnis aufräumen
+        shutil.rmtree(update_temp_dir, ignore_errors=True)
+
+        # 6. Verzögertes sauberes Beenden des Webservers + Schließen des CMD-Fensters
+        #    (autostart_monitor.py startet die App innerhalb von max. 60s in einem neuen CMD-Fenster neu)
+        def delayed_server_exit():
+            time.sleep(1.5)
+            try:
+                update_log(f"Update auf {version_label} installiert. Beende Prozess für Neustart durch autostart_monitor...")
+            except Exception:
+                pass
+
+            # Mikrofon / Audio-Prozess sauber beenden, damit kein Kindprozess übrig bleibt
+            try:
+                if monitor_running_event is not None:
+                    monitor_running_event.clear()
+                if monitor_process is not None and monitor_process.is_alive():
+                    monitor_process.terminate()
+                    monitor_process.join(timeout=2)
+            except Exception as e:
+                print(f"Fehler beim Beenden des Audio-Prozesses: {e}")
+
+            # mDNS / Zeroconf abmelden
+            try:
+                if zc is not None:
+                    if zc_info is not None:
+                        zc.unregister_service(zc_info)
+                    zc.close()
+            except Exception as e:
+                print(f"Fehler beim Beenden von mDNS/Zeroconf: {e}")
+
+            # Eltern-CMD-Fenster (start.bat -> "Drücken Sie eine beliebige Taste...") schließen,
+            # damit das alte Konsolenfenster nicht offen stehen bleibt
+            try:
+                import psutil
+                curr_proc = psutil.Process(os.getpid())
+                for anc in curr_proc.parents():
+                    if anc.name().lower() == 'cmd.exe':
+                        anc.kill()
+                        break
+            except Exception as e:
+                print(f"Hinweis beim Schließen des CMD-Fensters: {e}")
+
+            os._exit(0)
+
+        threading.Thread(target=delayed_server_exit, daemon=True).start()
+
+        dict_info = "Dictionary wurde durch Repository-Version ersetzt." if replace_dict else "Lokales Dictionary wurde unverändert beibehalten."
+        return jsonify({
+            'success': True,
+            'msg': f'Update ({version_label}) erfolgreich installiert ({", ".join(updated_items)}). {dict_info} Der Webserver wird nun beendet und durch autostart_monitor.py (innerhalb von max. 60 Sekunden) automatisch neu gestartet...'
+        })
+
+    except Exception as e:
+        if os.path.exists(update_temp_dir):
+            shutil.rmtree(update_temp_dir, ignore_errors=True)
+        traceback.print_exc()
+        return jsonify({'success': False, 'msg': f'Fehler beim Update: {str(e)}'})
+
 
 from flask import Response
 import matplotlib.cm as cm
@@ -4910,6 +5143,7 @@ if __name__ == '__main__':
             server=f"{safe_hostname}.local."
         )
         
+        zc_info = info
         zc = Zeroconf()
         zc.register_service(info)
         print(f"mDNS Broadcasting gestartet: http://{safe_hostname}.local:{FLASK_PORT}")

@@ -3874,7 +3874,24 @@ def perform_app_update():
                 'msg': f'Sicherheitsabbruch: Heruntergeladene Programmdatei enthält einen Syntaxfehler ({syn_err}).'
             })
 
-        # Hilfsfunktion zum Aktualisieren von Verzeichnissen (ohne fremde lokale Dateien zu löschen)
+        # Hilfsfunktion zum Aktualisieren von Dateien und Verzeichnissen
+        # (wandelt unter Windows LF -> CRLF bei Textdateien um, damit start.bat & git status sauber bleiben)
+        text_exts = ('.py', '.html', '.css', '.js', '.json', '.bat', '.txt', '.md')
+
+        def copy_update_file(src_file, dst_file):
+            if os.name == 'nt' and src_file.lower().endswith(text_exts):
+                try:
+                    with open(src_file, 'rb') as f:
+                        raw_bytes = f.read()
+                    normalized = raw_bytes.replace(b'\r\n', b'\n').replace(b'\n', b'\r\n')
+                    with open(dst_file, 'wb') as f:
+                        f.write(normalized)
+                    shutil.copystat(src_file, dst_file)
+                    return
+                except Exception:
+                    pass
+            shutil.copy2(src_file, dst_file)
+
         def copy_dir_contents(src_dir, dst_dir):
             os.makedirs(dst_dir, exist_ok=True)
             for root_path, dirs, files in os.walk(src_dir):
@@ -3884,7 +3901,7 @@ def perform_app_update():
                 for file_name in files:
                     src_file = os.path.join(root_path, file_name)
                     dst_file = os.path.join(target_dir, file_name)
-                    shutil.copy2(src_file, dst_file)
+                    copy_update_file(src_file, dst_file)
 
         # 5. Dateien kontrolliert aktualisieren
         #    Geschützte lokale Dateien (Datenbank, Audio-Records, settings.json, birdweather.json,
@@ -3904,31 +3921,31 @@ def perform_app_update():
         # c) auto_season_lowering.json aktualisieren (falls im Repo vorhanden)
         new_lowering_file = os.path.join(extracted_root, "auto_season_lowering.json")
         if os.path.isfile(new_lowering_file):
-            shutil.copy2(new_lowering_file, os.path.join(base_dir, "auto_season_lowering.json"))
+            copy_update_file(new_lowering_file, os.path.join(base_dir, "auto_season_lowering.json"))
             updated_items.append("auto_season_lowering.json")
 
         # d) start.bat aktualisieren (falls im Repo vorhanden)
         new_start_bat = os.path.join(extracted_root, "start.bat")
         if os.path.isfile(new_start_bat):
-            shutil.copy2(new_start_bat, os.path.join(base_dir, "start.bat"))
+            copy_update_file(new_start_bat, os.path.join(base_dir, "start.bat"))
 
         # e) PDF-Dokumentationen im Hauptverzeichnis (z. B. Einstellungen_Beschreibung.pdf) aktualisieren
         for item_name in os.listdir(extracted_root):
             if item_name.lower().endswith(".pdf"):
                 src_pdf = os.path.join(extracted_root, item_name)
                 if os.path.isfile(src_pdf):
-                    shutil.copy2(src_pdf, os.path.join(base_dir, item_name))
+                    copy_update_file(src_pdf, os.path.join(base_dir, item_name))
                     updated_items.append(item_name)
 
         # f) dictionary.json NUR ersetzen, wenn vom Nutzer explizit per Checkbox c) gewünscht (kein Merge!)
         if replace_dict:
             new_dict_file = os.path.join(extracted_root, "dictionary.json")
             if os.path.isfile(new_dict_file):
-                shutil.copy2(new_dict_file, os.path.join(base_dir, DICTIONARY_FILE))
+                copy_update_file(new_dict_file, os.path.join(base_dir, DICTIONARY_FILE))
                 updated_items.append("dictionary.json (vollständig ersetzt)")
 
         # g) Hauptprogramm birds_ai_sound_classifier.py aktualisieren
-        shutil.copy2(new_main_py, os.path.join(base_dir, "birds_ai_sound_classifier.py"))
+        copy_update_file(new_main_py, os.path.join(base_dir, "birds_ai_sound_classifier.py"))
         updated_items.insert(0, "birds_ai_sound_classifier.py")
 
         # Temporäres Verzeichnis aufräumen

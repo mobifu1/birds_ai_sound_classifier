@@ -3120,19 +3120,57 @@ def prediction_page():
     anomaly_candidates_missing.sort(key=lambda x: x["normal_pro_tag"], reverse=True)
 
     # Rohdaten für Nachtfenster (1h vor Sonnenuntergang bis 1h nach Sonnenaufgang)
+    def is_target_night_or_flock_bird(species):
+        sp_l = species.lower()
+        backyard = [
+            'haussperling', 'feldsperling', 'blaumeise', 'kohlmeise', 'tannenmeise',
+            'haubenmeise', 'sumpfmeise', 'weidenmeise', 'schwanzmeise', 'elster',
+            'eichelhäher', 'dohle', 'rabenkrähe', 'nebelkrähe', 'saatkrähe', 'kolkrabe',
+            'buntspecht', 'grünspecht', 'grauspecht', 'kleinspecht', 'mittelspecht',
+            'schwarzspecht', 'türkentaube', 'ringeltaube', 'felsentaube', 'straßentaube',
+            'hohltaube', 'hausrotschwanz', 'gartenrotschwanz', 'rotkehlchen', 'zaunkönig',
+            'amsel', 'buchfink', 'grünfink', 'stieglitz', 'erlenzeisig', 'gimpel',
+            'kleiber', 'baumläufer', 'goldhähnchen', 'star', 'girlitz', 'kernbeißer',
+            'heckenbraunelle'
+        ]
+        if any(sp_l == b or sp_l.startswith(b) for b in backyard):
+            return False, None
+
+        st = status_map.get(species, 'Standvogel')
+        if any(k in sp_l for k in ['eule', 'kauz', 'uhu', 'nachtschwalbe', 'ziegenmelker']):
+            return True, 'Eulen & Nachtaktive'
+        if any(k in sp_l for k in ['gans', 'gänse', 'schwan', 'schwäne']):
+            return True, 'Gänse & Schwäne'
+        if any(k in sp_l for k in ['ente', 'enten', 'säger']):
+            return True, 'Enten & Wasservögel'
+        if 'kranich' in sp_l:
+            return True, 'Kraniche'
+        if any(k in sp_l for k in ['singdrossel', 'rotdrossel', 'wacholderdrossel', 'misteldrossel', 'ringdrossel']):
+            return True, 'Zugdrosseln'
+        if any(k in sp_l for k in ['kiebitz', 'bekassine', 'schnepfe', 'brachvogel', 'regenpfeifer', 'strandläufer', 'wasserläufer', 'schenkel', 'knutt', 'kampfläufer']):
+            return True, 'Watvögel / Limikolen'
+        if any(k in sp_l for k in ['ralle', 'reiher', 'blässhuhn', 'teichhuhn', 'wachtel', 'dommel']):
+            return True, 'Rallen & Reiher'
+        if st in ['Durchzieher', 'Wintergast', 'Zugvogel']:
+            return True, st
+        return False, None
+
     sun_cache = {}
     def get_sun_window(d):
         if d not in sun_cache:
             try:
                 s_d = sun(loc.observer, date=d)
-                ss_m1 = s_d['sunset'].astimezone(local_tz) - datetime.timedelta(hours=1)
-                sr_p1 = s_d['sunrise'].astimezone(local_tz) + datetime.timedelta(hours=1)
-                sun_cache[d] = (ss_m1, sr_p1, s_d['sunset'].astimezone(local_tz), s_d['sunrise'].astimezone(local_tz))
+                ss = s_d['sunset'].astimezone(local_tz)
+                sr = s_d['sunrise'].astimezone(local_tz)
+                ss_m1 = ss - datetime.timedelta(hours=1)
+                sr_p1 = sr + datetime.timedelta(hours=1)
+                sun_cache[d] = (ss_m1, sr_p1, ss, sr)
             except Exception:
                 sun_cache[d] = (None, None, None, None)
         return sun_cache[d]
 
     night_species_counts = Counter()
+    night_group_map = {}
     night_phase_counts = Counter()
     night_events = []
 
@@ -3143,14 +3181,22 @@ def prediction_page():
             dt = datetime.datetime.strptime(ts, '%Y-%m-%d %H:%M:%S').replace(tzinfo=local_tz)
             ss_m1, sr_p1, ss, sr = get_sun_window(dt.date())
             if ss_m1 and sr_p1 and (dt >= ss_m1 or dt <= sr_p1):
-                night_events.append((dt, sp))
-                night_species_counts[sp] += 1
-                if dt <= ss + datetime.timedelta(hours=2):
-                    night_phase_counts['Abenddämmerung (bis 2h nach SU)'] += 1
-                elif dt >= sr - datetime.timedelta(hours=2):
-                    night_phase_counts['Morgendämmerung (ab 2h vor SA)'] += 1
-                else:
-                    night_phase_counts['Tiefe Kernnacht (NocMig)'] += 1
+                is_target, grp = is_target_night_or_flock_bird(sp)
+                if is_target:
+                    night_events.append((dt, sp))
+                    night_species_counts[sp] += 1
+                    night_group_map[sp] = grp
+                    # Saubere Trennung zwischen Abend-Fenster (dt >= ss_m1) und Morgen-Fenster (dt <= sr_p1)
+                    if dt >= ss_m1:
+                        if dt <= ss + datetime.timedelta(hours=1, minutes=30):
+                            night_phase_counts['Abenddämmerung (1h vor bis 1,5h nach SU)'] += 1
+                        else:
+                            night_phase_counts['Tiefe Kernnacht (NocMig)'] += 1
+                    else:
+                        if dt >= sr - datetime.timedelta(hours=1, minutes=30):
+                            night_phase_counts['Morgenzug / Morgendämmerung (1,5h vor bis 1h nach SA)'] += 1
+                        else:
+                            night_phase_counts['Tiefe Kernnacht (NocMig)'] += 1
         except Exception:
             pass
 
@@ -3172,6 +3218,11 @@ def prediction_page():
 
     monate_namen = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"]
     monat_str = monate_namen[end_date.month - 1]
+    rueckblick_zeitraum_label = (
+        "in den letzten 24 Stunden (vergangene Nacht)"
+        if days == 1
+        else f"in den letzten {days} Tagen ({days} Nächte summiert)"
+    )
 
     # Gemini Konfiguration prüfen
     gm = load_gemini_settings()
@@ -3252,14 +3303,22 @@ def prediction_page():
                 "starke_abnahmen_oder_vermisst": anomaly_candidates_missing[:8]
             },
             "nachtfenster_statistik": {
-                "heute_nacht_zeitraum": f"{nacht_start_uhr} bis {nacht_ende_uhr} Uhr",
-                "erfasste_nachtrufe_gesamt": len(night_events),
-                "phasen_verteilung": dict(night_phase_counts),
-                "top_nacht_arten": [
-                    {"art": sp, "rufe": cnt, "status": status_map.get(sp, "")}
+                "untersuchter_rueckblick_zeitraum": rueckblick_zeitraum_label,
+                "anzahl_untersuchte_naechte": days,
+                "erfasste_nacht_und_zugrufe_gesamt_ueber_alle_naechte": len(night_events),
+                "durchschnittliche_nachtrufe_pro_nacht": round(len(night_events) / max(1, days), 1),
+                "phasen_verteilung_ueber_zeitraum": dict(night_phase_counts),
+                "top_nacht_und_zug_arten": [
+                    {
+                        "art": sp,
+                        "rufe_im_zeitraum": cnt,
+                        "gruppe": night_group_map.get(sp, ""),
+                        "status": status_map.get(sp, "")
+                    }
                     for sp, cnt in night_species_counts.most_common(12)
                 ],
-                "erkannte_trupp_cluster_20min": night_clusters[:8]
+                "erkannte_trupp_cluster_20min": night_clusters[:8],
+                "heute_nacht_prognose_fenster": f"{nacht_start_uhr} bis {nacht_ende_uhr} Uhr"
             },
             "lokales_wetter_und_nachtprognose": weather_info if weather_info else "Nicht abgerufen"
         }
@@ -3269,7 +3328,7 @@ def prediction_page():
             "Analysiere die folgenden realen Messdaten der Station und erstelle präzise, fachkundige und gut lesbare Texte auf Deutsch "
             "für die 6 Textbereiche des Dashboards.\n\n"
             "Anforderungen an die Felder im JSON:\n"
-            "1. 'tagesbericht': Lebendige Zusammenfassung (3-5 Sätze) der aktuellen Rufaktivität im gewählten Zeitraum, der dominanten Arten, "
+            "1. 'tagesbericht': Lebendige Zusammenfassung (3-5 Sätze) der aktuellen Rufaktivität im gewählten Zeitraum (" + str(days) + " Tage), der dominanten Arten, "
             "der Rush-Hour sowie ein konkreter Ausblick auf die nächste Stunde (inkl. Wetterbezug, falls Wetterdaten vorliegen).\n"
             "2. 'selten_text': Ornithologische Einschätzung (3-4 Sätze) zu den seltenen Arten im Zeitraum ('seltene_arten_im_zeitraum_details'). "
             "Gehe auf Konfidenz, SNR und Jahreszeit/Status ein und bewerte kurz die Plausibilität (echter Durchzügler/Gast vs. mögliche akustische Verwechslung oder Imitation).\n"
@@ -3279,8 +3338,10 @@ def prediction_page():
             "Jedes Element MUSS enthalten: 'species' (Artname), 'status' (exakt 'influx' bei Zunahme oder 'missing' bei Rückgang/Fehlen), "
             "'title' (kurzes Schlagwort wie 'Starker Zuzug', 'Trupp-Einflug', 'Ungewöhnlich ruhig', 'Heute vermisst') und "
             "'desc' (1-2 Sätze mit konkreten Zahlen 24h vs. Normalwert und kurzer biologischer/wetterbezogener Erklärung).\n"
-            "5. 'nacht_rueckblick': Fachkundiger Rückblick (3-4 Sätze) auf die erfassten Aktivitäten im Nachtfenster (1h vor Sonnenuntergang bis 1h nach Sonnenaufgang: "
-            "Dämmerungsflüge, Eulen/Nachtaktive, NocMig-Nachtzug, erkannte Schwarm-/Trupp-Cluster).\n"
+            "5. 'nacht_rueckblick': Fachkundiger Rückblick (3-4 Sätze) auf die erfassten Nachtzug-, Eulen- und Schwarmaktivitäten im Nachtfenster "
+            "(1h vor Sonnenuntergang bis 1h nach Sonnenaufgang: Dämmerungsflüge, Eulen/Nachtaktive, NocMig-Nachtzug, erkannte Schwarm-/Trupp-Cluster). "
+            "WICHTIG: Beziehe dich sprachlich exakt auf den Zeitraum '" + rueckblick_zeitraum_label + "' – wenn 'anzahl_untersuchte_naechte' > 1 ist (hier: " + str(days) + "), "
+            "schreibe zwingend im Plural ('In den vergangenen " + str(days) + " Nächten...' bzw. 'In den letzten " + str(days) + " Tagen...'), NIEMALS 'Die vergangene Nacht'!\n"
             "6. 'nacht_vorhersage': Konkrete Prognose (3-4 Sätze) für die kommende Nacht (" + nacht_start_uhr + " bis " + nacht_ende_uhr + " Uhr) "
             "unter Berücksichtigung der Jahreszeit, der jüngsten Nacht-Sichtungen und insbesondere der Wetterdaten für die kommende Nacht (Wind, Regen, Bewölkung).\n\n"
             "Stationsdaten (JSON):\n" + json.dumps(station_context, ensure_ascii=False)

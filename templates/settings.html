@@ -29,6 +29,7 @@
         .btn-green:hover { background: #388E3C; }
         .control-row { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 15px; }
         .dict-row input, .dict-row select { min-width: 0; }
+        .footer { margin-top: 30px; font-size: 0.8em; color: #555; border-top: 1px solid #444; padding-top: 10px; text-align: center; }
     </style>
 </head>
 <body>
@@ -394,6 +395,10 @@
         </div>
 
         <button type="button" class="btn" style="width: 200px; display: block; margin: 30px auto;" onclick="saveSettings()">Speichern</button>
+
+        <div class="footer">
+            {{ version }} | {{ year }}
+        </div>
     </div>
 
     <script>

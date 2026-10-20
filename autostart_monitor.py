@@ -15,7 +15,16 @@ except ImportError:
     import psutil
 
 TARGET_APP = "birds_ai_sound_classifier.py"
-APP_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# Pfadweiche: Unterscheide zwischen kompilierter .exe (z.B. PyInstaller) und normalem Python-Skript
+if getattr(sys, 'frozen', False):
+    APP_DIR = os.path.dirname(os.path.abspath(sys.executable))
+else:
+    APP_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# Falls die .exe direkt aus einem Unterordner (wie "dist") gestartet wird, eine Ordnerebene höher prüfen
+if not os.path.exists(os.path.join(APP_DIR, TARGET_APP)) and os.path.exists(os.path.join(os.path.dirname(APP_DIR), TARGET_APP)):
+    APP_DIR = os.path.dirname(APP_DIR)
 
 class MonitorApp:
     def __init__(self, root):

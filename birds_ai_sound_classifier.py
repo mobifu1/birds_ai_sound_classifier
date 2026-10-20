@@ -44,6 +44,8 @@ from birdnetlib import Recording
 START_TIME = time.time()
 
 # --- KONFIGURATION ---
+APP_VERSION = "V1.3.9-RC3"
+VERSION_YEAR = "2026"
 DB_FILE = "birds_audio_stats.db"
 SETTINGS_FILE = "settings.json"
 DICTIONARY_FILE = "dictionary.json"
@@ -1051,7 +1053,7 @@ class AudioMonitor:
 # --- FLASK ROUTEN ---
 @app.context_processor
 def inject_version():
-    return dict(version="V1.3.9-RC2", year="2026")
+    return dict(version=APP_VERSION, year=VERSION_YEAR)
 
 @app.route('/favicon.ico')
 def favicon():
@@ -2155,7 +2157,7 @@ def fft_page():
         
     all_species = [s for s, _ in sorted(species_counts.items(), key=lambda x: (-x[1], x[0]))]
     
-    return render_template('fft.html', all_species=all_species, version="V1.3.9-RC2", year=datetime.datetime.now().year)
+    return render_template('fft.html', all_species=all_species)
 
 @app.route('/api/fft_plot')
 def api_fft_plot():
@@ -3709,7 +3711,7 @@ def check_model_update():
 
 @app.route('/api/check_app_update')
 def check_app_update():
-    current_version = "V1.3.9-RC2"
+    current_version = APP_VERSION
     try:
         import urllib.request
         import json

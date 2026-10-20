@@ -51,6 +51,7 @@ SETTINGS_FILE = "settings.json"
 DICTIONARY_FILE = "dictionary.json"
 BIRDWEATHER_FILE = "birdweather.json"
 PUSHOVER_FILE = "pushover.json"
+GEMINI_FILE = "gemini.json"
 BIRDWEATHER_QUEUE_DIR = "birdweather_queue"
 MAX_BIRDWEATHER_QUEUE = 500
 FLASK_PORT = 5001
@@ -266,6 +267,24 @@ def save_pushover_setting(key, value):
     try:
         with open(PUSHOVER_FILE, 'w') as f:
             json.dump(data, f)
+    except:
+        pass
+
+def load_gemini_settings():
+    if os.path.exists(GEMINI_FILE):
+        try:
+            with open(GEMINI_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except:
+            pass
+    return {}
+
+def save_gemini_setting(key, value):
+    data = load_gemini_settings()
+    data[key] = value
+    try:
+        with open(GEMINI_FILE, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=2)
     except:
         pass
 
@@ -1121,6 +1140,14 @@ def settings_page():
     s['pushover_api_token'] = po.get('pushover_api_token', '')
     s['pushover_birds'] = po.get('pushover_birds', '')
     s['pushover_cooldown'] = po.get('pushover_cooldown', 300)
+
+    gm = load_gemini_settings()
+    s['gemini_active'] = gm.get('gemini_active', False)
+    s['gemini_api_key'] = gm.get('gemini_api_key', '')
+    s['gemini_model'] = gm.get('gemini_model', 'gemini-2.5-flash')
+    s['gemini_use_weather'] = gm.get('gemini_use_weather', True)
+    s['gemini_cache_minutes'] = gm.get('gemini_cache_minutes', 60)
+
     s["bird_dictionary"] = load_dictionary()
     
     queue_size = 0
@@ -2867,9 +2894,63 @@ def wiki_page():
     
     return render_template('wiki.html', wiki_images=wiki_images, german_names=german_names)
 
+_gemini_prediction_cache = {}
+
+def _fetch_open_meteo_summary(lat, lon):
+    try:
+        url = (
+            f"https://api.open-meteo.com/v1/forecast?latitude={lat:.4f}&longitude={lon:.4f}"
+            "&current=temperature_2m,precipitation,wind_speed_10m,wind_direction_10m,cloud_cover"
+            "&hourly=temperature_2m,precipitation_probability,wind_speed_10m,wind_direction_10m,cloud_cover"
+            "&forecast_days=2&timezone=auto"
+        )
+        r = requests.get(url, timeout=4)
+        if r.status_code != 200:
+            return None
+        w = r.json()
+        cur = w.get("current", {})
+        hourly = w.get("hourly", {})
+        times = hourly.get("time", [])
+        temps = hourly.get("temperature_2m", [])
+        p_probs = hourly.get("precipitation_probability", [])
+        winds = hourly.get("wind_speed_10m", [])
+        w_dirs = hourly.get("wind_direction_10m", [])
+        clouds = hourly.get("cloud_cover", [])
+
+        def deg_to_compass(deg):
+            if deg is None:
+                return "?"
+            dirs = ["N", "NO", "O", "SO", "S", "SW", "W", "NW"]
+            return dirs[int((deg + 22.5) // 45) % 8]
+
+        cur_summary = (
+            f"Aktuell: {cur.get('temperature_2m', '?')} °C, "
+            f"Niederschlag: {cur.get('precipitation', 0)} mm, "
+            f"Wind: {cur.get('wind_speed_10m', '?')} km/h aus {deg_to_compass(cur.get('wind_direction_10m'))}, "
+            f"Bewölkung: {cur.get('cloud_cover', '?')}%"
+        )
+
+        night_slots = []
+        for idx, t_str in enumerate(times[:36]):
+            if len(t_str) >= 13:
+                h_val = int(t_str[11:13])
+                if h_val in (21, 0, 3, 6):
+                    night_slots.append(
+                        f"{t_str[11:16]} Uhr: {temps[idx] if idx < len(temps) else '?'}°C, "
+                        f"Regenwahrsch. {p_probs[idx] if idx < len(p_probs) else '?'}%, "
+                        f"Wind {winds[idx] if idx < len(winds) else '?'} km/h ({deg_to_compass(w_dirs[idx] if idx < len(w_dirs) else None)}), "
+                        f"Wolken {clouds[idx] if idx < len(clouds) else '?'}%"
+                    )
+        return {
+            "aktuell": cur_summary,
+            "kommende_nacht_verlauf": night_slots[:5]
+        }
+    except Exception:
+        return None
+
+
 @app.route('/prediction')
 def prediction_page():
-    import random
     from collections import Counter
     import datetime
 
@@ -2878,131 +2959,44 @@ def prediction_page():
     except ValueError:
         days = 7
 
+    force_refresh = request.args.get('refresh', '0') == '1'
     end_date = datetime.datetime.now()
     start_date = end_date - datetime.timedelta(days=days)
-    
+
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
-    
-    # All detections in timeframe
-    c.execute("SELECT species, timestamp FROM detections WHERE timestamp >= ?", (start_date.strftime('%Y-%m-%d %H:%M:%S'),))
+
+    # Alle Erkennungen im gewählten Zeitraum
+    c.execute(
+        "SELECT species, timestamp, confidence, snr FROM detections WHERE timestamp >= ? AND species != 'IGNORED_LOW_CONFIDENCE'",
+        (start_date.strftime('%Y-%m-%d %H:%M:%S'),)
+    )
     rows = c.fetchall()
-    
-    # 1. Rush-Hour
-    hours = [int(row[1][11:13]) for row in rows if len(row[1]) >= 13]
+
+    # Diagramm 1: Rush-Hour (24-Stunden-Verteilung)
+    hours = [int(row[1][11:13]) for row in rows if row[1] and len(row[1]) >= 13]
     hour_counts = Counter(hours)
     rush_hour_labels = [f"{h:02d}:00" for h in range(24)]
     rush_hour_data = [hour_counts.get(h, 0) for h in range(24)]
     busiest_hour = max(hour_counts, key=hour_counts.get) if hour_counts else 12
-    
-    # 2. Arten-Wahrscheinlichkeit for next hour
+
+    # Diagramm 2: Arten-Wahrscheinlichkeit für die nächste Stunde
     next_h = (end_date.hour + 1) % 24
-    next_h_species = [row[0] for row in rows if len(row[1]) >= 13 and int(row[1][11:13]) == next_h]
+    next_h_species = [row[0] for row in rows if row[1] and len(row[1]) >= 13 and int(row[1][11:13]) == next_h]
     next_h_counts = Counter(next_h_species)
     total_next_h = sum(next_h_counts.values())
     probs = {}
     if total_next_h > 0:
-        probs = {s: round((c / total_next_h) * 100, 1) for s, c in next_h_counts.most_common(10)}
+        probs = {s: round((cnt / total_next_h) * 100, 1) for s, cnt in next_h_counts.most_common(10)}
     prob_labels = list(probs.keys())
     prob_data = list(probs.values())
-    
-    # 3. Seltenheits-Radar
-    c.execute("SELECT species, COUNT(*) as cnt FROM detections GROUP BY species ORDER BY cnt ASC")
-    all_counts = c.fetchall()
-    total_det = sum([x[1] for x in all_counts])
-    rare_species = [x[0] for x in all_counts if x[1] < max(5, total_det * 0.01)]
-    recent_rare = [s for s in rare_species if s in [r[0] for r in rows]]
-    if recent_rare:
-        selten_text = f"Die Chance auf seltene Besucher ist gut! In letzter Zeit wurden gesichtet: {', '.join(set(recent_rare[:3]))}."
-    else:
-        if rare_species:
-            selten_text = f"Heute ist es ruhig bei den seltenen Arten. Vielleicht lässt sich ja trotzdem bald wieder ein {random.choice(rare_species)} blicken."
-        else:
-            selten_text = "Bisher noch nicht genug Daten für seltene Arten."
-            
-    # 4. Zugvogel-Tracker
-    migratory_birds = ["Mauersegler", "Nachtigall", "Kuckuck", "Rauchschwalbe", "Mehlschwalbe", "Fitis", "Zilpzalp", "Kranich", "Weißstorch"]
-    detected_migratory = set([r[0] for r in rows if r[0] in migratory_birds])
-    if detected_migratory:
-        zugvogel_text = f"Zugvögel sind aktiv! Gesichtet wurden: {', '.join(detected_migratory)}."
-    else:
-        zugvogel_text = "Momentan gibt es wenig Aktivität von typischen Zugvögeln am Mikrofon."
-        
-    # 5. Tagesbericht (Regelbasiert)
-    if total_next_h >= 750:
-        berichte_high = [
-            f"Vogelkonzert vom Feinsten! Für die nächste Stunde (um {next_h:02d}:00 Uhr) erwarten wir über {total_next_h} erfasste Rufe.",
-            f"Es ist richtig was los! Wir rechnen um {next_h:02d}:00 Uhr mit extrem hoher akustischer Aktivität.",
-            f"Ein wahres Stimmenmeer! Die nächste Stunde verspricht sehr viele Aufzeichnungen."
-        ]
-        bericht = random.choice(berichte_high)
-    elif total_next_h >= 350:
-        berichte_med_high = [
-            f"Gute akustische Aktivität! Wir erwarten um {next_h:02d}:00 Uhr rege Rufaktivität.",
-            f"Es wird musikalisch: Für die nächste Stunde deuten die Daten auf viele Vogelstimmen hin.",
-            f"Reger Flugverkehr am Mikrofon: Um die {total_next_h} Rufe werden in der nächsten Stunde erwartet."
-        ]
-        bericht = random.choice(berichte_med_high)
-    elif total_next_h >= 100:
-        berichte_med = [
-            f"Normale Rufaktivität erwartet. Schauen Sie mal um {busiest_hour:02d}:00 Uhr rein, da ist historisch gesehen am meisten zu hören.",
-            f"Gelegentliche Rufe sind in der nächsten Stunde zu erwarten. Die höchste Aktivität gibt es meist gegen {busiest_hour:02d}:00 Uhr.",
-            f"Gemütliche Stimmung. Wir erwarten eine durchschnittliche Anzahl an Aufzeichnungen."
-        ]
-        bericht = random.choice(berichte_med)
-    else:
-        berichte_low = [
-            "Aktuell ist es eher ruhig. Wenig bis keine Rufe in der nächsten Stunde erwartet.",
-            "Stille am Mikrofon. Das ist für diese Tageszeit aber nicht ungewöhnlich.",
-            "Kaum akustische Aktivität prognostiziert. Eine gute Zeit, um die Aufnahmen der letzten Rush-Hour durchzuhören."
-        ]
-        bericht = random.choice(berichte_low)
-        
-    # 6. Anomaliekarte
-    baseline_days = max(14, days)
-    baseline_start = end_date - datetime.timedelta(days=baseline_days)
-    recent_start = end_date - datetime.timedelta(days=1)
-    
-    c.execute("SELECT species, COUNT(*) FROM detections WHERE timestamp >= ? AND timestamp < ? GROUP BY species", 
-              (baseline_start.strftime('%Y-%m-%d %H:%M:%S'), recent_start.strftime('%Y-%m-%d %H:%M:%S')))
-    hist_counts = {row[0]: row[1] for row in c.fetchall()}
-    
-    c.execute("SELECT species, COUNT(*) FROM detections WHERE timestamp >= ? GROUP BY species", 
-              (recent_start.strftime('%Y-%m-%d %H:%M:%S'),))
-    recent_counts = {row[0]: row[1] for row in c.fetchall()}
-    
-    anomalies = []
-    hist_days = baseline_days - 1
-    if hist_days <= 0: hist_days = 1
-    
-    all_species_anomaly = set(list(hist_counts.keys()) + list(recent_counts.keys()))
-    for s in all_species_anomaly:
-        avg_daily = hist_counts.get(s, 0) / hist_days
-        current = recent_counts.get(s, 0)
-        
-        if current >= 5 and current > avg_daily * 3:
-            anomalies.append({
-                'species': s,
-                'status': 'influx',
-                'title': 'Massenansturm',
-                'desc': f'Ungewöhnlich viele Sichtungen ({current} in 24h, normal sind {avg_daily:.1f}/Tag).'
-            })
-        elif avg_daily >= 3 and current == 0:
-            anomalies.append({
-                'species': s,
-                'status': 'missing',
-                'title': 'Verschwunden',
-                'desc': f'Heute noch nicht gesichtet (normal sind {avg_daily:.1f}/Tag).'
-            })
-            
-    anomalies = sorted(anomalies, key=lambda x: x['status'])[:9] # max 9 anzeigen
 
-    # 7. Nachtaktivitäten (Nachtzug & Schwarmaktivität: 1h vor SU bis 1h nach SA)
+    # Standort & Sonnenfenster für heute Nacht bestimmen
     settings = load_settings()
     try:
-        lat = float(settings.get("gps_lat", 51.1))
-        lon = float(settings.get("gps_lon", 10.1))
-    except:
+        lat = float(settings.get("gps_lat") or 51.1)
+        lon = float(settings.get("gps_lon") or 10.1)
+    except Exception:
         lat, lon = 51.1, 10.1
     loc = LocationInfo(latitude=lat, longitude=lon)
     local_tz = end_date.astimezone().tzinfo
@@ -3014,178 +3008,391 @@ def prediction_page():
         nacht_ende_dt = s_tomorrow['sunrise'].astimezone(local_tz) + datetime.timedelta(hours=1)
         nacht_start_uhr = nacht_start_dt.strftime('%H:%M')
         nacht_ende_uhr = nacht_ende_dt.strftime('%H:%M')
-    except:
+    except Exception:
         nacht_start_uhr = "18:00"
         nacht_ende_uhr = "08:00"
 
+    # Dictionary-Metadaten (Status & Aufenthaltszeitraum) laden
     full_bird_dict = load_dictionary()
     status_map = {}
     aufenthalt_map = {}
     for en_name, v in full_bird_dict.items():
-        tr = v.get('translation')
-        if tr:
-            status_map[tr] = v.get('status', 'Standvogel')
+        if isinstance(v, dict):
+            tr = v.get('translation') or en_name
+            status_map[tr] = v.get('status', '')
             aufenthalt_map[tr] = v.get('aufenthalt', '')
 
-    def is_target_flock_bird(species):
-        sp_l = species.lower()
-        backyard = [
-            'haussperling', 'feldsperling', 'blaumeise', 'kohlmeise', 'tannenmeise', 
-            'haubenmeise', 'sumpfmeise', 'elster', 'eichelhäher', 'dohle', 'rabenkrähe', 
-            'nebelkrähe', 'saatkrähe', 'buntspecht', 'grünspecht', 'kleinspecht', 
-            'schwarzspecht', 'türkentaube', 'ringeltaube', 'felsentaube', 'straßentaube', 
-            'hausrotschwanz', 'gartenrotschwanz', 'rotkehlchen', 'zaunkönig', 'amsel', 
-            'buchfink', 'grünfink', 'stieglitz', 'gimpel', 'kleiber', 'baumläufer', 
-            'goldhähnchen', 'schwanzmeise'
-        ]
-        if any(sp_l == b or sp_l.startswith(b) for b in backyard):
-            return False, None
-            
-        st = status_map.get(species, 'Standvogel')
-        if any(k in sp_l for k in ['gans', 'gänse', 'schwan', 'schwäne']):
-            return True, 'Gänse & Schwäne'
-        if any(k in sp_l for k in ['ente', 'enten', 'säger']):
-            return True, 'Enten & Wasservögel'
-        if 'kranich' in sp_l:
-            return True, 'Kraniche'
-        if any(k in sp_l for k in ['singdrossel', 'rotdrossel', 'wacholderdrossel', 'misteldrossel', 'ringdrossel']):
-            return True, 'Zugdrosseln'
-        if any(k in sp_l for k in ['kiebitz', 'bekassine', 'schnepfe', 'brachvogel', 'regenpfeifer', 'strandläufer', 'wasserläufer', 'schenkel', 'knutt', 'kampfläufer']):
-            return True, 'Watvögel / Limikolen'
-        if any(k in sp_l for k in ['ralle', 'reiher', 'blässhuhn', 'teichhuhn', 'wachtel', 'dommel']):
-            return True, 'Rallen & Reiher'
-        if st in ['Durchzieher', 'Wintergast']:
-            return True, f'{st}'
-        return False, None
+    # Rohdaten für Seltenheits-Radar & Gesamt-Datenbank-Kontext
+    c.execute("SELECT species, COUNT(*) as cnt FROM detections WHERE species != 'IGNORED_LOW_CONFIDENCE' GROUP BY species ORDER BY cnt ASC")
+    all_db_counts = {r[0]: r[1] for r in c.fetchall()}
+    total_db_detections = sum(all_db_counts.values())
 
+    # Aggregierte Art-Statistik im gewählten Zeitraum
+    period_species_stats = {}
+    for sp, ts, conf, snr in rows:
+        st_entry = period_species_stats.setdefault(sp, {"count": 0, "conf_sum": 0.0, "max_conf": 0.0, "snr_sum": 0.0, "last_seen": ""})
+        st_entry["count"] += 1
+        c_val = float(conf or 0.0)
+        s_val = float(snr or 0.0)
+        st_entry["conf_sum"] += c_val
+        if c_val > st_entry["max_conf"]:
+            st_entry["max_conf"] = c_val
+        st_entry["snr_sum"] += s_val
+        if ts and ts > st_entry["last_seen"]:
+            st_entry["last_seen"] = ts
+
+    top_species_summary = []
+    rare_in_period = []
+    migratory_in_period = []
+
+    for sp, st_d in sorted(period_species_stats.items(), key=lambda x: x[1]["count"], reverse=True):
+        cnt = st_d["count"]
+        avg_conf = round((st_d["conf_sum"] / cnt) * 100, 1) if cnt else 0.0
+        max_conf = round(st_d["max_conf"] * 100, 1)
+        avg_snr = round(st_d["snr_sum"] / cnt, 1) if cnt else 0.0
+        db_total = all_db_counts.get(sp, cnt)
+        sp_status = status_map.get(sp, "")
+        sp_aufenthalt = aufenthalt_map.get(sp, "")
+
+        info_obj = {
+            "art": sp,
+            "rufe_im_zeitraum": cnt,
+            "rufe_gesamt_db": db_total,
+            "avg_konfidenz_pct": avg_conf,
+            "max_konfidenz_pct": max_conf,
+            "avg_snr_db": avg_snr,
+            "letzte_sichtung": st_d["last_seen"],
+            "status": sp_status,
+            "aufenthalt_monate": sp_aufenthalt
+        }
+        if len(top_species_summary) < 15:
+            top_species_summary.append(info_obj)
+        if db_total <= max(10, int(total_db_detections * 0.005)) or cnt <= 3:
+            rare_in_period.append(info_obj)
+        if sp_status and sp_status != "Standvogel":
+            migratory_in_period.append(info_obj)
+
+    rare_in_period = sorted(rare_in_period, key=lambda x: x["rufe_gesamt_db"])[:12]
+
+    # Rohdaten für 24h-Abweichungen gegenüber 14-Tage-Baseline (für Anomaliekarte)
+    baseline_days = max(14, days)
+    baseline_start = end_date - datetime.timedelta(days=baseline_days)
+    recent_start = end_date - datetime.timedelta(days=1)
+
+    c.execute(
+        "SELECT species, COUNT(*) FROM detections WHERE timestamp >= ? AND timestamp < ? AND species != 'IGNORED_LOW_CONFIDENCE' GROUP BY species",
+        (baseline_start.strftime('%Y-%m-%d %H:%M:%S'), recent_start.strftime('%Y-%m-%d %H:%M:%S'))
+    )
+    hist_counts = {r[0]: r[1] for r in c.fetchall()}
+
+    c.execute(
+        "SELECT species, COUNT(*) FROM detections WHERE timestamp >= ? AND species != 'IGNORED_LOW_CONFIDENCE' GROUP BY species",
+        (recent_start.strftime('%Y-%m-%d %H:%M:%S'),)
+    )
+    recent_counts = {r[0]: r[1] for r in c.fetchall()}
+    conn.close()
+
+    hist_days = max(1, baseline_days - 1)
+    anomaly_candidates_influx = []
+    anomaly_candidates_missing = []
+
+    for s in set(list(hist_counts.keys()) + list(recent_counts.keys())):
+        avg_daily = round(hist_counts.get(s, 0) / hist_days, 1)
+        cur_24h = recent_counts.get(s, 0)
+        if cur_24h > avg_daily and cur_24h >= 3:
+            ratio = round(cur_24h / max(0.5, avg_daily), 1)
+            anomaly_candidates_influx.append({
+                "species": s,
+                "letzte_24h": cur_24h,
+                "normal_pro_tag": avg_daily,
+                "faktor": ratio,
+                "status_dict": status_map.get(s, "")
+            })
+        elif avg_daily >= 2.0 and cur_24h < avg_daily * 0.35:
+            anomaly_candidates_missing.append({
+                "species": s,
+                "letzte_24h": cur_24h,
+                "normal_pro_tag": avg_daily,
+                "status_dict": status_map.get(s, "")
+            })
+
+    anomaly_candidates_influx.sort(key=lambda x: (x["faktor"], x["letzte_24h"]), reverse=True)
+    anomaly_candidates_missing.sort(key=lambda x: x["normal_pro_tag"], reverse=True)
+
+    # Rohdaten für Nachtfenster (1h vor Sonnenuntergang bis 1h nach Sonnenaufgang)
     sun_cache = {}
     def get_sun_window(d):
         if d not in sun_cache:
             try:
                 s_d = sun(loc.observer, date=d)
-                ss_minus_1 = s_d['sunset'].astimezone(local_tz) - datetime.timedelta(hours=1)
-                sr_plus_1 = s_d['sunrise'].astimezone(local_tz) + datetime.timedelta(hours=1)
-                sun_cache[d] = (ss_minus_1, sr_plus_1)
-            except:
-                sun_cache[d] = (None, None)
+                ss_m1 = s_d['sunset'].astimezone(local_tz) - datetime.timedelta(hours=1)
+                sr_p1 = s_d['sunrise'].astimezone(local_tz) + datetime.timedelta(hours=1)
+                sun_cache[d] = (ss_m1, sr_p1, s_d['sunset'].astimezone(local_tz), s_d['sunrise'].astimezone(local_tz))
+            except Exception:
+                sun_cache[d] = (None, None, None, None)
         return sun_cache[d]
 
+    night_species_counts = Counter()
+    night_phase_counts = Counter()
     night_events = []
-    species_counts = Counter()
-    phase_counts = Counter()
 
-    for row in rows:
-        sp = row[0]
-        ts = row[1]
+    for sp, ts, conf, snr in rows:
         if not ts:
             continue
         try:
             dt = datetime.datetime.strptime(ts, '%Y-%m-%d %H:%M:%S').replace(tzinfo=local_tz)
-            ss_minus_1, sr_plus_1 = get_sun_window(dt.date())
-            if ss_minus_1 and sr_plus_1:
-                if dt >= ss_minus_1 or dt <= sr_plus_1:
-                    is_flock, group = is_target_flock_bird(sp)
-                    if is_flock:
-                        night_events.append((dt, sp, group))
-                        species_counts[sp] += 1
-                        
-                        s_d = sun(loc.observer, date=dt.date())
-                        ss = s_d['sunset'].astimezone(local_tz)
-                        sr = s_d['sunrise'].astimezone(local_tz)
-                        if dt <= ss + datetime.timedelta(hours=2):
-                            phase_counts['Abenddämmerung'] += 1
-                        elif dt >= sr - datetime.timedelta(hours=2):
-                            phase_counts['Morgenzug'] += 1
-                        else:
-                            phase_counts['Kernnacht'] += 1
-        except:
+            ss_m1, sr_p1, ss, sr = get_sun_window(dt.date())
+            if ss_m1 and sr_p1 and (dt >= ss_m1 or dt <= sr_p1):
+                night_events.append((dt, sp))
+                night_species_counts[sp] += 1
+                if dt <= ss + datetime.timedelta(hours=2):
+                    night_phase_counts['Abenddämmerung (bis 2h nach SU)'] += 1
+                elif dt >= sr - datetime.timedelta(hours=2):
+                    night_phase_counts['Morgendämmerung (ab 2h vor SA)'] += 1
+                else:
+                    night_phase_counts['Tiefe Kernnacht (NocMig)'] += 1
+        except Exception:
             pass
 
-    current_month = end_date.month
-    monate_namen = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"]
-    monat_str = monate_namen[current_month - 1]
-
-    season_candidates = []
-    priority_birds = ['Graugans', 'Blässgans', 'Saatgans', 'Weißwangengans', 'Kranich',
-                      'Rotdrossel', 'Singdrossel', 'Wacholderdrossel', 'Misteldrossel',
-                      'Pfeifente', 'Krickente', 'Spießente', 'Stockente', 'Reiherente', 'Tafelente',
-                      'Kiebitz', 'Bekassine', 'Singschwan', 'Höckerschwan']
-    for p_sp in priority_birds:
-        auf = aufenthalt_map.get(p_sp, '')
-        if '-' in auf:
-            parts = auf.split('-')
-            try:
-                sm = int(parts[0].strip().split()[-1])
-                em = int(parts[1].strip().split()[0])
-                in_s = (sm <= current_month <= em) if sm <= em else (current_month >= sm or current_month <= em)
-                if in_s:
-                    season_candidates.append(p_sp)
-            except:
-                pass
-
-    season_hint = ", ".join(season_candidates[:5]) if season_candidates else "Gänse, Enten, Kraniche und Drosseln"
-
-    total_calls = len(night_events)
-    days_str = "in den letzten 24 Stunden" if days == 1 else f"in den letzten {days} Tagen"
-
-    if total_calls > 0:
-        top_spp = [f"{sp} ({cnt}x)" for sp, cnt in species_counts.most_common(4)]
-        clusters = []
-        if len(night_events) >= 2:
-            last_dt, last_sp = night_events[0][0], night_events[0][1]
-            c_cnt = 1
-            for dt, sp, grp in night_events[1:]:
-                if sp == last_sp and (dt - last_dt).total_seconds() <= 1200:
-                    c_cnt += 1
-                else:
-                    if c_cnt >= 3:
-                        clusters.append((last_sp, c_cnt, last_dt.strftime('%d.%m. um %H:%M Uhr')))
-                    c_cnt = 1
-                    last_dt, last_sp = dt, sp
-            if c_cnt >= 3:
-                clusters.append((last_sp, c_cnt, last_dt.strftime('%d.%m. um %H:%M Uhr')))
-
-        nacht_rueckblick = f"{days_str.capitalize()} wurden insgesamt {total_calls} Rufe von nacht- und dämmerungsaktiven Zug- und Schwarmvögeln registriert. "
-        nacht_rueckblick += f"Am häufigsten vertreten waren {', '.join(top_spp)}. "
-        if clusters:
-            c_texts = [f"ein Formationsüberflug von {cl[0]} ({cl[1]} Rufe am {cl[2]})" for cl in clusters[:2]]
-            nacht_rueckblick += f"Besonderes Ereignis: Es konnten typische Schwarm-Überflüge erkannt werden, u.a. {', '.join(c_texts)}. "
-        if phase_counts:
-            main_phase = phase_counts.most_common(1)[0][0]
-            if main_phase == 'Abenddämmerung':
-                nacht_rueckblick += "Der Hauptteil der Rufe konzentrierte sich auf die verlängerte Abenddämmerung kurz vor und nach Sonnenuntergang (typisch für den Abflug von Enten und Gänsen). "
-            elif main_phase == 'Morgenzug':
-                nacht_rueckblick += "Die Aktivität ballte sich in den frühen Morgenstunden rund um den Sonnenaufgang. "
+    night_events.sort(key=lambda x: x[0])
+    night_clusters = []
+    if len(night_events) >= 2:
+        last_dt, last_sp = night_events[0]
+        c_cnt = 1
+        for dt, sp in night_events[1:]:
+            if sp == last_sp and (dt - last_dt).total_seconds() <= 1200:
+                c_cnt += 1
             else:
-                nacht_rueckblick += "Die Rufe verteilten sich über die tiefe Kernnacht (typischer NocMig-Nachtzug). "
-    else:
-        nacht_rueckblick = f"{days_str.capitalize()} wurden keine Rufe von klassischen Schwarm- oder Zugvögeln (wie Gänsen, Enten, Kranichen oder Zugdrosseln) im Nachtfenster erfasst. Der Nachthimmel über dem Mikrofon war diesbezüglich ruhig."
+                if c_cnt >= 3:
+                    night_clusters.append(f"{last_sp}: {c_cnt} Rufe innerhalb kurzer Zeit am {last_dt.strftime('%d.%m. um %H:%M Uhr')}")
+                c_cnt = 1
+                last_dt, last_sp = dt, sp
+        if c_cnt >= 3:
+            night_clusters.append(f"{last_sp}: {c_cnt} Rufe innerhalb kurzer Zeit am {last_dt.strftime('%d.%m. um %H:%M Uhr')}")
 
-    if total_calls >= 5:
-        nacht_vorhersage = f"Hohe Zugerwartung für die kommende Nacht ({nacht_start_uhr} bis morgen früh {nacht_ende_uhr} Uhr): Aufgrund der jüngsten Erfassungen ist erneut mit Überflügen zu rechnen. Halten Sie ab {nacht_start_uhr} Uhr (1h vor Sonnenuntergang) Ausschau nach tief fliegenden Enten und Gänsen. In der Kernnacht bestehen sehr gute Chancen auf Nachtzieher wie {', '.join(list(species_counts.keys())[:3])}."
-    elif total_calls > 0:
-        nacht_vorhersage = f"Mäßige bis gute Chancen für heute Nacht ({nacht_start_uhr} bis morgen {nacht_ende_uhr} Uhr): Einzelne Zugrufe oder kleine Trupps sind wahrscheinlich. Im aktuellen Monat {monat_str} befinden sich insbesondere {season_hint} auf dem Durchzug oder beziehen ihre Winterquartiere. Höchste Aktivität wird 1h vor Sonnenuntergang sowie 1h nach Sonnenaufgang erwartet."
+    monate_namen = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"]
+    monat_str = monate_namen[end_date.month - 1]
+
+    # Gemini Konfiguration prüfen
+    gm = load_gemini_settings()
+    gemini_active = gm.get("gemini_active", False)
+    gemini_api_key = gm.get("gemini_api_key", "").strip()
+    gemini_model = gm.get("gemini_model", "gemini-2.5-flash").strip() or "gemini-2.5-flash"
+    gemini_use_weather = gm.get("gemini_use_weather", True)
+    try:
+        gemini_cache_minutes = max(1, int(gm.get("gemini_cache_minutes", 60)))
+    except Exception:
+        gemini_cache_minutes = 60
+
+    gemini_meta = {
+        "active": bool(gemini_active and gemini_api_key),
+        "model": gemini_model,
+        "updated_at": None,
+        "from_cache": False,
+        "weather_text": None,
+        "error": None
+    }
+
+    if not gemini_active or not gemini_api_key:
+        hinweis = (
+            "ℹ️ Google Gemini KI ist derzeit nicht aktiviert oder es wurde noch kein API-Key hinterlegt. "
+            "Bitte öffnen Sie die Einstellungen (⚙️), um im Bereich „Google Gemini KI-Integration“ Ihren API-Key einzutragen und die KI-Auswertung zu aktivieren."
+        )
+        return render_template(
+            'prediction.html',
+            days=days,
+            rush_hour_labels=rush_hour_labels,
+            rush_hour_data=rush_hour_data,
+            busiest_hour=busiest_hour,
+            prob_labels=prob_labels,
+            prob_data=prob_data,
+            next_hour=next_h,
+            selten_text=hinweis,
+            zugvogel_text=hinweis,
+            tagesbericht=hinweis,
+            anomalies=[],
+            nacht_rueckblick=hinweis,
+            nacht_vorhersage=hinweis,
+            nacht_start_uhr=nacht_start_uhr,
+            nacht_ende_uhr=nacht_ende_uhr,
+            gemini_meta=gemini_meta
+        )
+
+    cache_key = (days, gemini_model, bool(gemini_use_weather))
+    now_ts = time.time()
+    cached_entry = _gemini_prediction_cache.get(cache_key)
+
+    if not force_refresh and cached_entry and (now_ts - cached_entry["ts"] < gemini_cache_minutes * 60):
+        ai_data = cached_entry["data"]
+        gemini_meta["updated_at"] = cached_entry["updated_at"]
+        gemini_meta["from_cache"] = True
+        gemini_meta["weather_text"] = cached_entry.get("weather_text")
     else:
-        nacht_vorhersage = f"Prognose für heute Nacht ({nacht_start_uhr} bis morgen {nacht_ende_uhr} Uhr): Aktuell herrscht ruhiger Nachtzug am Standort. Dennoch ist zur jetzigen Jahreszeit (Hauptzugzeit im {monat_str}) jederzeit mit spontanen Truppüberflügen von {season_hint} zu rechnen – insbesondere im Dämmerungsfenster ab {nacht_start_uhr} Uhr sowie im morgendlichen Zugfenster."
-        
-    conn.close()
-    
-    return render_template('prediction.html',
-                           days=days,
-                           rush_hour_labels=rush_hour_labels,
-                           rush_hour_data=rush_hour_data,
-                           busiest_hour=busiest_hour,
-                           prob_labels=prob_labels,
-                           prob_data=prob_data,
-                           next_hour=next_h,
-                           selten_text=selten_text,
-                           zugvogel_text=zugvogel_text,
-                           tagesbericht=bericht,
-                           anomalies=anomalies,
-                           nacht_rueckblick=nacht_rueckblick,
-                           nacht_vorhersage=nacht_vorhersage,
-                           nacht_start_uhr=nacht_start_uhr,
-                           nacht_ende_uhr=nacht_ende_uhr)
+        weather_info = _fetch_open_meteo_summary(lat, lon) if gemini_use_weather else None
+        weather_text = weather_info.get("aktuell") if weather_info else None
+
+        station_context = {
+            "station_name": settings.get("station_name", "Vogelstimmen-Station"),
+            "standort_gps": {"lat": lat, "lon": lon},
+            "aktuelles_datum_uhrzeit": end_date.strftime("%d.%m.%Y %H:%M"),
+            "aktueller_monat": monat_str,
+            "analyse_zeitraum_tage": days,
+            "gesamt_rufe_im_zeitraum": len(rows),
+            "anzahl_verschiedene_arten_im_zeitraum": len(period_species_stats),
+            "historische_rush_hour_uhrzeit": f"{busiest_hour:02d}:00",
+            "stundensummen_24h": {f"{h:02d}:00": rush_hour_data[h] for h in range(24) if rush_hour_data[h] > 0},
+            "naechste_stunde": f"{next_h:02d}:00",
+            "historische_rufe_in_naechster_stunde": total_next_h,
+            "wahrscheinlichste_arten_naechste_stunde_pct": probs,
+            "top_15_arten_im_zeitraum": top_species_summary,
+            "seltene_arten_im_zeitraum_details": rare_in_period,
+            "zugvoegel_und_gastvoegel_im_zeitraum": migratory_in_period[:15],
+            "abweichungen_letzte_24h_vs_14d_schnitt": {
+                "starke_zunahmen_influx": anomaly_candidates_influx[:8],
+                "starke_abnahmen_oder_vermisst": anomaly_candidates_missing[:8]
+            },
+            "nachtfenster_statistik": {
+                "heute_nacht_zeitraum": f"{nacht_start_uhr} bis {nacht_ende_uhr} Uhr",
+                "erfasste_nachtrufe_gesamt": len(night_events),
+                "phasen_verteilung": dict(night_phase_counts),
+                "top_nacht_arten": [
+                    {"art": sp, "rufe": cnt, "status": status_map.get(sp, "")}
+                    for sp, cnt in night_species_counts.most_common(12)
+                ],
+                "erkannte_trupp_cluster_20min": night_clusters[:8]
+            },
+            "lokales_wetter_und_nachtprognose": weather_info if weather_info else "Nicht abgerufen"
+        }
+
+        prompt_text = (
+            "Du bist ein erfahrener Ornithologe und Datenanalyst für eine automatische KI-Vogelstimmen-Messstation (BirdNET). "
+            "Analysiere die folgenden realen Messdaten der Station und erstelle präzise, fachkundige und gut lesbare Texte auf Deutsch "
+            "für die 6 Textbereiche des Dashboards.\n\n"
+            "Anforderungen an die Felder im JSON:\n"
+            "1. 'tagesbericht': Lebendige Zusammenfassung (3-5 Sätze) der aktuellen Rufaktivität im gewählten Zeitraum, der dominanten Arten, "
+            "der Rush-Hour sowie ein konkreter Ausblick auf die nächste Stunde (inkl. Wetterbezug, falls Wetterdaten vorliegen).\n"
+            "2. 'selten_text': Ornithologische Einschätzung (3-4 Sätze) zu den seltenen Arten im Zeitraum ('seltene_arten_im_zeitraum_details'). "
+            "Gehe auf Konfidenz, SNR und Jahreszeit/Status ein und bewerte kurz die Plausibilität (echter Durchzügler/Gast vs. mögliche akustische Verwechslung oder Imitation).\n"
+            "3. 'zugvogel_text': Einordnung (3-4 Sätze) der Zugvogel-, Durchzieher- und Winter-/Sommergast-Aktivität passend zum aktuellen Monat und Standort. "
+            "Welche Zugbewegungen zeigen sich bereits in den Daten und welche typischen Arten sind als Nächstes zu erwarten?\n"
+            "4. 'anomalies': Array mit bis zu 6 besonders auffälligen Arten aus 'abweichungen_letzte_24h_vs_14d_schnitt'. "
+            "Jedes Element MUSS enthalten: 'species' (Artname), 'status' (exakt 'influx' bei Zunahme oder 'missing' bei Rückgang/Fehlen), "
+            "'title' (kurzes Schlagwort wie 'Starker Zuzug', 'Trupp-Einflug', 'Ungewöhnlich ruhig', 'Heute vermisst') und "
+            "'desc' (1-2 Sätze mit konkreten Zahlen 24h vs. Normalwert und kurzer biologischer/wetterbezogener Erklärung).\n"
+            "5. 'nacht_rueckblick': Fachkundiger Rückblick (3-4 Sätze) auf die erfassten Aktivitäten im Nachtfenster (1h vor Sonnenuntergang bis 1h nach Sonnenaufgang: "
+            "Dämmerungsflüge, Eulen/Nachtaktive, NocMig-Nachtzug, erkannte Schwarm-/Trupp-Cluster).\n"
+            "6. 'nacht_vorhersage': Konkrete Prognose (3-4 Sätze) für die kommende Nacht (" + nacht_start_uhr + " bis " + nacht_ende_uhr + " Uhr) "
+            "unter Berücksichtigung der Jahreszeit, der jüngsten Nacht-Sichtungen und insbesondere der Wetterdaten für die kommende Nacht (Wind, Regen, Bewölkung).\n\n"
+            "Stationsdaten (JSON):\n" + json.dumps(station_context, ensure_ascii=False)
+        )
+
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{gemini_model}:generateContent?key={gemini_api_key}"
+        payload = {
+            "contents": [{"parts": [{"text": prompt_text}]}],
+            "generationConfig": {
+                "temperature": 0.35,
+                "responseMimeType": "application/json",
+                "responseSchema": {
+                    "type": "OBJECT",
+                    "properties": {
+                        "tagesbericht": {"type": "STRING"},
+                        "selten_text": {"type": "STRING"},
+                        "zugvogel_text": {"type": "STRING"},
+                        "anomalies": {
+                            "type": "ARRAY",
+                            "items": {
+                                "type": "OBJECT",
+                                "properties": {
+                                    "species": {"type": "STRING"},
+                                    "status": {"type": "STRING"},
+                                    "title": {"type": "STRING"},
+                                    "desc": {"type": "STRING"}
+                                },
+                                "required": ["species", "status", "title", "desc"]
+                            }
+                        },
+                        "nacht_rueckblick": {"type": "STRING"},
+                        "nacht_vorhersage": {"type": "STRING"}
+                    },
+                    "required": [
+                        "tagesbericht",
+                        "selten_text",
+                        "zugvogel_text",
+                        "anomalies",
+                        "nacht_rueckblick",
+                        "nacht_vorhersage"
+                    ]
+                }
+            }
+        }
+
+        try:
+            resp = requests.post(url, json=payload, timeout=30)
+            if resp.status_code == 200:
+                resp_json = resp.json()
+                raw_text = (
+                    resp_json.get("candidates", [{}])[0]
+                    .get("content", {})
+                    .get("parts", [{}])[0]
+                    .get("text", "{}")
+                )
+                ai_data = json.loads(raw_text)
+                for a in ai_data.get("anomalies", []):
+                    if a.get("status") not in ("influx", "missing"):
+                        a["status"] = "influx"
+                updated_str = datetime.datetime.now().strftime("%H:%M:%S")
+                _gemini_prediction_cache[cache_key] = {
+                    "ts": now_ts,
+                    "updated_at": updated_str,
+                    "weather_text": weather_text,
+                    "data": ai_data
+                }
+                gemini_meta["updated_at"] = updated_str
+                gemini_meta["from_cache"] = False
+                gemini_meta["weather_text"] = weather_text
+            else:
+                try:
+                    err_detail = resp.json().get("error", {}).get("message", resp.text[:200])
+                except Exception:
+                    err_detail = resp.text[:200]
+                raise Exception(f"HTTP {resp.status_code}: {err_detail}")
+        except Exception as e:
+            gemini_meta["error"] = f"Fehler bei der Gemini-Abfrage: {e}"
+            if cached_entry:
+                ai_data = cached_entry["data"]
+                gemini_meta["updated_at"] = cached_entry["updated_at"] + " (Cache nach Fehler)"
+                gemini_meta["from_cache"] = True
+                gemini_meta["weather_text"] = cached_entry.get("weather_text")
+            else:
+                err_msg = f"⚠️ Die KI-Auswertung konnte aktuell nicht von Google Gemini abgerufen werden ({e}). Bitte prüfen Sie Ihren API-Key und die Internetverbindung in den Einstellungen."
+                ai_data = {
+                    "tagesbericht": err_msg,
+                    "selten_text": err_msg,
+                    "zugvogel_text": err_msg,
+                    "anomalies": [],
+                    "nacht_rueckblick": err_msg,
+                    "nacht_vorhersage": err_msg
+                }
+
+    return render_template(
+        'prediction.html',
+        days=days,
+        rush_hour_labels=rush_hour_labels,
+        rush_hour_data=rush_hour_data,
+        busiest_hour=busiest_hour,
+        prob_labels=prob_labels,
+        prob_data=prob_data,
+        next_hour=next_h,
+        selten_text=ai_data.get("selten_text", ""),
+        zugvogel_text=ai_data.get("zugvogel_text", ""),
+        tagesbericht=ai_data.get("tagesbericht", ""),
+        anomalies=ai_data.get("anomalies", []),
+        nacht_rueckblick=ai_data.get("nacht_rueckblick", ""),
+        nacht_vorhersage=ai_data.get("nacht_vorhersage", ""),
+        nacht_start_uhr=nacht_start_uhr,
+        nacht_ende_uhr=nacht_ende_uhr,
+        gemini_meta=gemini_meta
+    )
 
 @app.route('/api/settings/save', methods=['POST'])
 def api_save_settings():
@@ -3211,6 +3418,23 @@ def api_save_settings():
         save_pushover_setting("pushover_birds", data.get("pushover_birds", ""))
     if "pushover_cooldown" in data:
         save_pushover_setting("pushover_cooldown", int(data.get("pushover_cooldown", 300)))
+
+    if "gemini_active" in data:
+        save_gemini_setting("gemini_active", bool(data.get("gemini_active", False)))
+    if "gemini_api_key" in data:
+        gm_key = data.get("gemini_api_key", "").strip()
+        if gm_key != "****":
+            save_gemini_setting("gemini_api_key", gm_key)
+    if "gemini_model" in data:
+        save_gemini_setting("gemini_model", data.get("gemini_model", "gemini-2.5-flash"))
+    if "gemini_use_weather" in data:
+        save_gemini_setting("gemini_use_weather", bool(data.get("gemini_use_weather", True)))
+    if "gemini_cache_minutes" in data:
+        try:
+            save_gemini_setting("gemini_cache_minutes", max(1, int(data.get("gemini_cache_minutes", 60))))
+        except Exception:
+            save_gemini_setting("gemini_cache_minutes", 60)
+    _gemini_prediction_cache.clear()
     save_setting("threshold", data.get("threshold", 30))
     save_setting("occurrence_threshold", float(data.get("occurrence_threshold", 0.03)))
     if "auto_season_lowering" in data:
@@ -3415,6 +3639,34 @@ def api_pushover_test():
             return jsonify({"success": False, "msg": f"Fehler von Pushover: {err_msg}"})
     except Exception as e:
         return jsonify({"success": False, "msg": f"Fehler bei der Verbindung: {e}"})
+
+@app.route('/api/gemini/test', methods=['POST'])
+def api_gemini_test():
+    data = request.json or {}
+    api_key = data.get("gemini_api_key", "").strip()
+    model = data.get("gemini_model", "gemini-2.5-flash").strip() or "gemini-2.5-flash"
+    if api_key == "****":
+        api_key = load_gemini_settings().get("gemini_api_key", "").strip()
+    if not api_key:
+        return jsonify({"success": False, "msg": "Bitte zuerst einen Gemini API Key eintragen."})
+
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+    payload = {
+        "contents": [{"parts": [{"text": "Antworte nur mit dem Wort: Bereit"}]}],
+        "generationConfig": {"maxOutputTokens": 20}
+    }
+    try:
+        r = requests.post(url, json=payload, timeout=15)
+        if r.status_code == 200:
+            return jsonify({"success": True, "msg": f"Verbindung erfolgreich! API-Key und Modell ({model}) sind einsatzbereit."})
+        else:
+            try:
+                err_msg = r.json().get("error", {}).get("message", r.text[:200])
+            except Exception:
+                err_msg = r.text[:200]
+            return jsonify({"success": False, "msg": f"Fehler von Gemini API (HTTP {r.status_code}): {err_msg}"})
+    except Exception as e:
+        return jsonify({"success": False, "msg": f"Netzwerkfehler bei der Verbindung zu Gemini: {e}"})
 
 @app.route('/api/control/apply_dictionary', methods=['POST'])
 def api_control_apply_dictionary():

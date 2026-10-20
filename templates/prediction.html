@@ -55,23 +55,61 @@
             </div>
         </div>
 
-        <form method="GET" action="/prediction" class="dashboard-controls">
-            <label for="days">Analyse-Zeitraum:</label>
-            <select name="days" id="days" onchange="this.form.submit()">
-                <option value="1" {% if days==1 %}selected{% endif %}>Letzte 24 Stunden</option>
-                <option value="3" {% if days==3 %}selected{% endif %}>Letzte 3 Tage</option>
-                <option value="7" {% if days==7 %}selected{% endif %}>Letzte 7 Tage</option>
-                <option value="14" {% if days==14 %}selected{% endif %}>Letzte 14 Tage</option>
-                <option value="30" {% if days==30 %}selected{% endif %}>Letzte 30 Tage</option>
-            </select>
+        <form method="GET" action="/prediction" class="dashboard-controls" id="prediction-form" style="display: flex; justify-content: center; align-items: center; gap: 15px; flex-wrap: wrap;">
+            <div>
+                <label for="days">Analyse-Zeitraum:</label>
+                <select name="days" id="days" onchange="showAiLoading(); this.form.submit()">
+                    <option value="1" {% if days==1 %}selected{% endif %}>Letzte 24 Stunden</option>
+                    <option value="3" {% if days==3 %}selected{% endif %}>Letzte 3 Tage</option>
+                    <option value="7" {% if days==7 %}selected{% endif %}>Letzte 7 Tage</option>
+                    <option value="14" {% if days==14 %}selected{% endif %}>Letzte 14 Tage</option>
+                    <option value="30" {% if days==30 %}selected{% endif %}>Letzte 30 Tage</option>
+                </select>
+            </div>
+            {% if gemini_meta and gemini_meta.active %}
+            <button type="button" onclick="refreshGeminiAnalysis()" style="padding: 8px 15px; background: #4CAF50; color: white; border: none; border-radius: 5px; font-weight: bold; cursor: pointer;">
+                🔄 KI-Analyse jetzt neu generieren
+            </button>
+            {% else %}
+            <a href="/settings" class="button-link" style="background: #ff9800; padding: 8px 15px; font-size: 0.9em;">
+                ⚙️ Gemini API in Einstellungen aktivieren
+            </a>
+            {% endif %}
         </form>
+
+        {% if gemini_meta and gemini_meta.active %}
+        <div style="background: #263238; border: 1px solid #37474f; border-radius: 8px; padding: 10px 15px; margin-bottom: 20px; font-size: 0.9em; color: #b0bec5; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+            <div>
+                ✨ <strong>Google Gemini KI-Auswertung aktiv</strong> (Modell: <code>{{ gemini_meta.model }}</code>)
+                {% if gemini_meta.updated_at %}
+                &nbsp;|&nbsp; Stand: <strong>{{ gemini_meta.updated_at }} Uhr</strong>
+                {% if gemini_meta.from_cache %}<span style="color: #81c784;">(aus Cache)</span>{% else %}<span style="color: #4fc3f7;">(frisch generiert)</span>{% endif %}
+                {% endif %}
+            </div>
+            {% if gemini_meta.weather_text %}
+            <div style="color: #81d4fa;">
+                🌤️ {{ gemini_meta.weather_text }}
+            </div>
+            {% endif %}
+        </div>
+        {% endif %}
+
+        {% if gemini_meta and gemini_meta.error %}
+        <div style="background: #3e2723; border-left: 4px solid #ff5252; border-radius: 5px; padding: 12px 15px; margin-bottom: 20px; color: #ffab91; text-align: left;">
+            {{ gemini_meta.error }}
+        </div>
+        {% endif %}
+
+        <div id="ai-loading-banner" style="display: none; background: #1b2836; border: 1px solid #4fc3f7; border-radius: 8px; padding: 15px; margin-bottom: 20px; color: #81d4fa; font-weight: bold; text-align: center;">
+            ⏳ Google Gemini KI analysiert die aktuellen Stations- und Wetterdaten... Bitte einen Moment Geduld (ca. 3–8 Sekunden).
+        </div>
 
         <div class="metrics-grid">
             <!-- 1. KI-Tagesbericht -->
             <div class="metric-card">
                 <h3>1. Tagesbericht</h3>
-                <p>Zusammenfassung der aktuell erfassten Vogelrufe.</p>
-                <div style="background: #1e1e1e; padding: 15px; border-radius: 5px; border-left: 4px solid #4fc3f7; font-size: 1.1em;">
+                <p>KI-Zusammenfassung der aktuell erfassten Vogelrufe.</p>
+                <div style="background: #1e1e1e; padding: 15px; border-radius: 5px; border-left: 4px solid #4fc3f7; font-size: 1.05em; line-height: 1.5; text-align: left;">
                     {{ tagesbericht }}
                 </div>
             </div>
@@ -100,8 +138,8 @@
             <!-- 4. Seltenheits-Radar -->
             <div class="metric-card">
                 <h3>4. Seltenheits-Radar</h3>
-                <p>Gibt es eine Chance, Rufe von seltenen Arten zu erfassen?</p>
-                <div style="background: #1e1e1e; padding: 15px; border-radius: 5px; border-left: 4px solid #ff5252;">
+                <p>KI-Einschätzung &amp; Plausibilitäts-Check zu seltenen Arten.</p>
+                <div style="background: #1e1e1e; padding: 15px; border-radius: 5px; border-left: 4px solid #ff5252; line-height: 1.5; text-align: left;">
                     {{ selten_text }}
                 </div>
             </div>
@@ -109,8 +147,8 @@
             <!-- 5. Zugvogel-Tracker -->
             <div class="metric-card">
                 <h3>5. Zugvogel-Tracker</h3>
-                <p>Akustische Aktivität von bekannten Sommer-/Wintergästen.</p>
-                <div style="background: #1e1e1e; padding: 15px; border-radius: 5px; border-left: 4px solid #69f0ae;">
+                <p>KI-Analyse der akustischen Aktivität von Zug-, Durchzugs- und Gastvögeln.</p>
+                <div style="background: #1e1e1e; padding: 15px; border-radius: 5px; border-left: 4px solid #69f0ae; line-height: 1.5; text-align: left;">
                     {{ zugvogel_text }}
                 </div>
             </div>
@@ -118,14 +156,18 @@
             <!-- 6. Anomaliekarte -->
             <div class="metric-card">
                 <h3>6. Anomaliekarte</h3>
-                <p>Auffällige Zu- oder Abnahmen der erfassten Rufe {% if days == 1 %}in den letzten 24 Stunden{% else %}in den letzten {{ days }} Tagen{% endif %}.</p>
-                <div class="anomaly-grid">
-                    {% for anomaly in anomalies %}
-                    <div class="anomaly-card {{ anomaly.status }}">
-                        <div class="anomaly-title {{ anomaly.status }}">{{ anomaly.title }}: {{ anomaly.species }}</div>
-                        <div class="anomaly-desc">{{ anomaly.desc }}</div>
-                    </div>
-                    {% endfor %}
+                <p>Auffällige Zu- oder Abnahmen der erfassten Rufe (letzte 24h im Vergleich zum Tagesschnitt).</p>
+                <div class="anomaly-grid" style="text-align: left;">
+                    {% if anomalies %}
+                        {% for anomaly in anomalies %}
+                        <div class="anomaly-card {{ anomaly.status }}">
+                            <div class="anomaly-title {{ anomaly.status }}">{{ anomaly.title }}: {{ anomaly.species }}</div>
+                            <div class="anomaly-desc">{{ anomaly.desc }}</div>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <div class="anomaly-empty">Keine auffälligen Zu- oder Abnahmen für diesen Zeitraum gemeldet.</div>
+                    {% endif %}
                 </div>
             </div>
 
@@ -133,13 +175,13 @@
             <div class="metric-card">
                 <h3>7. Nachtaktivitäten</h3>
                 <p>Nachtzug &amp; Schwarmaktivität (1h vor Sonnenuntergang bis 1h nach Sonnenaufgang).</p>
-                <div style="background: #1e1e1e; padding: 15px; border-radius: 5px; border-left: 4px solid #ba68c8; font-size: 1.05em; line-height: 1.5; margin-bottom: 15px;">
+                <div style="background: #1e1e1e; padding: 15px; border-radius: 5px; border-left: 4px solid #ba68c8; font-size: 1.05em; line-height: 1.5; margin-bottom: 15px; text-align: left;">
                     <div style="font-weight: bold; color: #ba68c8; margin-bottom: 8px;">
                         🌙 Rückblick ({% if days == 1 %}letzte 24 Stunden{% else %}letzte {{ days }} Tage{% endif %}):
                     </div>
                     {{ nacht_rueckblick }}
                 </div>
-                <div style="background: #1e1e1e; padding: 15px; border-radius: 5px; border-left: 4px solid #ffd54f; font-size: 1.05em; line-height: 1.5;">
+                <div style="background: #1e1e1e; padding: 15px; border-radius: 5px; border-left: 4px solid #ffd54f; font-size: 1.05em; line-height: 1.5; text-align: left;">
                     <div style="font-weight: bold; color: #ffd54f; margin-bottom: 8px;">
                         🔮 Vorhersage (heute Nacht ab {{ nacht_start_uhr }} Uhr bis morgen {{ nacht_ende_uhr }} Uhr):
                     </div>
@@ -154,6 +196,26 @@
     </div>
 
     <script>
+        function showAiLoading() {
+            const banner = document.getElementById('ai-loading-banner');
+            if (banner) {
+                banner.style.display = 'block';
+            }
+        }
+
+        function refreshGeminiAnalysis() {
+            showAiLoading();
+            const daysVal = document.getElementById('days').value;
+            window.location.href = `/prediction?days=${encodeURIComponent(daysVal)}&refresh=1`;
+        }
+
+        // Entferne refresh=1 aus der URL nach dem Laden, damit der 5-Minuten Auto-Refresh den Cache nutzt
+        if (window.location.search.includes('refresh=1') && window.history && window.history.replaceState) {
+            const url = new URL(window.location.href);
+            url.searchParams.delete('refresh');
+            window.history.replaceState({}, document.title, url.pathname + url.search);
+        }
+
         // Set Chart.js Defaults for dark theme
         Chart.defaults.color = '#eceff1';
         Chart.defaults.font.family = 'Segoe UI, Tahoma, Geneva, Verdana, sans-serif';

@@ -346,6 +346,41 @@
         </div>
 
         <div class="section">
+            <h2>🔮 Google Gemini KI-Integration (Vorhersage &amp; Analyse)</h2>
+            <div style="margin-bottom: 15px;">
+                <label style="display: flex; align-items: center; cursor: pointer;">
+                    <input type="checkbox" id="gemini_active" style="width: 20px; height: 20px; margin-right: 10px;" {% if s.get('gemini_active', False) %}checked{% endif %}>
+                    <span style="color: #ccc;"><strong>Aktivieren:</strong> KI-gestützte Auswertung auf der Seite „Vogel-Verhaltens-Vorhersage (AI)“ nutzen</span>
+                </label>
+            </div>
+            <div class="row">
+                <label>Gemini API Key:<br><small>Dein API-Schlüssel aus dem <a href="https://aistudio.google.com/apikey" target="_blank" style="color: #4CAF50;">Google AI Studio</a> (kostenloses Kontingent verfügbar).</small></label>
+                <div style="display: flex; gap: 10px;">
+                    <input type="text" id="gemini_api_key" value="{% if s.get('gemini_api_key', '') %}****{% else %}{% endif %}" placeholder="AIzaSy..." style="flex: 1;">
+                    <button type="button" class="btn btn-blue" id="btn-test-gemini" onclick="testGemini()" style="width: auto; padding: 10px 20px; margin: 0;">Testen</button>
+                </div>
+            </div>
+            <div class="row">
+                <label>KI-Modell:<br><small>Wähle das gewünschte Google Gemini Modell für die Analyse.</small></label>
+                <select id="gemini_model" style="width: 100%; padding: 10px; border: 1px solid #444; border-radius: 5px; background: #1a1a1a; color: #fff; box-sizing: border-box;">
+                    <option value="gemini-2.5-flash" {% if s.get('gemini_model', 'gemini-2.5-flash') == 'gemini-2.5-flash' %}selected{% endif %}>gemini-2.5-flash (Empfohlen – schnell &amp; hohe Qualität)</option>
+                    <option value="gemini-2.5-flash-lite" {% if s.get('gemini_model') == 'gemini-2.5-flash-lite' %}selected{% endif %}>gemini-2.5-flash-lite (Besonders schnell &amp; sparsam)</option>
+                    <option value="gemini-2.5-pro" {% if s.get('gemini_model') == 'gemini-2.5-pro' %}selected{% endif %}>gemini-2.5-pro (Maximale Analysetiefe)</option>
+                </select>
+            </div>
+            <div style="margin-bottom: 15px;">
+                <label style="display: flex; align-items: center; cursor: pointer;">
+                    <input type="checkbox" id="gemini_use_weather" style="width: 20px; height: 20px; margin-right: 10px;" {% if s.get('gemini_use_weather', True) %}checked{% endif %}>
+                    <span style="color: #ccc;"><strong>Lokale Wettervorhersage einbeziehen:</strong> Aktuelles Wetter &amp; Nachtverlauf (via Open-Meteo anhand GPS-Standort) in Tages- und Nachtzug-Prognose einfließen lassen</span>
+                </label>
+            </div>
+            <div class="row">
+                <label>Cache-Dauer (Minuten):<br><small>Zwischenspeicherzeit für den KI-Bericht, um das API-Kontingent bei Seiten-Reloads zu schonen (Standard: 60 Min.).</small></label>
+                <input type="number" id="gemini_cache_minutes" value="{{ s.get('gemini_cache_minutes', 60) }}" style="width: 100%;" min="1" max="1440">
+            </div>
+        </div>
+
+        <div class="section">
             <h2>Vogelarten Wörterbuch (Dictionary) & Archivierung</h2>
             <div style="margin-bottom: 20px;">
                 <label>Audio Archivierung für folgende Vogelarten:<br><small>"Neu" archiviert Vogelarten, die noch nicht in der Datenbank stehen | "Alle" archiviert jede Erkennung | "Eichelhäher, Buntspecht" oder "Specht" für alle Spechtarten | "-Specht" Ein vorangestelltes Minus schließt diese Arten aus | kommaseparierte Kombinationen sind ebenfalls möglich</small></label>
@@ -593,7 +628,7 @@
                                 <li><strong>Datenbank</strong> (<code>birds_audio_stats.db</code>)</li>
                                 <li><strong>Audio-Records / Aufnahmen</strong> (<code>audio_temp/archive</code> &amp; <code>latest</code>)</li>
                                 <li><strong>Settings</strong> (<code>settings.json</code> – Ihre allgemeinen Einstellungen)</li>
-                                <li><strong>BirdWeather &amp; Pushover</strong> (<code>birdweather.json</code>, <code>pushover.json</code> – persönliche Einstellungen &amp; API-Keys)</li>
+                                <li><strong>BirdWeather, Pushover &amp; Gemini</strong> (<code>birdweather.json</code>, <code>pushover.json</code>, <code>gemini.json</code> – persönliche Einstellungen &amp; API-Keys)</li>
                                 <li><strong>Blocklist-Log</strong> (<code>blocklist-log.txt</code>)</li>
                                 <li><strong>Dictionary</strong> (<code>dictionary.json</code>) – <em>bleibt komplett unverändert erhalten, sofern Checkbox c) oben <u>nicht</u> aktiviert ist (kein automatisches Zusammenführen/Merge).</em></li>
                             </ul>
@@ -1273,6 +1308,11 @@
                 pushover_api_token: document.getElementById('pushover_api_token').value,
                 pushover_birds: document.getElementById('pushover_birds').value,
                 pushover_cooldown: parseInt(document.getElementById('pushover_cooldown').value) || 0,
+                gemini_active: document.getElementById('gemini_active').checked,
+                gemini_api_key: document.getElementById('gemini_api_key').value,
+                gemini_model: document.getElementById('gemini_model').value,
+                gemini_use_weather: document.getElementById('gemini_use_weather').checked,
+                gemini_cache_minutes: parseInt(document.getElementById('gemini_cache_minutes').value) || 60,
                 log_blocklist: document.getElementById('log_blocklist').checked,
                 log_blocklist_prob_switch: document.getElementById('log_blocklist_prob_switch').checked,
                 settings_password: document.getElementById('settings_password_enable').checked ? 'admin' : '',
@@ -1360,6 +1400,45 @@
                 }
             })
             .catch(e => alert("Netzwerkfehler: " + e));
+        }
+
+        function testGemini() {
+            const apiKey = document.getElementById('gemini_api_key').value.trim();
+            const model = document.getElementById('gemini_model').value;
+            if (!apiKey) {
+                alert("Bitte trage zuerst einen Gemini API Key ein.");
+                return;
+            }
+            const btn = document.getElementById('btn-test-gemini');
+            const origText = btn ? btn.innerText : 'Testen';
+            if (btn) {
+                btn.disabled = true;
+                btn.innerText = 'Prüfe...';
+            }
+            fetch('/api/gemini/test', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ gemini_api_key: apiKey, gemini_model: model })
+            })
+            .then(r => r.json())
+            .then(d => {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerText = origText;
+                }
+                if (d.success) {
+                    alert("Erfolg: " + d.msg);
+                } else {
+                    alert("Fehlgeschlagen: " + d.msg);
+                }
+            })
+            .catch(e => {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerText = origText;
+                }
+                alert("Netzwerkfehler: " + e);
+            });
         }
 
         document.addEventListener('DOMContentLoaded', function() {

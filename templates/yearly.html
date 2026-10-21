@@ -122,6 +122,309 @@
         .badge-prob { background: #1a237e; color: #90caf9; }
         .badge-snr  { background: #37474f; color: #eceff1; }
         .badge-null { background: #424242; color: #9e9e9e; }
+
+        /* Zeitmaschine Styles */
+        .tm-panel {
+            background: #1e1e1e;
+            padding: 18px 20px;
+            border-radius: 8px;
+            border: 1px solid #333;
+            margin-top: 15px;
+        }
+
+        .tm-header-row {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            align-items: center;
+            gap: 14px;
+            margin-bottom: 16px;
+            background: #263238;
+            padding: 12px 16px;
+            border-radius: 8px;
+            border: 1px solid #37474f;
+        }
+
+        .tm-filter-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            align-items: center;
+        }
+
+        .tm-filter-btn {
+            border: 1px solid #455a64;
+            background: #1c262b;
+            color: #b0bec5;
+            padding: 6px 13px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .tm-filter-btn:hover:not(.active) {
+            background: #37474f;
+            color: #fff;
+        }
+
+        .tm-filter-btn.active {
+            background: #0288d1;
+            border-color: #29b6f6;
+            color: #fff;
+            box-shadow: 0 0 8px rgba(2, 136, 209, 0.45);
+        }
+
+        .tm-controls-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .tm-ctrl-btn {
+            border: 1px solid #455a64;
+            background: #37474f;
+            color: #fff;
+            padding: 7px 14px;
+            border-radius: 6px;
+            font-size: 0.9em;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background 0.2s, transform 0.1s;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .tm-ctrl-btn:hover:not(:disabled) {
+            background: #455a64;
+        }
+
+        .tm-ctrl-btn:active:not(:disabled) {
+            transform: scale(0.97);
+        }
+
+        .tm-ctrl-btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        .tm-ctrl-btn.play-active {
+            background: #2e7d32;
+            border-color: #66bb6a;
+        }
+
+        .tm-week-badge {
+            background: #141c20;
+            border: 1px solid #455a64;
+            border-radius: 6px;
+            padding: 6px 14px;
+            min-width: 145px;
+            text-align: center;
+        }
+
+        .tm-week-title {
+            font-size: 1.15em;
+            font-weight: bold;
+            color: #81d4fa;
+            display: block;
+            line-height: 1.2;
+        }
+
+        .tm-week-sub {
+            font-size: 0.75em;
+            color: #90a4ae;
+            display: block;
+        }
+
+        .tm-species-select {
+            background: #141c20;
+            color: #eceff1;
+            border: 1px solid #455a64;
+            border-radius: 6px;
+            padding: 8px 12px;
+            font-size: 0.9em;
+            font-weight: bold;
+            cursor: pointer;
+            min-width: 210px;
+            outline: none;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+
+        .tm-species-select:hover,
+        .tm-species-select:focus {
+            border-color: #29b6f6;
+        }
+
+        .tm-species-select.has-selection {
+            border-color: #ff1744;
+            box-shadow: 0 0 8px rgba(255, 23, 68, 0.45);
+            color: #ff8a80;
+        }
+
+        .tm-stage-scroll {
+            width: 100%;
+            height: 550px;
+            overflow: hidden;
+            background: radial-gradient(ellipse at 88% 22%, #233038 0%, #161b1e 75%);
+            border-radius: 8px;
+            border: 1px solid #2f3e46;
+            position: relative;
+        }
+
+        .tm-stage {
+            position: relative;
+            width: 100%;
+            height: 550px;
+            margin: 0 auto;
+            user-select: none;
+        }
+
+        .tm-timeline-fill {
+            position: absolute;
+            height: 3px;
+            background: linear-gradient(90deg, #0288d1, #29b6f6);
+            border-radius: 2px;
+            transform: translateY(-50%);
+            transition: width 1.65s ease-in-out;
+            pointer-events: none;
+            z-index: 3;
+        }
+
+        .tm-timeline-dot {
+            position: absolute;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background: #29b6f6;
+            border: 2.5px solid #ffffff;
+            box-shadow: 0 0 10px rgba(41, 182, 246, 0.95);
+            transform: translate(-50%, -50%);
+            transition: left 1.65s ease-in-out;
+            pointer-events: none;
+            z-index: 4;
+        }
+
+        .tm-timeline-dot-label {
+            position: absolute;
+            top: -20px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 11px;
+            font-weight: bold;
+            color: #81d4fa;
+            white-space: nowrap;
+            text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+        }
+
+        .tm-svg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+
+        .tm-bird-node {
+            position: absolute;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            background: #ffffff;
+            box-sizing: border-box;
+            transform: translate(-50%, -50%);
+            transition: left 1.65s ease-in-out,
+                        top 1.65s ease-in-out,
+                        opacity 0.7s ease,
+                        transform 0.18s ease,
+                        box-shadow 0.25s ease;
+            cursor: pointer;
+            z-index: 5;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .tm-bird-node img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            border-radius: 50%;
+            display: block;
+            pointer-events: none;
+        }
+
+        .tm-bird-node.side-peak {
+            border: 2px solid #ffd54f;
+            box-shadow: 0 0 10px rgba(255, 213, 79, 0.9);
+            z-index: 15;
+        }
+
+        .tm-bird-node.side-left {
+            border: 1.5px solid #66bb6a;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.65);
+        }
+
+        .tm-bird-node.side-right {
+            border: 1.5px solid #ffa726;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.65);
+        }
+
+        .tm-bird-node.tm-highlighted {
+            border: 3px solid #ff1744 !important;
+            box-shadow: 0 0 0 3px rgba(255, 23, 68, 0.9), 0 0 18px rgba(255, 23, 68, 0.95) !important;
+            z-index: 60 !important;
+        }
+
+        .tm-bird-node:hover {
+            transform: translate(-50%, -50%) scale(1.65);
+            z-index: 100 !important;
+            box-shadow: 0 0 14px rgba(129, 212, 250, 0.95);
+            border-color: #81d4fa;
+        }
+
+        .tm-tooltip {
+            position: fixed;
+            pointer-events: none;
+            background: rgba(20, 28, 32, 0.96);
+            border: 1px solid #4fc3f7;
+            border-radius: 8px;
+            padding: 10px 12px;
+            color: #eceff1;
+            font-size: 0.85em;
+            z-index: 9999;
+            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.7);
+            display: none;
+            min-width: 210px;
+            text-align: left;
+        }
+
+        .tm-legend {
+            display: flex;
+            justify-content: center;
+            gap: 24px;
+            flex-wrap: wrap;
+            margin-top: 10px;
+            font-size: 0.82em;
+            color: #90a4ae;
+        }
+
+        .tm-legend-item {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .tm-legend-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            display: inline-block;
+        }
     </style>
 </head>
 
@@ -160,6 +463,7 @@
             <div class="pill-switch">
                 <button id="btn-chart" class="active" onclick="showView('chart')">📊 Häufigkeit</button>
                 <button id="btn-firstseen" onclick="showView('firstseen')">🆕 Erstmals erkannt</button>
+                <button id="btn-timemachine" onclick="showView('timemachine')">⏳ Zeitmaschine</button>
             </div>
         </div>
 
@@ -307,32 +611,697 @@
             {% endif %}
         </div>
 
+        <!-- VIEW: Zeitmaschine -->
+        <div id="view-timemachine" style="display:none;">
+            <div class="tm-panel">
+                <div class="tm-header-row">
+                    <!-- Category Filter -->
+                    <div class="tm-filter-group" id="tmFilterGroup">
+                        <button type="button" class="tm-filter-btn active" data-filter="all" onclick="setTmFilter('all')">Alle Vogelarten</button>
+                        <button type="button" class="tm-filter-btn" data-filter="Standvogel" onclick="setTmFilter('Standvogel')">Standvögel</button>
+                        <button type="button" class="tm-filter-btn" data-filter="Zugvogel" onclick="setTmFilter('Zugvogel')">Zugvögel</button>
+                        <button type="button" class="tm-filter-btn" data-filter="Teilzieher" onclick="setTmFilter('Teilzieher')">Teilzieher</button>
+                        <button type="button" class="tm-filter-btn" data-filter="Wintergast" onclick="setTmFilter('Wintergast')">Wintergäste</button>
+                        <button type="button" class="tm-filter-btn" data-filter="Durchzieher" onclick="setTmFilter('Durchzieher')">Durchzieher</button>
+                    </div>
+
+                    <!-- Video Playback Controls & Current Calendar Week -->
+                    <div class="tm-controls-group">
+                        <button type="button" id="tmBtnPrev" class="tm-ctrl-btn" onclick="tmStep(-1)" title="Eine Woche zurück">&#9198; Zurück</button>
+                        <button type="button" id="tmBtnPlay" class="tm-ctrl-btn" onclick="tmTogglePlay()" title="Abspielen / Pause">&#9654; Play</button>
+                        <button type="button" id="tmBtnStop" class="tm-ctrl-btn" onclick="tmStop()" title="Stopp (Zurück zum Start)">&#9209; Stopp</button>
+                        <button type="button" id="tmBtnNext" class="tm-ctrl-btn" onclick="tmStep(1)" title="Eine Woche vor">Vor &#9197;</button>
+
+                        <div class="tm-week-badge">
+                            <span class="tm-week-title" id="tmWeekLabel">KW 01 / {{ selected_year }}</span>
+                            <span class="tm-week-sub" id="tmWeekSub">0 Arten &bull; 0 Rufe</span>
+                        </div>
+
+                        <select id="tmSpeciesSelect" class="tm-species-select" onchange="onTmSpeciesSelect()" title="Vogelart optisch mit rotem Ring hervorheben">
+                            <option value="">&#128269; Vogelart verfolgen...</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Gaussian Bell Curve Stage -->
+                <div class="tm-stage-scroll" id="tmStageScroll">
+                    <div class="tm-stage" id="tmStage">
+                        <svg class="tm-svg" id="tmSvg" xmlns="http://www.w3.org/2000/svg"></svg>
+                        <div id="tmTimelineFill" class="tm-timeline-fill"></div>
+                        <div id="tmTimelineDot" class="tm-timeline-dot">
+                            <span id="tmTimelineDotLabel" class="tm-timeline-dot-label">KW 01</span>
+                        </div>
+                        <div id="tmIconsLayer"></div>
+                    </div>
+                </div>
+
+                <div class="tm-legend">
+                    <span class="tm-legend-item"><span class="tm-legend-dot" style="background:#ffd54f;"></span> Rechts oben (Gipfel): Platz #1 (Spitzenreiter)</span>
+                    <span class="tm-legend-item"><span class="tm-legend-dot" style="background:#66bb6a;"></span> Aufsteiger / Platz gehalten (klettern nach oben)</span>
+                    <span class="tm-legend-item"><span class="tm-legend-dot" style="background:#ffa726;"></span> Absteiger: Im Ranking überholt (rutschen nach unten)</span>
+                    <span class="tm-legend-item"><span class="tm-legend-dot" style="background:transparent; border:2.5px solid #ff1744; box-sizing:border-box;"></span> Roter Ring: Ausgewählte Vogelart</span>
+                </div>
+            </div>
+            <div id="tmTooltip" class="tm-tooltip"></div>
+        </div>
+
         <script>
+        const TM_DATA = {{ timemachine_data | tojson }};
+
+        let tmCurrentFilter = 'all';
+        let tmCurrentWeek = 1;
+        let tmStartWeek = 1;
+        let tmMaxPlayWeek = TM_DATA ? TM_DATA.max_week : 52;
+        let tmTimeline = {};
+        let tmPlayTimer = null;
+        let tmNodeMap = {};
+        let tmInitialized = false;
+        let tmSelectedSpecies = '';
+
+        function populateTmSpeciesSelect(filterKey) {
+            const sel = document.getElementById('tmSpeciesSelect');
+            if (!sel || !TM_DATA || !TM_DATA.species) return;
+
+            const filtered = TM_DATA.species
+                .filter(sp => filterKey === 'all' || sp.status === filterKey)
+                .map(sp => sp.species)
+                .sort((a, b) => a.localeCompare(b, 'de'));
+
+            sel.innerHTML = '<option value="">&#128269; Vogelart verfolgen...</option>';
+            filtered.forEach(spName => {
+                const opt = document.createElement('option');
+                opt.value = spName;
+                opt.textContent = spName;
+                sel.appendChild(opt);
+            });
+
+            if (tmSelectedSpecies && filtered.includes(tmSelectedSpecies)) {
+                sel.value = tmSelectedSpecies;
+                sel.classList.add('has-selection');
+            } else {
+                tmSelectedSpecies = '';
+                sel.value = '';
+                sel.classList.remove('has-selection');
+            }
+        }
+
+        function onTmSpeciesSelect() {
+            const sel = document.getElementById('tmSpeciesSelect');
+            if (!sel) return;
+            tmSelectedSpecies = sel.value || '';
+            sel.classList.toggle('has-selection', !!tmSelectedSpecies);
+            Object.keys(tmNodeMap).forEach(sp => {
+                const node = tmNodeMap[sp];
+                if (node) {
+                    node.classList.toggle('tm-highlighted', sp === tmSelectedSpecies);
+                }
+            });
+        }
+
+        function formatDeNumber(n) {
+            return Number(n || 0).toLocaleString('de-DE');
+        }
+
+        function updateTmFilterCounts() {
+            if (!TM_DATA || !TM_DATA.species) return;
+            const counts = { all: TM_DATA.species.length, Standvogel: 0, Zugvogel: 0, Teilzieher: 0, Wintergast: 0, Durchzieher: 0 };
+            TM_DATA.species.forEach(sp => {
+                if (counts.hasOwnProperty(sp.status)) counts[sp.status]++;
+            });
+            const labels = {
+                all: 'Alle Vogelarten',
+                Standvogel: 'Standvögel',
+                Zugvogel: 'Zugvögel',
+                Teilzieher: 'Teilzieher',
+                Wintergast: 'Wintergäste',
+                Durchzieher: 'Durchzieher'
+            };
+            document.querySelectorAll('#tmFilterGroup .tm-filter-btn').forEach(btn => {
+                const f = btn.getAttribute('data-filter');
+                if (labels[f]) {
+                    btn.textContent = `${labels[f]} (${counts[f] || 0})`;
+                }
+            });
+        }
+
+        function tmComputeWeeks(filterKey) {
+            tmTimeline = {};
+            if (!TM_DATA || !TM_DATA.species) return;
+
+            const maxW = TM_DATA.max_week || 52;
+            const filteredSpecies = TM_DATA.species.filter(sp => filterKey === 'all' || sp.status === filterKey);
+
+            const accMap = {};
+            const prevRankMap = {};
+            const prevSideMap = {};
+            filteredSpecies.forEach(sp => { accMap[sp.species] = 0; });
+
+            let firstActive = null;
+            let lastActive = 1;
+
+            for (let w = 1; w <= maxW; w++) {
+                const activeList = [];
+                let totalAccCalls = 0;
+
+                filteredSpecies.forEach(sp => {
+                    const weekCalls = (sp.weekly && sp.weekly[w - 1]) ? sp.weekly[w - 1] : 0;
+                    accMap[sp.species] += weekCalls;
+                    const acc = accMap[sp.species];
+                    if (acc > 0) {
+                        totalAccCalls += acc;
+                        activeList.push({
+                            species: sp.species,
+                            icon: sp.icon,
+                            status: sp.status || 'Unbekannt',
+                            accCount: acc,
+                            weekCount: weekCalls,
+                            prevRank: prevRankMap[sp.species] || null
+                        });
+                    }
+                });
+
+                if (activeList.length > 0 && firstActive === null) {
+                    firstActive = w;
+                }
+                if (activeList.length > 0) {
+                    lastActive = w;
+                }
+
+                // Sort descending by accumulated calls; preserve previous week's order on ties
+                activeList.sort((a, b) => {
+                    if (b.accCount !== a.accCount) return b.accCount - a.accCount;
+                    if (a.prevRank !== null && b.prevRank !== null) return a.prevRank - b.prevRank;
+                    if (a.prevRank !== null) return -1;
+                    if (b.prevRank !== null) return 1;
+                    return a.species.localeCompare(b.species, 'de');
+                });
+
+                activeList.forEach((item, idx) => {
+                    const rank = idx + 1;
+                    item.rank = rank;
+
+                    let side = 'left';
+                    if (rank === 1) {
+                        side = 'peak';
+                    } else if (item.prevRank !== null) {
+                        if (rank > item.prevRank) {
+                            side = 'right'; // Lost places (slides down the chain)
+                        } else if (rank < item.prevRank) {
+                            side = 'left';  // Gained places (climbs up the chain)
+                        } else {
+                            side = prevSideMap[item.species] || 'left';
+                        }
+                    } else {
+                        side = 'left';
+                    }
+
+                    item.side = side;
+                    prevRankMap[item.species] = rank;
+                    prevSideMap[item.species] = (side === 'peak') ? 'left' : side;
+                });
+
+                tmTimeline[w] = {
+                    week: w,
+                    chain: activeList,
+                    activeCount: activeList.length,
+                    totalAccCalls: totalAccCalls
+                };
+            }
+
+            tmStartWeek = firstActive !== null ? firstActive : 1;
+            tmMaxPlayWeek = TM_DATA.last_active_week || lastActive || maxW;
+        }
+
+        let tmCachedGeom = null;
+        let tmLastAvailW = 0;
+
+        // Compute constant-size left-half Gaussian curve geometry (from bottom-left to top-right peak)
+        function getConstantGaussianGeometry(availWidth) {
+            if (tmCachedGeom && Math.abs(availWidth - tmLastAvailW) < 2) {
+                return tmCachedGeom;
+            }
+            tmLastAvailW = availWidth;
+
+            const ICON_STEP = 31.0; // 31px center-to-center for 30px round icons (never overlapping)
+            const padX = 42;
+            const topPad = 52;
+            const bottomPad = 64;
+            const H = 434; // Fixed constant curve height
+
+            const stageW = Math.max(760, availWidth);
+            const stageH = H + topPad + bottomPad;
+            const leftX = padX;
+            const peakX = stageW - padX;
+            const curveW = Math.max(400, peakX - leftX);
+            const baseY = topPad + H;
+            const timelineY = baseY + 38;
+            const sigma = curveW / 3.05;
+
+            // dx >= 0 is the horizontal distance to the left of peakX (x = peakX - dx)
+            function gaussY(dx) {
+                return baseY - H * Math.exp(-(dx * dx) / (2 * sigma * sigma));
+            }
+
+            function gaussDeriv(dx) {
+                // dy / d(dx) > 0 for dx > 0 (as we go left from the peak, y increases downwards)
+                return (H * dx / (sigma * sigma)) * Math.exp(-(dx * dx) / (2 * sigma * sigma));
+            }
+
+            // Slot 0 is the peak itself (dx = 0, top-right #1); subsequent slots step down to the left at ICON_STEP = 31px
+            const slopeSlots = [{
+                dx: 0,
+                y: gaussY(0),
+                nDx: 0,
+                nY: -1.0
+            }];
+
+            let prevDx = 0;
+            let prevY = gaussY(0);
+            let dx = 0;
+            const stepDx = 0.2;
+
+            while (dx < curveW) {
+                dx += stepDx;
+                const y = gaussY(dx);
+                const dist = Math.hypot(dx - prevDx, y - prevY);
+                if (dist >= ICON_STEP) {
+                    const dydx = gaussDeriv(dx);
+                    const len = Math.hypot(1, dydx);
+                    // Normal vector pointing above/outside the left slope: x shifts left (+nDx in dx), y shifts up (-1/len)
+                    const nDx = dydx / len;
+                    const nY = -1.0 / len;
+                    slopeSlots.push({
+                        dx: dx,
+                        y: y,
+                        nDx: nDx,
+                        nY: nY
+                    });
+                    prevDx = dx;
+                    prevY = y;
+                }
+            }
+
+            tmCachedGeom = {
+                stageW: stageW,
+                stageH: stageH,
+                leftX: leftX,
+                peakX: peakX,
+                curveW: curveW,
+                peakY: gaussY(0),
+                baseY: baseY,
+                timelineY: timelineY,
+                gaussY: gaussY,
+                slopeSlots: slopeSlots
+            };
+
+            const stageEl = document.getElementById('tmStage');
+            if (stageEl) {
+                stageEl.style.width = stageW + 'px';
+                stageEl.style.height = stageH + 'px';
+            }
+            drawGaussianSvg(tmCachedGeom);
+            return tmCachedGeom;
+        }
+
+        // Map all N ranked birds onto the single left-half Gaussian curve from top-right (#1) down to bottom-left
+        function getSlopeCoordinatesForChain(count, geom) {
+            const slots = geom.slopeSlots;
+            const C = slots.length;
+            const coords = [];
+            if (count <= 0 || C === 0) return coords;
+
+            const LAYER_OFFSET = 31.0;
+
+            // Distribute icons: first 1 per slot from top-right peak (#1) down to bottom-left,
+            // then extra layers from the bottom-left upwards so top ranks always stay a single chain
+            const layersAtSlot = new Array(C).fill(0);
+            const firstPass = Math.min(count, C);
+            for (let s = 0; s < firstPass; s++) {
+                layersAtSlot[s] = 1;
+            }
+            let remaining = count - firstPass;
+            while (remaining > 0) {
+                // Keep slot 0 (#1 at peak) always single; stack extra layers from bottom-left (C - 1) up to slot 1
+                for (let s = C - 1; s >= 1 && remaining > 0; s--) {
+                    layersAtSlot[s]++;
+                    remaining--;
+                }
+            }
+
+            for (let s = 0; s < C; s++) {
+                const numLayers = layersAtSlot[s];
+                if (numLayers <= 0) continue;
+                const slot = slots[s];
+                for (let l = 0; l < numLayers; l++) {
+                    const offset = l * LAYER_OFFSET;
+                    coords.push({
+                        x: geom.peakX - (slot.dx + offset * slot.nDx),
+                        y: slot.y + offset * slot.nY
+                    });
+                }
+            }
+            return coords;
+        }
+
+        function drawGaussianSvg(geom) {
+            const svg = document.getElementById('tmSvg');
+            if (!svg) return;
+            svg.setAttribute('viewBox', `0 0 ${geom.stageW} ${geom.stageH}`);
+
+            const pts = [];
+            const samples = 240;
+            // Draw from bottom-left (dx = curveW) up to top-right peak (dx = 0)
+            for (let i = 0; i <= samples; i++) {
+                const dx = geom.curveW * (1 - i / samples);
+                const x = geom.peakX - dx;
+                const y = geom.gaussY(dx);
+                pts.push(`${x.toFixed(1)},${y.toFixed(1)}`);
+            }
+
+            const curvePath = `M ${pts.join(' L ')}`;
+            const areaPath = `${curvePath} L ${geom.peakX.toFixed(1)},${geom.baseY.toFixed(1)} L ${geom.leftX.toFixed(1)},${geom.baseY.toFixed(1)} Z`;
+
+            const maxW = TM_DATA ? (TM_DATA.max_week || 52) : 52;
+            const tlY = geom.timelineY;
+            const tickWeeks = [1, 13, 26, 39, maxW];
+            let ticksSvg = '';
+            tickWeeks.forEach(w => {
+                const ratio = (w - 1) / Math.max(1, maxW - 1);
+                const tx = geom.leftX + ratio * geom.curveW;
+                const isEnd = (w === 1 || w === maxW);
+                const anchor = (w === 1) ? 'start' : ((w === maxW) ? 'end' : 'middle');
+                ticksSvg += `
+                    <line x1="${tx.toFixed(1)}" y1="${tlY - 5}" x2="${tx.toFixed(1)}" y2="${tlY + 5}"
+                          stroke="${isEnd ? '#81d4fa' : '#546e7a'}" stroke-width="${isEnd ? '2' : '1.2'}"/>
+                    <text x="${tx.toFixed(1)}" y="${tlY + 19}" fill="${isEnd ? '#b0bec5' : '#607d8b'}"
+                          font-size="11" font-weight="${isEnd ? 'bold' : 'normal'}" text-anchor="${anchor}">KW ${w}</text>
+                `;
+            });
+
+            svg.innerHTML = `
+                <defs>
+                    <linearGradient id="tmBellGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+                        <stop offset="0%" stop-color="#29b6f6" stop-opacity="0.28"/>
+                        <stop offset="70%" stop-color="#0288d1" stop-opacity="0.08"/>
+                        <stop offset="100%" stop-color="#0288d1" stop-opacity="0.0"/>
+                    </linearGradient>
+                </defs>
+                <line x1="${geom.leftX}" y1="${geom.baseY}" x2="${geom.peakX}" y2="${geom.baseY}"
+                      stroke="#37474f" stroke-width="1" stroke-dasharray="4,4"/>
+                <line x1="${geom.peakX}" y1="${geom.peakY - 16}" x2="${geom.peakX}" y2="${geom.baseY}"
+                      stroke="#455a64" stroke-width="1" stroke-dasharray="5,5"/>
+                <path d="${areaPath}" fill="url(#tmBellGrad)"/>
+                <path d="${curvePath}" fill="none" stroke="#4fc3f7" stroke-width="2.5" stroke-linecap="round"/>
+                <text x="${geom.leftX + 10}" y="28" fill="#ffa726" font-size="12" font-weight="bold" opacity="0.85">&#9660; Abstieg (Plätze verloren)</text>
+                <text x="${geom.peakX - 10}" y="28" fill="#ffd54f" font-size="12" font-weight="bold" text-anchor="end" opacity="0.9">&#9650; Aufstieg zum Gipfel (#1)</text>
+                <!-- Timeline Track below dashed baseline -->
+                <line x1="${geom.leftX}" y1="${tlY}" x2="${geom.peakX}" y2="${tlY}"
+                      stroke="#37474f" stroke-width="3" stroke-linecap="round"/>
+                ${ticksSvg}
+            `;
+        }
+
+        function tmRenderWeek(weekNum) {
+            if (!TM_DATA) return;
+            const maxW = TM_DATA.max_week || 52;
+            tmCurrentWeek = Math.max(1, Math.min(maxW, weekNum));
+
+            const wData = tmTimeline[tmCurrentWeek] || { chain: [], activeCount: 0, totalAccCalls: 0 };
+
+            // Update header & buttons
+            const wkStr = String(tmCurrentWeek).padStart(2, '0');
+            const lbl = document.getElementById('tmWeekLabel');
+            const sub = document.getElementById('tmWeekSub');
+            if (lbl) lbl.textContent = `KW ${wkStr} / ${TM_DATA.year}`;
+            if (sub) sub.textContent = `${wData.activeCount} Arten \u2022 \u2211 ${formatDeNumber(wData.totalAccCalls)} Rufe`;
+
+            const btnPrev = document.getElementById('tmBtnPrev');
+            const btnNext = document.getElementById('tmBtnNext');
+            if (btnPrev) btnPrev.disabled = (tmCurrentWeek <= 1);
+            if (btnNext) btnNext.disabled = (tmCurrentWeek >= maxW);
+
+            const scrollEl = document.getElementById('tmStageScroll');
+            const stageEl = document.getElementById('tmStage');
+            const iconsLayer = document.getElementById('tmIconsLayer');
+            if (!scrollEl || !stageEl || !iconsLayer) return;
+
+            const availW = Math.max(760, scrollEl.clientWidth || 1100);
+            const geom = getConstantGaussianGeometry(availW);
+
+            // Update Timeline Progress Bar & Moving Dot below the dashed baseline
+            const ratio = (tmCurrentWeek - 1) / Math.max(1, maxW - 1);
+            const dotX = geom.leftX + ratio * geom.curveW;
+            const tlFill = document.getElementById('tmTimelineFill');
+            const tlDot = document.getElementById('tmTimelineDot');
+            const tlDotLbl = document.getElementById('tmTimelineDotLabel');
+            if (tlFill) {
+                tlFill.style.left = geom.leftX.toFixed(1) + 'px';
+                tlFill.style.top = geom.timelineY.toFixed(1) + 'px';
+                tlFill.style.width = (ratio * geom.curveW).toFixed(1) + 'px';
+            }
+            if (tlDot) {
+                tlDot.style.left = dotX.toFixed(1) + 'px';
+                tlDot.style.top = geom.timelineY.toFixed(1) + 'px';
+            }
+            if (tlDotLbl) {
+                tlDotLbl.textContent = `KW ${wkStr}`;
+            }
+
+            const activeSet = new Set();
+
+            function placeBirdNode(bird, x, y, sideClass) {
+                activeSet.add(bird.species);
+                let node = tmNodeMap[bird.species];
+                if (!node) {
+                    node = document.createElement('div');
+                    node.className = 'tm-bird-node ' + sideClass;
+                    node.setAttribute('data-species', bird.species);
+                    const img = document.createElement('img');
+                    img.src = bird.icon;
+                    img.alt = bird.species;
+                    node.appendChild(img);
+
+                    node.addEventListener('mouseenter', (ev) => showTmTooltip(ev, node));
+                    node.addEventListener('mousemove', (ev) => moveTmTooltip(ev));
+                    node.addEventListener('mouseleave', hideTmTooltip);
+                    node.addEventListener('click', () => {
+                        const sel = document.getElementById('tmSpeciesSelect');
+                        if (sel) {
+                            sel.value = (tmSelectedSpecies === bird.species) ? '' : bird.species;
+                            onTmSpeciesSelect();
+                        }
+                    });
+
+                    // Start at bottom-left on first appearance for smooth entry up the curve
+                    node.style.left = (geom.leftX).toFixed(1) + 'px';
+                    node.style.top = (geom.baseY).toFixed(1) + 'px';
+                    node.style.opacity = '0';
+                    iconsLayer.appendChild(node);
+                    tmNodeMap[bird.species] = node;
+                    // Force reflow so initial transition animates smoothly
+                    void node.offsetWidth;
+                }
+
+                const highlightClass = (bird.species === tmSelectedSpecies) ? ' tm-highlighted' : '';
+                node.className = 'tm-bird-node ' + sideClass + highlightClass;
+                node.style.display = 'flex';
+                node.style.left = x.toFixed(1) + 'px';
+                node.style.top = y.toFixed(1) + 'px';
+                node.style.opacity = '1';
+
+                node._birdInfo = bird;
+            }
+
+            const chain = wData.chain || [];
+            const coords = getSlopeCoordinatesForChain(chain.length, geom);
+            chain.forEach((bird, idx) => {
+                const pt = coords[idx];
+                if (pt) {
+                    const sideClass = (bird.side === 'peak') ? 'side-peak' : ((bird.side === 'right') ? 'side-right' : 'side-left');
+                    placeBirdNode(bird, pt.x, pt.y, sideClass);
+                }
+            });
+
+            // Hide birds not active in current week/filter
+            Object.keys(tmNodeMap).forEach(sp => {
+                if (!activeSet.has(sp)) {
+                    const node = tmNodeMap[sp];
+                    node.style.opacity = '0';
+                    node.style.pointerEvents = 'none';
+                } else {
+                    tmNodeMap[sp].style.pointerEvents = 'auto';
+                }
+            });
+        }
+
+        function showTmTooltip(ev, node) {
+            const info = node._birdInfo;
+            const tip = document.getElementById('tmTooltip');
+            if (!info || !tip) return;
+
+            let deltaHtml = '<span style="color:#81d4fa;">&#127381; Neu im Ranking</span>';
+            if (info.prevRank !== null) {
+                const diff = info.prevRank - info.rank;
+                if (diff > 0) {
+                    deltaHtml = `<span style="color:#66bb6a;">&#9650; +${diff} ${diff === 1 ? 'Platz' : 'Plätze'} (Vorwoche: #${info.prevRank})</span>`;
+                } else if (diff < 0) {
+                    const lost = Math.abs(diff);
+                    deltaHtml = `<span style="color:#ffa726;">&#9660; -${lost} ${lost === 1 ? 'Platz' : 'Plätze'} (Vorwoche: #${info.prevRank})</span>`;
+                } else {
+                    deltaHtml = `<span style="color:#b0bec5;">&#61; Platz gehalten (#${info.rank})</span>`;
+                }
+            }
+
+            tip.innerHTML = `
+                <div style="display:flex; align-items:center; gap:10px; margin-bottom:6px;">
+                    <img src="${info.icon}" style="width:36px; height:36px; border-radius:50%; background:#fff; object-fit:cover; border:1px solid #546e7a;">
+                    <div>
+                        <div style="font-weight:bold; font-size:1.05em; color:#fff;">#${info.rank} ${info.species}</div>
+                        <div style="font-size:0.8em; color:#81d4fa;">${info.status || 'Allgemein'}</div>
+                    </div>
+                </div>
+                <div style="border-top:1px solid #37474f; padding-top:5px; line-height:1.45;">
+                    <div>&sum; Akkumuliert (KW 1&ndash;${tmCurrentWeek}): <b>${formatDeNumber(info.accCount)} Rufe</b></div>
+                    <div>Zuwachs in KW ${tmCurrentWeek}: <b>+${formatDeNumber(info.weekCount)} Rufe</b></div>
+                    <div style="margin-top:3px;">${deltaHtml}</div>
+                </div>
+            `;
+            tip.style.display = 'block';
+            moveTmTooltip(ev);
+        }
+
+        function moveTmTooltip(ev) {
+            const tip = document.getElementById('tmTooltip');
+            if (!tip || tip.style.display === 'none') return;
+            const pad = 16;
+            let left = ev.clientX + pad;
+            let top = ev.clientY + pad;
+            if (left + 240 > window.innerWidth) left = ev.clientX - 245;
+            if (top + 130 > window.innerHeight) top = ev.clientY - 135;
+            tip.style.left = left + 'px';
+            tip.style.top = top + 'px';
+        }
+
+        function hideTmTooltip() {
+            const tip = document.getElementById('tmTooltip');
+            if (tip) tip.style.display = 'none';
+        }
+
+        function setTmFilter(filterKey) {
+            tmPausePlay();
+            tmCurrentFilter = filterKey;
+            document.querySelectorAll('#tmFilterGroup .tm-filter-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.getAttribute('data-filter') === filterKey);
+            });
+            populateTmSpeciesSelect(filterKey);
+            tmComputeWeeks(filterKey);
+            if (tmCurrentWeek < tmStartWeek) tmCurrentWeek = tmStartWeek;
+            tmRenderWeek(tmCurrentWeek);
+        }
+
+        function tmStep(delta) {
+            tmPausePlay();
+            tmRenderWeek(tmCurrentWeek + delta);
+        }
+
+        function tmPausePlay() {
+            if (tmPlayTimer) {
+                clearInterval(tmPlayTimer);
+                tmPlayTimer = null;
+            }
+            const btnPlay = document.getElementById('tmBtnPlay');
+            if (btnPlay) {
+                btnPlay.innerHTML = '&#9654; Play';
+                btnPlay.classList.remove('play-active');
+            }
+        }
+
+        function tmTogglePlay() {
+            if (tmPlayTimer) {
+                tmPausePlay();
+                return;
+            }
+            const maxW = TM_DATA ? (TM_DATA.max_week || 52) : 52;
+            const endW = Math.min(maxW, Math.max(tmMaxPlayWeek, tmCurrentWeek));
+            if (tmCurrentWeek >= endW) {
+                tmCurrentWeek = tmStartWeek;
+                tmRenderWeek(tmCurrentWeek);
+            }
+            const btnPlay = document.getElementById('tmBtnPlay');
+            if (btnPlay) {
+                btnPlay.innerHTML = '&#9208; Pause';
+                btnPlay.classList.add('play-active');
+            }
+            tmPlayTimer = setInterval(() => {
+                const limitW = TM_DATA ? (TM_DATA.max_week || 52) : 52;
+                const stopAt = Math.min(limitW, Math.max(tmMaxPlayWeek, 1));
+                if (tmCurrentWeek < stopAt) {
+                    tmRenderWeek(tmCurrentWeek + 1);
+                } else {
+                    tmPausePlay();
+                }
+            }, 2200);
+        }
+
+        function tmStop() {
+            tmPausePlay();
+            tmCurrentWeek = tmStartWeek;
+            tmRenderWeek(tmCurrentWeek);
+        }
+
+        function tmInitIfNeeded() {
+            if (!TM_DATA) return;
+            if (!tmInitialized) {
+                updateTmFilterCounts();
+                populateTmSpeciesSelect(tmCurrentFilter);
+                tmComputeWeeks(tmCurrentFilter);
+                tmCurrentWeek = tmStartWeek;
+                tmInitialized = true;
+            }
+            tmRenderWeek(tmCurrentWeek);
+        }
+
+        window.addEventListener('resize', () => {
+            const tmDiv = document.getElementById('view-timemachine');
+            if (tmDiv && tmDiv.style.display !== 'none') {
+                tmRenderWeek(tmCurrentWeek);
+            }
+        });
+
         function showView(view) {
             const chartDiv = document.getElementById('view-chart');
             const fsDiv    = document.getElementById('view-firstseen');
+            const tmDiv    = document.getElementById('view-timemachine');
             const btnChart = document.getElementById('btn-chart');
             const btnFs    = document.getElementById('btn-firstseen');
+            const btnTm    = document.getElementById('btn-timemachine');
 
-            if (view === 'chart') {
-                chartDiv.style.display = '';
-                fsDiv.style.display    = 'none';
-                btnChart.classList.add('active');
-                btnFs.classList.remove('active');
-                sessionStorage.setItem('yearlyView_{{ selected_year }}', 'chart');
-            } else {
-                chartDiv.style.display = 'none';
-                fsDiv.style.display    = '';
-                btnFs.classList.add('active');
-                btnChart.classList.remove('active');
-                sessionStorage.setItem('yearlyView_{{ selected_year }}', 'firstseen');
+            if (view !== 'timemachine') {
+                tmPausePlay();
+                hideTmTooltip();
+            }
+
+            chartDiv.style.display = (view === 'chart') ? '' : 'none';
+            fsDiv.style.display    = (view === 'firstseen') ? '' : 'none';
+            if (tmDiv) tmDiv.style.display = (view === 'timemachine') ? '' : 'none';
+
+            btnChart.classList.toggle('active', view === 'chart');
+            btnFs.classList.toggle('active', view === 'firstseen');
+            if (btnTm) btnTm.classList.toggle('active', view === 'timemachine');
+
+            sessionStorage.setItem('yearlyView_{{ selected_year }}', view);
+
+            if (view === 'timemachine') {
+                tmInitIfNeeded();
             }
         }
 
         // Restore last active tab after auto-refresh
         (function() {
             const saved = sessionStorage.getItem('yearlyView_{{ selected_year }}');
-            if (saved === 'firstseen') showView('firstseen');
+            if (saved === 'firstseen' || saved === 'timemachine') {
+                showView(saved);
+            }
         })();
 
         function filterYearlyBars() {

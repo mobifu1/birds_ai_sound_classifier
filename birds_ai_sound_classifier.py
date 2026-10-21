@@ -2728,6 +2728,19 @@ def yearly_page():
         ORDER BY first_time DESC
     """, (f"{year_str}%",))
     first_last_rows = c.fetchall()
+
+    # Query weekly counts per species for the Zeitmaschine view
+    c.execute("""
+        SELECT
+            species,
+            CAST(strftime('%W', timestamp) AS INTEGER) + 1 AS cw,
+            COUNT(*) AS c
+        FROM detections
+        WHERE timestamp IS NOT NULL AND timestamp != '' AND timestamp LIKE ?
+        GROUP BY species, cw
+        ORDER BY cw ASC
+    """, (f"{year_str}%",))
+    weekly_rows = c.fetchall()
     conn.close()
 
     total = sum([r[1] for r in rows])
@@ -2831,13 +2844,63 @@ def yearly_page():
     dictionary = get_bird_dictionary()
     sorted_dict = sorted(dictionary.items(), key=lambda x: x[1].lower() if isinstance(x[1], str) else str(x[1]).lower())
 
+    # Build timemachine_data (weekly counts + migration status per species)
+    raw_bird_dict = load_dictionary()
+    species_status_map = {}
+    for eng, data in raw_bird_dict.items():
+        if isinstance(data, dict):
+            st = data.get("status", "") or ""
+            trans = data.get("translation", "")
+            if trans and str(trans).strip():
+                species_status_map[str(trans).strip()] = st
+            species_status_map[eng] = st
+
+    max_week = 52
+    active_weeks = []
+    species_weekly_map = {}
+    for sp_name, cw_val, cnt_val in weekly_rows:
+        if cw_val is None:
+            continue
+        cw_int = max(1, min(53, int(cw_val)))
+        if cw_int == 53:
+            max_week = 53
+        if cnt_val and cnt_val > 0:
+            active_weeks.append(cw_int)
+        if sp_name not in species_weekly_map:
+            species_weekly_map[sp_name] = {}
+        species_weekly_map[sp_name][cw_int] = species_weekly_map[sp_name].get(cw_int, 0) + int(cnt_val)
+
+    first_active_week = min(active_weeks) if active_weeks else 1
+    last_active_week = max(active_weeks) if active_weeks else max_week
+
+    tm_species_list = []
+    for r in rows:
+        sp_name = r[0]
+        w_dict = species_weekly_map.get(sp_name, {})
+        w_counts = [w_dict.get(w, 0) for w in range(1, max_week + 1)]
+        tm_species_list.append({
+            'species': sp_name,
+            'icon': url_for('static', filename=get_icon(sp_name)),
+            'status': species_status_map.get(sp_name, ''),
+            'weekly': w_counts
+        })
+
+    timemachine_data = {
+        'year': year,
+        'max_week': max_week,
+        'first_active_week': first_active_week,
+        'last_active_week': last_active_week,
+        'species': tm_species_list
+    }
+
     return render_template('yearly.html',
         bird_data=bird_data, selected_year=year, total_birds_year=total,
         prev_year=year-1, next_year=year+1,
         is_current_year=(year == today.year), current_year=today.year,
         unique_species_year=len(rows),
         first_seen_data=first_seen_data,
-        dictionary=sorted_dict
+        dictionary=sorted_dict,
+        timemachine_data=timemachine_data
     )
 
 @app.route('/manual_entry')

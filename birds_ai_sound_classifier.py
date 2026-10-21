@@ -3022,6 +3022,7 @@ def prediction_page():
     except ValueError:
         days = 7
 
+    run_ai = request.args.get('run', '0') == '1'
     force_refresh = request.args.get('refresh', '0') == '1'
     end_date = datetime.datetime.now()
     start_date = end_date - datetime.timedelta(days=days)
@@ -3074,6 +3075,110 @@ def prediction_page():
     except Exception:
         nacht_start_uhr = "18:00"
         nacht_ende_uhr = "08:00"
+
+    # Gemini Konfiguration prüfen (Frühzeitiger Abbruch ohne langsame Abfragen, falls KI-Bericht noch nicht gestartet)
+    gm = load_gemini_settings()
+    gemini_active = gm.get("gemini_active", False)
+    gemini_api_key = gm.get("gemini_api_key", "").strip()
+    gemini_model = gm.get("gemini_model", "gemini-2.5-flash").strip() or "gemini-2.5-flash"
+    gemini_use_weather = gm.get("gemini_use_weather", True)
+    try:
+        gemini_cache_minutes = max(1, int(gm.get("gemini_cache_minutes", 60)))
+    except Exception:
+        gemini_cache_minutes = 60
+
+    gemini_meta = {
+        "active": bool(gemini_active and gemini_api_key),
+        "model": gemini_model,
+        "updated_at": None,
+        "from_cache": False,
+        "weather_text": None,
+        "error": None,
+        "report_loaded": False
+    }
+
+    if not gemini_active or not gemini_api_key:
+        conn.close()
+        hinweis = (
+            "ℹ️ Google Gemini KI ist derzeit nicht aktiviert oder es wurde noch kein API-Key hinterlegt. "
+            "Bitte öffnen Sie die Einstellungen (⚙️), um im Bereich „Google Gemini KI-Integration“ Ihren API-Key einzutragen und die KI-Auswertung zu aktivieren."
+        )
+        return render_template(
+            'prediction.html',
+            days=days,
+            rush_hour_labels=rush_hour_labels,
+            rush_hour_data=rush_hour_data,
+            busiest_hour=busiest_hour,
+            prob_labels=prob_labels,
+            prob_data=prob_data,
+            next_hour=next_h,
+            selten_text=hinweis,
+            zugvogel_text=hinweis,
+            tagesbericht=hinweis,
+            anomalies=[],
+            nacht_rueckblick=hinweis,
+            nacht_vorhersage=hinweis,
+            nacht_start_uhr=nacht_start_uhr,
+            nacht_ende_uhr=nacht_ende_uhr,
+            gemini_meta=gemini_meta
+        )
+
+    if not run_ai and not force_refresh:
+        conn.close()
+        start_hinweis = (
+            "ℹ️ Bitte wählen Sie oben den gewünschten Analyse-Zeitraum aus und klicken Sie auf "
+            "„🔮 KI-Bericht starten“, um die KI-Auswertung für diesen Zeitraum zu erstellen."
+        )
+        return render_template(
+            'prediction.html',
+            days=days,
+            rush_hour_labels=rush_hour_labels,
+            rush_hour_data=rush_hour_data,
+            busiest_hour=busiest_hour,
+            prob_labels=prob_labels,
+            prob_data=prob_data,
+            next_hour=next_h,
+            selten_text=start_hinweis,
+            zugvogel_text=start_hinweis,
+            tagesbericht=start_hinweis,
+            anomalies=[],
+            nacht_rueckblick=start_hinweis,
+            nacht_vorhersage=start_hinweis,
+            nacht_start_uhr=nacht_start_uhr,
+            nacht_ende_uhr=nacht_ende_uhr,
+            gemini_meta=gemini_meta
+        )
+
+    cache_key = (days, gemini_model, bool(gemini_use_weather))
+    now_ts = time.time()
+    cached_entry = _gemini_prediction_cache.get(cache_key)
+
+    if not force_refresh and cached_entry and (now_ts - cached_entry["ts"] < gemini_cache_minutes * 60):
+        conn.close()
+        ai_data = cached_entry["data"]
+        gemini_meta["updated_at"] = cached_entry["updated_at"]
+        gemini_meta["from_cache"] = True
+        gemini_meta["weather_text"] = cached_entry.get("weather_text")
+        gemini_meta["report_loaded"] = True
+        return render_template(
+            'prediction.html',
+            days=days,
+            rush_hour_labels=rush_hour_labels,
+            rush_hour_data=rush_hour_data,
+            busiest_hour=busiest_hour,
+            prob_labels=prob_labels,
+            prob_data=prob_data,
+            next_hour=next_h,
+            selten_text=ai_data.get("selten_text", ""),
+            zugvogel_text=ai_data.get("zugvogel_text", ""),
+            tagesbericht=ai_data.get("tagesbericht", ""),
+            anomalies=ai_data.get("anomalies", []),
+            nacht_rueckblick=ai_data.get("nacht_rueckblick", ""),
+            nacht_vorhersage=ai_data.get("nacht_vorhersage", ""),
+            nacht_start_uhr=nacht_start_uhr,
+            nacht_ende_uhr=nacht_ende_uhr,
+            gemini_meta=gemini_meta
+        )
 
     # Dictionary-Metadaten (Status & Aufenthaltszeitraum) laden
     full_bird_dict = load_dictionary()
@@ -3474,6 +3579,7 @@ def prediction_page():
                 gemini_meta["updated_at"] = updated_str
                 gemini_meta["from_cache"] = False
                 gemini_meta["weather_text"] = weather_text
+                gemini_meta["report_loaded"] = True
             else:
                 try:
                     err_detail = resp.json().get("error", {}).get("message", resp.text[:200])
@@ -3485,6 +3591,7 @@ def prediction_page():
             if cached_entry:
                 ai_data = cached_entry["data"]
                 gemini_meta["updated_at"] = cached_entry["updated_at"] + " (Cache nach Fehler)"
+                gemini_meta["report_loaded"] = True
                 gemini_meta["from_cache"] = True
                 gemini_meta["weather_text"] = cached_entry.get("weather_text")
             else:

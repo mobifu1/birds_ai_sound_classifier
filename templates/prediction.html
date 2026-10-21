@@ -55,10 +55,10 @@
             </div>
         </div>
 
-        <form method="GET" action="/prediction" class="dashboard-controls" id="prediction-form" style="display: flex; justify-content: center; align-items: center; gap: 15px; flex-wrap: wrap;">
+        <form method="GET" action="/prediction" class="dashboard-controls" id="prediction-form" onsubmit="event.preventDefault(); startGeminiAnalysis(false);" style="display: flex; justify-content: center; align-items: center; gap: 15px; flex-wrap: wrap;">
             <div>
                 <label for="days">Analyse-Zeitraum:</label>
-                <select name="days" id="days" onchange="showAiLoading(); this.form.submit()">
+                <select name="days" id="days">
                     <option value="1" {% if days==1 %}selected{% endif %}>Letzte 24 Stunden</option>
                     <option value="3" {% if days==3 %}selected{% endif %}>Letzte 3 Tage</option>
                     <option value="7" {% if days==7 %}selected{% endif %}>Letzte 7 Tage</option>
@@ -67,9 +67,14 @@
                 </select>
             </div>
             {% if gemini_meta and gemini_meta.active %}
-            <button type="button" onclick="refreshGeminiAnalysis()" style="padding: 8px 15px; background: #4CAF50; color: white; border: none; border-radius: 5px; font-weight: bold; cursor: pointer;">
+            <button type="button" id="start-ai-btn" onclick="startGeminiAnalysis(false)" style="padding: 8px 15px; background: #ba68c8; color: white; border: none; border-radius: 5px; font-weight: bold; cursor: pointer;">
+                🔮 KI-Bericht starten
+            </button>
+            {% if gemini_meta.report_loaded %}
+            <button type="button" id="refresh-ai-btn" onclick="startGeminiAnalysis(true)" style="padding: 8px 15px; background: #4CAF50; color: white; border: none; border-radius: 5px; font-weight: bold; cursor: pointer;">
                 🔄 KI-Analyse jetzt neu generieren
             </button>
+            {% endif %}
             {% else %}
             <a href="/settings" class="button-link" style="background: #ff9800; padding: 8px 15px; font-size: 0.9em;">
                 ⚙️ Gemini API in Einstellungen aktivieren
@@ -84,6 +89,8 @@
                 {% if gemini_meta.updated_at %}
                 &nbsp;|&nbsp; Stand: <strong>{{ gemini_meta.updated_at }} Uhr</strong>
                 {% if gemini_meta.from_cache %}<span style="color: #81c784;">(aus Cache)</span>{% else %}<span style="color: #4fc3f7;">(frisch generiert)</span>{% endif %}
+                {% else %}
+                &nbsp;|&nbsp; <span style="color: #ffd54f;">Zeitraum wählen &amp; „🔮 KI-Bericht starten“ klicken</span>
                 {% endif %}
             </div>
             {% if gemini_meta.weather_text %}
@@ -165,6 +172,8 @@
                             <div class="anomaly-desc">{{ anomaly.desc }}</div>
                         </div>
                         {% endfor %}
+                    {% elif gemini_meta and not gemini_meta.report_loaded %}
+                        <div class="anomaly-empty">ℹ️ Bitte wählen Sie oben den gewünschten Analyse-Zeitraum aus und klicken Sie auf „🔮 KI-Bericht starten“.</div>
                     {% else %}
                         <div class="anomaly-empty">Keine auffälligen Zu- oder Abnahmen für diesen Zeitraum gemeldet.</div>
                     {% endif %}
@@ -201,18 +210,31 @@
             if (banner) {
                 banner.style.display = 'block';
             }
+            const startBtn = document.getElementById('start-ai-btn');
+            if (startBtn) {
+                startBtn.disabled = true;
+                startBtn.style.opacity = '0.7';
+                startBtn.innerText = '⏳ KI-Bericht wird gestartet...';
+            }
+            const refreshBtn = document.getElementById('refresh-ai-btn');
+            if (refreshBtn) {
+                refreshBtn.disabled = true;
+                refreshBtn.style.opacity = '0.7';
+            }
         }
 
-        function refreshGeminiAnalysis() {
+        function startGeminiAnalysis(forceRefresh) {
             showAiLoading();
             const daysVal = document.getElementById('days').value;
-            window.location.href = `/prediction?days=${encodeURIComponent(daysVal)}&refresh=1`;
+            const param = forceRefresh ? 'refresh=1' : 'run=1';
+            window.location.href = `/prediction?days=${encodeURIComponent(daysVal)}&${param}`;
         }
 
-        // Entferne refresh=1 aus der URL nach dem Laden, damit der 5-Minuten Auto-Refresh den Cache nutzt
+        // Ersetze refresh=1 durch run=1 nach dem Laden, damit der 5-Minuten Auto-Refresh den Cache nutzt
         if (window.location.search.includes('refresh=1') && window.history && window.history.replaceState) {
             const url = new URL(window.location.href);
             url.searchParams.delete('refresh');
+            url.searchParams.set('run', '1');
             window.history.replaceState({}, document.title, url.pathname + url.search);
         }
 

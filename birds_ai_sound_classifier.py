@@ -44,7 +44,7 @@ from birdnetlib import Recording
 START_TIME = time.time()
 
 # --- KONFIGURATION ---
-APP_VERSION = "V1.3.9-RC3"
+APP_VERSION = "V1.3.9"
 VERSION_YEAR = "2026"
 DB_FILE = "birds_audio_stats.db"
 SETTINGS_FILE = "settings.json"

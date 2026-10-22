@@ -2,6 +2,7 @@
 model/
 backup_db/
 birdweather_queue/
+__pycache__/
 
 # Ignoriere Modell-Files/Database-Files
 birdweather.json
@@ -15,7 +16,7 @@ blocklist-log.txt
 release_notes.txt
 Einstellungen_Beschreibung.txt
 System_Beschreibung.txt
-autostart_monitor.txt
+Autostart_Monitor_Beschreibung.txt
 python-3.10.11-amd64.exe
 
 *.wav
@@ -23,3 +24,4 @@ python-3.10.11-amd64.exe
 *.db-wal
 *.tflite
 *.db
+*.pyc

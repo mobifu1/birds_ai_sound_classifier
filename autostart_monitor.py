@@ -15,6 +15,7 @@ except ImportError:
     import psutil
 
 TARGET_APP = "birds_ai_sound_classifier.py"
+MONITOR_VERSION = "V1.0"
 
 # Pfadweiche: Unterscheide zwischen kompilierter .exe (z.B. PyInstaller) und normalem Python-Skript
 if getattr(sys, 'frozen', False):
@@ -29,12 +30,26 @@ if not os.path.exists(os.path.join(APP_DIR, TARGET_APP)) and os.path.exists(os.p
 class MonitorApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Bird Classifier Monitor")
+        self.root.title(f"Bird Classifier Monitor ({MONITOR_VERSION})")
         self.root.geometry("600x400")
         
+        # Icon für Fenster setzen (falls vorhanden)
+        icon_path = os.path.join(APP_DIR, "static", "feather.ico")
+        if os.path.exists(icon_path):
+            try:
+                self.root.iconbitmap(icon_path)
+            except Exception:
+                pass
+
+        # Kopfbereich mit Versionsangabe oben links
+        header_frame = tk.Frame(self.root)
+        header_frame.pack(fill='x', padx=10, pady=(6, 0))
+        version_label = tk.Label(header_frame, text=MONITOR_VERSION, font=("Arial", 9, "bold"), fg="#666666")
+        version_label.pack(side='left')
+
         # Titel
         title_label = tk.Label(self.root, text="Birds AI Sound Classifier - Überwachung", font=("Arial", 14, "bold"))
-        title_label.pack(pady=10)
+        title_label.pack(pady=(0, 10))
         
         # Log-Fenster
         self.log_area = scrolledtext.ScrolledText(self.root, wrap=tk.WORD, state='disabled', font=("Consolas", 10), bg="#f4f4f4")
@@ -75,23 +90,123 @@ class MonitorApp:
         instances.sort(key=lambda x: x.info.get('create_time', 0))
         return instances
         
+    def kill_process_tree(self, proc):
+        """Beendet einen Prozess inklusive aller Kindprozesse (z.B. Audio-Kindprozess) und Konsolenfenster."""
+        try:
+            pid = proc.pid
+            # 1. Zugehöriges cmd.exe-Elternfenster merken (von start.bat)
+            parent_cmd = None
+            try:
+                par = proc.parent()
+                if par and par.name().lower() == 'cmd.exe':
+                    parent_cmd = par
+            except Exception:
+                pass
+
+            # 2. Kindprozesse ermitteln (z.B. python.exe für Audioanalyse)
+            children = []
+            try:
+                children = proc.children(recursive=True)
+            except Exception:
+                pass
+
+            for child in children:
+                try:
+                    self.log_message(f"Beende Kindprozess PID {child.pid}...")
+                    child.terminate()
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    pass
+
+            # 3. Hauptprozess beenden
+            try:
+                self.log_message(f"Beende Prozess PID {pid}...")
+                proc.terminate()
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                pass
+
+            # 4. Kurz warten, ob die Prozesse reagieren; falls nicht, hart beenden (kill)
+            try:
+                _, alive = psutil.wait_procs(children + [proc], timeout=3)
+                for p in alive:
+                    try:
+                        p.kill()
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
+            # 5. Falls vorhanden, das cmd.exe-Fenster schließen
+            if parent_cmd:
+                try:
+                    parent_cmd.terminate()
+                except Exception:
+                    pass
+
+        except Exception as e:
+            self.log_message(f"Fehler beim Beenden des Prozessbaums PID {proc.pid}: {e}")
+
+    def cleanup_orphaned_processes(self):
+        """Beendet verwaiste Audio-/Subprozesse im Anwendungsverzeichnis, bevor neu gestartet wird."""
+        my_pid = os.getpid()
+        cleaned_count = 0
+        norm_app_dir = os.path.normpath(APP_DIR).lower()
+
+        for p in psutil.process_iter(['name', 'cmdline', 'pid']):
+            try:
+                if p.pid == my_pid:
+                    continue
+                name = p.info.get('name', '').lower()
+                cmdline = p.info.get('cmdline') or []
+                cmd_str = ' '.join(cmdline).lower()
+
+                # Den Monitor selbst niemals anfassen (egal ob .py oder compilierte .exe)
+                if "autostart_monitor" in cmd_str:
+                    continue
+
+                if "python" in name:
+                    is_in_app_dir = False
+                    try:
+                        p_cwd = p.cwd()
+                        if p_cwd and os.path.normpath(p_cwd).lower() == norm_app_dir:
+                            is_in_app_dir = True
+                    except Exception:
+                        if norm_app_dir in cmd_str:
+                            is_in_app_dir = True
+
+                    # Multiprocessing-Spawn-Worker oder verwaiste Reste im App-Verzeichnis beenden
+                    if is_in_app_dir and ("multiprocessing.spawn" in cmd_str or TARGET_APP.lower() in cmd_str):
+                        self.log_message(f"Verwaisten Hintergrundprozess PID {p.pid} gefunden. Beende...")
+                        try:
+                            p.terminate()
+                            p.wait(timeout=2)
+                        except (psutil.TimeoutExpired, Exception):
+                            try:
+                                p.kill()
+                            except Exception:
+                                pass
+                        cleaned_count += 1
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                pass
+
+        if cleaned_count > 0:
+            self.log_message(f"{cleaned_count} verwaiste(n) Prozess(e) bereinigt.")
+            time.sleep(1)
+
     def monitor_loop(self):
         """Die Hauptschleife, die periodisch den Prozessstatus überprüft."""
         while self.running:
             instances = self.get_running_instances()
             
             if len(instances) == 0:
-                self.log_message(f"'{TARGET_APP}' läuft nicht. Starte neu...")
+                self.log_message(f"'{TARGET_APP}' läuft nicht.")
+                self.cleanup_orphaned_processes()
+                self.log_message(f"Starte '{TARGET_APP}' neu...")
                 self.start_app()
             elif len(instances) > 1:
                 self.log_message(f"Warnung: {len(instances)} Instanzen von '{TARGET_APP}' gefunden! Beende überzählige...")
-                # Die erste Instanz (älteste) bleibt, die anderen werden beendet
+                # Die erste Instanz (älteste) bleibt, die anderen werden samt Kindprozessen beendet
                 for p in instances[1:]:
-                    try:
-                        self.log_message(f"Beende Prozess PID {p.pid}...")
-                        p.terminate()
-                    except Exception as e:
-                        self.log_message(f"Fehler beim Beenden von PID {p.pid}: {e}")
+                    self.kill_process_tree(p)
             
             # Überprüfe jede Minute (60 Sekunden).
             # Wir verwenden eine Schleife mit kurzem Sleep, damit die App 

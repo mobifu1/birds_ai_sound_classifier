@@ -1,5 +1,6 @@
 # Ignoriere-Ordner
 model/
+tasks/
 backup_db/
 birdweather_queue/
 __pycache__/
@@ -11,9 +12,8 @@ gemini.json
 debug_log.txt
 generate_pdf.py
 fft_analyzer.py
-missing_bird_pics.txt
 blocklist-log.txt
-release_notes.txt
+releasenotes.txt
 Einstellungen_Beschreibung.txt
 System_Beschreibung.txt
 Autostart_Monitor_Beschreibung.txt

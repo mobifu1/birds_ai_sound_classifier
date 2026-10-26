@@ -44,7 +44,7 @@ from birdnetlib import Recording
 START_TIME = time.time()
 
 # --- KONFIGURATION ---
-APP_VERSION = "V1.3.9"
+APP_VERSION = "V1.4.0-RC2"
 VERSION_YEAR = "2026"
 DB_FILE = "birds_audio_stats.db"
 SETTINGS_FILE = "settings.json"
@@ -3913,6 +3913,12 @@ def api_control_apply_dictionary():
         else:
             archive_files = []
 
+        highscore_dir = os.path.join(archive_dir, "highscore")
+        if os.path.exists(highscore_dir):
+            highscore_files = os.listdir(highscore_dir)
+        else:
+            highscore_files = []
+
         latest_dir = os.path.join(AUDIO_DIR, "latest")
         for eng, trans in bird_dict.items():
             if eng != trans and trans.strip():
@@ -3936,6 +3942,17 @@ def api_control_apply_dictionary():
                             renamed_files_count += 1
                         except Exception as e:
                             print(f"Fehler beim Umbenennen von {f}: {e}")
+
+                for f in highscore_files:
+                    if f.startswith(prefix) and f.endswith(".wav"):
+                        old_path = os.path.join(highscore_dir, f)
+                        new_name = f.replace(prefix, new_prefix, 1)
+                        new_path = os.path.join(highscore_dir, new_name)
+                        try:
+                            os.rename(old_path, new_path)
+                            renamed_files_count += 1
+                        except Exception as e:
+                            print(f"Fehler beim Umbenennen von Highscore {f}: {e}")
 
                 if os.path.exists(latest_dir):
                     old_latest = os.path.join(latest_dir, f"{safe_eng}.wav")
@@ -3984,19 +4001,31 @@ def api_control_delete_single_occurrences():
         conn.commit()
 
         archive_dir = os.path.join(AUDIO_DIR, "archive")
+        highscore_dir = os.path.join(archive_dir, "highscore")
         latest_dir = os.path.join(AUDIO_DIR, "latest")
         for species, ts in rows:
             safe_species = species.replace(" ", "_").replace("/", "_")
+            prefix = f"{safe_species}_"
             if os.path.exists(archive_dir):
-                prefix = f"{safe_species}_"
                 for filename in os.listdir(archive_dir):
                     if filename.startswith(prefix) and filename.endswith(".wav"):
                         filepath = os.path.join(archive_dir, filename)
-                        try:
-                            os.remove(filepath)
-                            deleted_files += 1
-                        except:
-                            pass
+                        if os.path.isfile(filepath):
+                            try:
+                                os.remove(filepath)
+                                deleted_files += 1
+                            except:
+                                pass
+            if os.path.exists(highscore_dir):
+                for filename in os.listdir(highscore_dir):
+                    if filename.startswith(prefix) and filename.endswith(".wav"):
+                        filepath = os.path.join(highscore_dir, filename)
+                        if os.path.isfile(filepath):
+                            try:
+                                os.remove(filepath)
+                                deleted_files += 1
+                            except:
+                                pass
             if os.path.exists(latest_dir):
                 latest_fp = os.path.join(latest_dir, f"{safe_species}.wav")
                 if os.path.exists(latest_fp):
@@ -4032,17 +4061,30 @@ def api_control_bulk_delete_species():
         conn.commit()
 
         safe_species = species.replace(" ", "_").replace("/", "_")
+        prefix = f"{safe_species}_"
         archive_dir = os.path.join(AUDIO_DIR, "archive")
         if os.path.exists(archive_dir):
-            prefix = f"{safe_species}_"
             for filename in os.listdir(archive_dir):
                 if filename.startswith(prefix) and filename.endswith(".wav"):
                     filepath = os.path.join(archive_dir, filename)
-                    try:
-                        os.remove(filepath)
-                        deleted_files += 1
-                    except:
-                        pass
+                    if os.path.isfile(filepath):
+                        try:
+                            os.remove(filepath)
+                            deleted_files += 1
+                        except:
+                            pass
+
+        highscore_dir = os.path.join(archive_dir, "highscore")
+        if os.path.exists(highscore_dir):
+            for filename in os.listdir(highscore_dir):
+                if filename.startswith(prefix) and filename.endswith(".wav"):
+                    filepath = os.path.join(highscore_dir, filename)
+                    if os.path.isfile(filepath):
+                        try:
+                            os.remove(filepath)
+                            deleted_files += 1
+                        except:
+                            pass
 
         latest_fp = os.path.join(AUDIO_DIR, "latest", f"{safe_species}.wav")
         if os.path.exists(latest_fp):
@@ -4086,13 +4128,28 @@ def api_control_bulk_rename_species():
             for filename in os.listdir(archive_dir):
                 if filename.startswith(safe_old_species + "_") and filename.endswith(".wav"):
                     old_filepath = os.path.join(archive_dir, filename)
-                    new_filename = filename.replace(safe_old_species + "_", safe_new_species + "_", 1)
-                    new_filepath = os.path.join(archive_dir, new_filename)
-                    try:
-                        os.rename(old_filepath, new_filepath)
-                        renamed_files += 1
-                    except Exception as fe:
-                        print(f"Failed to rename {filename}: {fe}")
+                    if os.path.isfile(old_filepath):
+                        new_filename = filename.replace(safe_old_species + "_", safe_new_species + "_", 1)
+                        new_filepath = os.path.join(archive_dir, new_filename)
+                        try:
+                            os.rename(old_filepath, new_filepath)
+                            renamed_files += 1
+                        except Exception as fe:
+                            print(f"Failed to rename {filename}: {fe}")
+
+        highscore_dir = os.path.join(archive_dir, "highscore")
+        if os.path.exists(highscore_dir):
+            for filename in os.listdir(highscore_dir):
+                if filename.startswith(safe_old_species + "_") and filename.endswith(".wav"):
+                    old_filepath = os.path.join(highscore_dir, filename)
+                    if os.path.isfile(old_filepath):
+                        new_filename = filename.replace(safe_old_species + "_", safe_new_species + "_", 1)
+                        new_filepath = os.path.join(highscore_dir, new_filename)
+                        try:
+                            os.rename(old_filepath, new_filepath)
+                            renamed_files += 1
+                        except Exception as fe:
+                            print(f"Failed to rename highscore {filename}: {fe}")
 
         latest_dir = os.path.join(AUDIO_DIR, "latest")
         if os.path.exists(latest_dir):
@@ -4389,8 +4446,8 @@ def perform_app_update():
                     copy_update_file(src_file, dst_file)
 
         # 5. Dateien kontrolliert aktualisieren
-        #    Geschützte lokale Dateien (Datenbank, Audio-Records, settings.json, birdweather.json,
-        #    pushover.json, blocklist-log.txt) werden NIEMALS angefasst!
+        #    Geschützte lokale Dateien (Datenbank, Audio-Records, settings.json, auto_season_lowering.json,
+        #    birdweather.json, pushover.json, gemini.json, blocklist-log.txt) werden NIEMALS überschrieben!
         updated_items = []
 
         # a) templates/ aktualisieren
@@ -4403,11 +4460,13 @@ def perform_app_update():
             copy_dir_contents(new_static_dir, os.path.join(base_dir, "static"))
             updated_items.append("static/")
 
-        # c) auto_season_lowering.json aktualisieren (falls im Repo vorhanden)
+        # c) auto_season_lowering.json ist als benutzerspezifische Datei geschützt
+        #    (wird nur angelegt, falls sie lokal noch überhaupt nicht existiert)
         new_lowering_file = os.path.join(extracted_root, "auto_season_lowering.json")
-        if os.path.isfile(new_lowering_file):
-            copy_update_file(new_lowering_file, os.path.join(base_dir, "auto_season_lowering.json"))
-            updated_items.append("auto_season_lowering.json")
+        local_lowering_file = os.path.join(base_dir, "auto_season_lowering.json")
+        if os.path.isfile(new_lowering_file) and not os.path.exists(local_lowering_file):
+            copy_update_file(new_lowering_file, local_lowering_file)
+            updated_items.append("auto_season_lowering.json (initial angelegt)")
 
         # d) start.bat aktualisieren (falls im Repo vorhanden)
         new_start_bat = os.path.join(extracted_root, "start.bat")
@@ -4611,16 +4670,18 @@ def api_control_dbreset():
         conn.close()
         
         deleted_files = 0
-        for sub in ("archive", "latest"):
+        for sub in ("archive", os.path.join("archive", "highscore"), "latest"):
             sub_dir = os.path.join(AUDIO_DIR, sub)
             if os.path.exists(sub_dir):
                 for f in os.listdir(sub_dir):
                     if f.endswith(".wav"):
-                        try:
-                            os.remove(os.path.join(sub_dir, f))
-                            deleted_files += 1
-                        except:
-                            pass
+                        filepath = os.path.join(sub_dir, f)
+                        if os.path.isfile(filepath):
+                            try:
+                                os.remove(filepath)
+                                deleted_files += 1
+                            except:
+                                pass
 
         return jsonify({"msg": f"Datenbank wurde erfolgreich geleert! {deleted_files} Dateien wurden gelöscht."})
     except Exception as e:
@@ -4799,6 +4860,11 @@ def api_detections_delete():
         
         c.execute("DELETE FROM detections WHERE rowid = ?", (data['id'],))
         conn.commit()
+        
+        remaining_count = 1
+        if row:
+            c.execute("SELECT COUNT(*) FROM detections WHERE species = ?", (row[0],))
+            remaining_count = c.fetchone()[0]
         conn.close()
         
         if row:
@@ -4813,6 +4879,22 @@ def api_detections_delete():
                 if os.path.exists(old_filepath):
                     os.remove(old_filepath)
                     update_log(f"Zugehörige Audiodatei gelöscht: {old_filename}")
+
+                highscore_dir = os.path.join(AUDIO_DIR, "archive", "highscore")
+                if os.path.exists(highscore_dir):
+                    hs_prefix = f"{safe_species}_"
+                    hs_suffix = f"_{fn_ts}.wav"
+                    for hs_file in os.listdir(highscore_dir):
+                        if hs_file.startswith(hs_prefix) and hs_file.endswith(hs_suffix):
+                            hs_filepath = os.path.join(highscore_dir, hs_file)
+                            if os.path.isfile(hs_filepath):
+                                os.remove(hs_filepath)
+                                update_log(f"Zugehörige Highscore-Audiodatei gelöscht: {hs_file}")
+
+                if remaining_count == 0:
+                    latest_filepath = os.path.join(AUDIO_DIR, "latest", f"{safe_species}.wav")
+                    if os.path.exists(latest_filepath):
+                        os.remove(latest_filepath)
             except Exception as fe:
                 update_log(f"Fehler beim Löschen der Audiodatei: {fe}")
                 
@@ -4827,10 +4909,10 @@ def api_detections_update():
         conn = sqlite3.connect(DB_FILE)
         c = conn.cursor()
         
-        c.execute("SELECT species, timestamp FROM detections WHERE id = ?", (data['id'],))
+        c.execute("SELECT species, timestamp FROM detections WHERE rowid = ?", (data['id'],))
         row = c.fetchone()
         
-        c.execute("UPDATE detections SET species = ? WHERE id = ?", (data['species'], data['id']))
+        c.execute("UPDATE detections SET species = ? WHERE rowid = ?", (data['species'], data['id']))
         conn.commit()
         conn.close()
         
@@ -4853,6 +4935,19 @@ def api_detections_update():
                     if os.path.exists(old_filepath):
                         os.rename(old_filepath, new_filepath)
                         update_log(f"Audiodatei umbenannt: {old_filename} -> {new_filename}")
+
+                    highscore_dir = os.path.join(AUDIO_DIR, "archive", "highscore")
+                    if os.path.exists(highscore_dir):
+                        hs_prefix = f"{safe_old_species}_"
+                        hs_suffix = f"_{fn_ts}.wav"
+                        for hs_file in os.listdir(highscore_dir):
+                            if hs_file.startswith(hs_prefix) and hs_file.endswith(hs_suffix):
+                                old_hs_path = os.path.join(highscore_dir, hs_file)
+                                if os.path.isfile(old_hs_path):
+                                    new_hs_file = hs_file.replace(hs_prefix, f"{safe_new_species}_", 1)
+                                    new_hs_path = os.path.join(highscore_dir, new_hs_file)
+                                    os.rename(old_hs_path, new_hs_path)
+                                    update_log(f"Highscore-Audiodatei umbenannt: {hs_file} -> {new_hs_file}")
                 except Exception as fe:
                     update_log(f"Fehler beim Umbenennen der Audiodatei: {fe}")
                     

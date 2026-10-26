@@ -765,8 +765,12 @@
 
                 filteredSpecies.forEach(sp => {
                     const weekCalls = (sp.weekly && sp.weekly[w - 1]) ? sp.weekly[w - 1] : 0;
-                    accMap[sp.species] += weekCalls;
-                    const acc = accMap[sp.species];
+                    const winStart = Math.max(1, w - 3);
+                    let acc = 0;
+                    for (let k = winStart; k <= w; k++) {
+                        acc += (sp.weekly && sp.weekly[k - 1]) ? sp.weekly[k - 1] : 0;
+                    }
+                    accMap[sp.species] = acc;
                     if (acc > 0) {
                         totalAccCalls += acc;
                         activeList.push({
@@ -796,6 +800,8 @@
                     return a.species.localeCompare(b.species, 'de');
                 });
 
+                const nextPrevRankMap = {};
+                const nextPrevSideMap = {};
                 activeList.forEach((item, idx) => {
                     const rank = idx + 1;
                     item.rank = rank;
@@ -816,9 +822,14 @@
                     }
 
                     item.side = side;
-                    prevRankMap[item.species] = rank;
-                    prevSideMap[item.species] = (side === 'peak') ? 'left' : side;
+                    nextPrevRankMap[item.species] = rank;
+                    nextPrevSideMap[item.species] = (side === 'peak') ? 'left' : side;
                 });
+
+                Object.keys(prevRankMap).forEach(k => delete prevRankMap[k]);
+                Object.assign(prevRankMap, nextPrevRankMap);
+                Object.keys(prevSideMap).forEach(k => delete prevSideMap[k]);
+                Object.assign(prevSideMap, nextPrevSideMap);
 
                 tmTimeline[w] = {
                     week: w,
@@ -1033,7 +1044,9 @@
             const lbl = document.getElementById('tmWeekLabel');
             const sub = document.getElementById('tmWeekSub');
             if (lbl) lbl.textContent = `KW ${wkStr} / ${TM_DATA.year}`;
-            if (sub) sub.textContent = `${wData.activeCount} Arten \u2022 \u2211 ${formatDeNumber(wData.totalAccCalls)} Rufe`;
+            const winStart = Math.max(1, tmCurrentWeek - 3);
+            const winRangeStr = (winStart === tmCurrentWeek) ? `KW ${wkStr}` : `KW ${String(winStart).padStart(2, '0')}\u2013${wkStr}`;
+            if (sub) sub.textContent = `${winRangeStr} \u2022 ${wData.activeCount} Arten \u2022 \u2211 ${formatDeNumber(wData.totalAccCalls)} Rufe`;
 
             const btnPrev = document.getElementById('tmBtnPrev');
             const btnNext = document.getElementById('tmBtnNext');
@@ -1161,7 +1174,7 @@
                     </div>
                 </div>
                 <div style="border-top:1px solid #37474f; padding-top:5px; line-height:1.45;">
-                    <div>&sum; Akkumuliert (KW 1&ndash;${tmCurrentWeek}): <b>${formatDeNumber(info.accCount)} Rufe</b></div>
+                    <div>&sum; 4-Wochen-Fenster (KW ${Math.max(1, tmCurrentWeek - 3) === tmCurrentWeek ? tmCurrentWeek : Math.max(1, tmCurrentWeek - 3) + '&ndash;' + tmCurrentWeek}): <b>${formatDeNumber(info.accCount)} Rufe</b></div>
                     <div>Zuwachs in KW ${tmCurrentWeek}: <b>+${formatDeNumber(info.weekCount)} Rufe</b></div>
                     <div style="margin-top:3px;">${deltaHtml}</div>
                 </div>

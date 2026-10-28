@@ -44,7 +44,7 @@ from birdnetlib import Recording
 START_TIME = time.time()
 
 # --- KONFIGURATION ---
-APP_VERSION = "V1.4.0-RC3"
+APP_VERSION = "V1.4.0-RC4"
 VERSION_YEAR = "2026"
 DB_FILE = "birds_audio_stats.db"
 SETTINGS_FILE = "settings.json"
@@ -918,7 +918,7 @@ class AudioMonitor:
                                             prob_switch_active = settings.get("log_blocklist_prob_switch", False)
                                             
                                             should_log = True
-                                            if prob_switch_active and round(geo_prob_val * 100, 2) <= 0.0:
+                                            if prob_switch_active and round(geo_prob_val * 100, 2) <= 0.1:
                                                 should_log = False
                                                 
                                             if should_log:
@@ -985,7 +985,7 @@ class AudioMonitor:
                                         prob_switch_active = settings.get("log_blocklist_prob_switch", False)
                                         
                                         should_log = True
-                                        if prob_switch_active and round(geo_prob_val * 100, 2) <= 0.0:
+                                        if prob_switch_active and round(geo_prob_val * 100, 2) <= 0.1:
                                             should_log = False
                                             
                                         if should_log:

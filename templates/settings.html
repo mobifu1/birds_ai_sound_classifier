@@ -178,7 +178,7 @@
                         <input type="checkbox" id="log_blocklist" style="width: 18px; height: 18px; margin-left: 10px;" {% if s.get('log_blocklist', True) %}checked{% endif %}>
                     </label>
                     <label style="margin: 0; color: #ccc; display: flex; align-items: center; margin-left: 15px;">Prob-Filter:
-                        <input type="checkbox" id="log_blocklist_prob_switch" style="width: 18px; height: 18px; margin-left: 10px;" title="Wenn aktiv, werden nur Arten mit Geo-Probability > 0% gespeichert." {% if s.get('log_blocklist_prob_switch', False) %}checked{% endif %}>
+                        <input type="checkbox" id="log_blocklist_prob_switch" style="width: 18px; height: 18px; margin-left: 10px;" title="Wenn aktiv, werden nur Arten mit Geo-Probability > 0,1% gespeichert." {% if s.get('log_blocklist_prob_switch', False) %}checked{% endif %}>
                     </label>
                     <label style="margin: 0; color: #ccc; display: flex; align-items: center; margin-left: 15px;">Pushover:
                         <input type="checkbox" id="log_blocklist_pushover" style="width: 18px; height: 18px; margin-left: 10px;" title="Wenn aktiv, werden vom Modell blockierte Arten, die im Dictionary vorhanden sind, per Pushover gemeldet." {% if s.get('log_blocklist_pushover', False) %}checked{% endif %}>

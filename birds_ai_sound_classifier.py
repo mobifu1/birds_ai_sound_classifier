@@ -44,7 +44,7 @@ from birdnetlib import Recording
 START_TIME = time.time()
 
 # --- KONFIGURATION ---
-APP_VERSION = "V1.4.0-RC2"
+APP_VERSION = "V1.4.0-RC3"
 VERSION_YEAR = "2026"
 DB_FILE = "birds_audio_stats.db"
 SETTINGS_FILE = "settings.json"
@@ -925,6 +925,14 @@ class AudioMonitor:
                                                 with open("blocklist-log.txt", "a", encoding="utf-8") as f:
                                                     ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                                                     f.write(f"{ts} > Low probability for your area,LAT:{lat},LON:{lon},K:{raw_d.confidence*100:.0f}%,P:{geo_prob_val*100:.2f}%,SNR:{calculated_snr:.1f}dB,Species:{species} > erkannt\n")
+                                                if settings.get("log_blocklist_pushover", False) and eng_species in full_bird_dict:
+                                                    is_dict_blocked = isinstance(full_bird_dict[eng_species], dict) and full_bird_dict[eng_species].get("blocklist", False)
+                                                    if not is_dict_blocked:
+                                                        threading.Thread(
+                                                            target=check_and_send_blocklist_pushover,
+                                                            args=(species, float(raw_d.confidence)),
+                                                            daemon=True
+                                                        ).start()
                                     except Exception as e:
                                         pass
 
@@ -3709,6 +3717,8 @@ def api_save_settings():
         save_setting("log_blocklist", bool(data.get("log_blocklist", True)))
     if "log_blocklist_prob_switch" in data:
         save_setting("log_blocklist_prob_switch", bool(data.get("log_blocklist_prob_switch", False)))
+    if "log_blocklist_pushover" in data:
+        save_setting("log_blocklist_pushover", bool(data.get("log_blocklist_pushover", False)))
     if "spectrogram_enabled" in data:
         save_setting("spectrogram_enabled", bool(data.get("spectrogram_enabled", True)))
     if "settings_password" in data:
@@ -3840,6 +3850,28 @@ def check_and_send_pushover(species, confidence, is_new_species=False):
         app_token = po.get('pushover_api_token', '')
         user_key = po.get('pushover_user_key', '')
         send_pushover_message(app_token, user_key, message, title)
+
+def check_and_send_blocklist_pushover(species, confidence):
+    po = load_pushover_settings()
+    app_token = po.get('pushover_api_token', '').strip()
+    user_key = po.get('pushover_user_key', '').strip()
+    if not app_token or not user_key:
+        return
+
+    cooldown = int(po.get('pushover_cooldown', 300))
+    current_time = time.time()
+    block_key = f"blocklist_{species.lower()}"
+
+    if cooldown > 0:
+        last_sent = pushover_last_sent.get(block_key, 0)
+        if current_time - last_sent < cooldown:
+            return  # Blocked by cooldown
+
+    pushover_last_sent[block_key] = current_time
+
+    title = f"Blocklist: {species}"
+    message = f"Blocklist: Die KI hat eine {species} mit einer Konfidenz von {confidence*100:.0f}% erkannt"
+    send_pushover_message(app_token, user_key, message, title)
 
 @app.route('/api/pushover/test', methods=['POST'])
 def api_pushover_test():

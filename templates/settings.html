@@ -174,11 +174,14 @@
             </div>
             <div class="control-row" style="margin-top: 15px; border-top: 1px solid #444; padding-top: 15px;">
                 <div style="display: flex; align-items: center; gap: 10px; width: 100%;">
-                    <label style="margin: 0; color: #ccc; display: flex; align-items: center;">Protokoll der aussortierten/blockierten Vogelarten:
+                    <label style="margin: 0; color: #ccc; display: flex; align-items: center;">Protokoll der blockierten Vogelarten:
                         <input type="checkbox" id="log_blocklist" style="width: 18px; height: 18px; margin-left: 10px;" {% if s.get('log_blocklist', True) %}checked{% endif %}>
                     </label>
                     <label style="margin: 0; color: #ccc; display: flex; align-items: center; margin-left: 15px;">Prob-Filter:
                         <input type="checkbox" id="log_blocklist_prob_switch" style="width: 18px; height: 18px; margin-left: 10px;" title="Wenn aktiv, werden nur Arten mit Geo-Probability > 0% gespeichert." {% if s.get('log_blocklist_prob_switch', False) %}checked{% endif %}>
+                    </label>
+                    <label style="margin: 0; color: #ccc; display: flex; align-items: center; margin-left: 15px;">Pushover:
+                        <input type="checkbox" id="log_blocklist_pushover" style="width: 18px; height: 18px; margin-left: 10px;" title="Wenn aktiv, werden vom Modell blockierte Arten, die im Dictionary vorhanden sind, per Pushover gemeldet." {% if s.get('log_blocklist_pushover', False) %}checked{% endif %}>
                     </label>
                     <a href="/api/export/blocklist_log" class="btn btn-blue" style="width: auto; padding: 5px 15px; margin: 0; text-decoration: none; margin-left: auto;">💾 Blocklist-Log</a>
                     <button class="btn btn-red" style="width: auto; padding: 5px 15px; margin: 0;" onclick="clearBlocklistLog()">🗑️ Blocklist-Log löschen</button>
@@ -1315,6 +1318,7 @@
                 gemini_cache_minutes: parseInt(document.getElementById('gemini_cache_minutes').value) || 60,
                 log_blocklist: document.getElementById('log_blocklist').checked,
                 log_blocklist_prob_switch: document.getElementById('log_blocklist_prob_switch').checked,
+                log_blocklist_pushover: document.getElementById('log_blocklist_pushover').checked,
                 settings_password: document.getElementById('settings_password_enable').checked ? 'admin' : '',
                 bird_dictionary: birdDict
             };

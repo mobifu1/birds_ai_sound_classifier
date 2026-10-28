@@ -44,7 +44,7 @@ from birdnetlib import Recording
 START_TIME = time.time()
 
 # --- KONFIGURATION ---
-APP_VERSION = "V1.4.0-RC4"
+APP_VERSION = "V1.4.0-RC5"
 VERSION_YEAR = "2026"
 DB_FILE = "birds_audio_stats.db"
 SETTINGS_FILE = "settings.json"
@@ -2933,11 +2933,13 @@ def delete_entry_page():
     try:
         c.execute("SELECT DISTINCT species FROM detections")
         for row in c.fetchall():
-            species_set.add(row[0])
+            if row[0]:
+                species_set.add(row[0])
     except:
         pass
     conn.close()
-    return render_template('delete_entry.html', species_list=sorted(list(species_set)))
+    clean_species = sorted([s for s in species_set if s and str(s).strip()], key=lambda x: str(x).lower())
+    return render_template('delete_entry.html', species_list=clean_species)
 
 @app.route('/db_edit')
 def db_edit_page():
@@ -4867,12 +4869,26 @@ def api_top_species():
 # --- DATENBANK MANAGEMENT ROUTEN ---
 @app.route('/api/detections/by_date')
 def api_detections_by_date():
-    date_str = request.args.get('date', '')
-    if not date_str: return jsonify({"success": False, "error": "No date provided"})
+    start_date = request.args.get('start_date', '').strip() or request.args.get('date', '').strip()
+    end_date = request.args.get('end_date', '').strip() or start_date
+    species = request.args.get('species', '').strip()
+
+    if not start_date or not end_date:
+        return jsonify({"success": False, "error": "Bitte einen vollständigen Zeitraum (Von / Bis) auswählen."})
+    if not species:
+        return jsonify({"success": False, "error": "Bitte eine Vogelart auswählen."})
+    if start_date > end_date:
+        return jsonify({"success": False, "error": "Das Startdatum darf nicht nach dem Enddatum liegen."})
+
     try:
         conn = sqlite3.connect(DB_FILE)
         c = conn.cursor()
-        c.execute("SELECT rowid, timestamp, species, confidence FROM detections WHERE timestamp LIKE ? ORDER BY timestamp DESC", (f"{date_str}%",))
+        start_ts = f"{start_date} 00:00:00"
+        end_ts = f"{end_date} 23:59:59"
+        c.execute(
+            "SELECT rowid, timestamp, species, confidence FROM detections WHERE timestamp >= ? AND timestamp <= ? AND species = ? ORDER BY timestamp DESC",
+            (start_ts, end_ts, species)
+        )
         rows = c.fetchall()
         conn.close()
         entries = [{"id": r[0], "timestamp": r[1], "species": r[2], "confidence": r[3]} for r in rows]

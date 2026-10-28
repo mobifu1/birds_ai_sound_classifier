@@ -10,8 +10,10 @@
         h1 { color: #f57c00; margin-top: 0; padding-bottom: 10px; border-bottom: 2px solid #333; }
         .section { background: #263238; border-radius: 8px; padding: 20px; margin-bottom: 20px; border: 1px solid #37474f; }
         .row { display: flex; flex-direction: column; margin-bottom: 15px; }
+        .date-range-row { display: flex; gap: 15px; flex-wrap: wrap; margin-bottom: 15px; }
+        .date-range-col { flex: 1 1 200px; display: flex; flex-direction: column; }
         label { font-weight: bold; margin-bottom: 5px; }
-        input[type=date] { padding: 10px; border-radius: 6px; border: 1px solid #444; background: #121212; color: #fff; width: 100%; box-sizing: border-box; font-size: 1em; }
+        input[type=date], select.filter-select { padding: 10px; border-radius: 6px; border: 1px solid #444; background: #121212; color: #fff; width: 100%; box-sizing: border-box; font-size: 1em; }
         button, .btn { padding: 10px 20px; border-radius: 6px; border: none; font-weight: bold; cursor: pointer; color: white; display: inline-block; text-decoration: none; text-align: center; }
         .btn-red { background: #d32f2f; } .btn-red:hover { background: #b71c1c; }
         .btn-gray { background: #546e7a; } .btn-gray:hover { background: #607d8b; }
@@ -20,11 +22,12 @@
         .btn-nav { margin-bottom: 20px; }
         select.edit-select { padding: 5px; border-radius: 4px; border: 1px solid #444; background: #121212; color: #fff; width: 100%; box-sizing: border-box; font-size: 0.9em; }
         
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
         th, td { padding: 12px; text-align: left; border-bottom: 1px solid #444; }
         th { background-color: #37474f; color: #fff; }
         tr:hover { background-color: #333; }
         .empty-msg { text-align: center; font-style: italic; color: #999; margin-top: 20px; }
+        .result-info { margin-top: 15px; font-size: 0.95em; color: #b0bec5; font-weight: bold; display: none; }
     </style>
 </head>
 <body>
@@ -33,26 +36,35 @@
         <h1>✏️ Falscherkennung bearbeiten / löschen</h1>
 
         <div class="section">
-            <p>Wähle ein Datum aus, um die erkannten Vögel anzuzeigen. Du kannst dann KI-Fehler berichtigen oder ganz löschen.</p>
+            <p>Wähle einen Zeitraum und eine Vogelart aus, um die erkannten Einträge anzuzeigen. Du kannst dann KI-Fehler berichtigen oder ganz löschen.</p>
             
-            <div class="row">
-                <label>Datum (Tag):</label>
-                <input type="date" id="date" required onchange="loadEntries()">
+            <div class="date-range-row">
+                <div class="date-range-col">
+                    <label for="date-from">Zeitraum von:</label>
+                    <input type="date" id="date-from" required onchange="loadEntries()">
+                </div>
+                <div class="date-range-col">
+                    <label for="date-to">Zeitraum bis:</label>
+                    <input type="date" id="date-to" required onchange="loadEntries()">
+                </div>
             </div>
             
             <div class="row" style="margin-top: 5px;">
-                <label>Nach Vogelart filtern:</label>
-                <input type="text" id="search-filter" placeholder="z. B. Amsel..." onkeyup="filterEntries()" style="padding: 10px; border-radius: 6px; border: 1px solid #444; background: #121212; color: #fff; width: 100%; box-sizing: border-box; font-size: 1em;">
+                <label for="species-filter">Nach Vogelart filtern (Pflichtfeld):</label>
+                <select id="species-filter" class="filter-select" required onchange="loadEntries()">
+                    <option value="">-- Bitte Vogelart wählen --</option>
+                </select>
             </div>
             
             <div id="statusMessage" style="margin-top: 15px; text-align: center; font-weight: bold; padding: 10px; border-radius: 5px; display: none;"></div>
             
             <div id="entries-container">
-                <p class="empty-msg" id="empty-msg">Bitte wähle ein Datum aus.</p>
+                <div id="result-count" class="result-info"></div>
+                <p class="empty-msg" id="empty-msg">Bitte wähle einen Zeitraum und eine Vogelart aus.</p>
                 <table id="entries-table" style="display: none;">
                     <thead>
                         <tr>
-                            <th>Uhrzeit</th>
+                            <th>Datum &amp; Uhrzeit</th>
                             <th>Vogelart</th>
                             <th>Konfidenz</th>
                             <th style="min-width: 180px;">Aktion</th>
@@ -68,12 +80,37 @@
     <script>
         const speciesList = {{ species_list | tojson }}.sort((a, b) => a.localeCompare(b, 'de'));
         
-        // Set default date to today and load
+        // Populate mandatory species filter dropdown
+        const speciesFilterEl = document.getElementById('species-filter');
+        speciesList.forEach(sp => {
+            if (sp && sp.trim() !== '') {
+                const opt = document.createElement('option');
+                opt.value = sp;
+                opt.textContent = sp;
+                speciesFilterEl.appendChild(opt);
+            }
+        });
+
+        // Set default date range to today (local date)
         const now = new Date();
-        document.getElementById('date').value = now.toISOString().split('T')[0];
-        
-        // Auto-load today's entries on startup
-        loadEntries();
+        const yyyy = now.getFullYear();
+        const mm = String(now.getMonth() + 1).padStart(2, '0');
+        const dd = String(now.getDate()).padStart(2, '0');
+        const todayStr = `${yyyy}-${mm}-${dd}`;
+        document.getElementById('date-from').value = todayStr;
+        document.getElementById('date-to').value = todayStr;
+
+        function formatTimestampDE(ts) {
+            if (!ts) return '';
+            const parts = ts.split(' ');
+            const datePart = parts[0] || '';
+            const timePart = parts[1] || '';
+            const dParts = datePart.split('-');
+            if (dParts.length === 3) {
+                return `${dParts[2]}.${dParts[1]}.${dParts[0]} ${timePart}`.trim();
+            }
+            return ts;
+        }
 
         function showMessage(text, isError=false) {
             const msg = document.getElementById('statusMessage');
@@ -84,31 +121,68 @@
             setTimeout(() => msg.style.display = 'none', 3000);
         }
 
+        function updateResultCount(count) {
+            const countEl = document.getElementById('result-count');
+            if (count > 0) {
+                countEl.style.display = 'block';
+                countEl.innerText = `Gefundene Einträge: ${count}`;
+            } else {
+                countEl.style.display = 'none';
+            }
+        }
+
         function loadEntries() {
-            const dateStr = document.getElementById('date').value;
-            if(!dateStr) return;
+            const startDate = document.getElementById('date-from').value;
+            const endDate = document.getElementById('date-to').value;
+            const selectedSpecies = document.getElementById('species-filter').value;
             
             const tbody = document.getElementById('entries-body');
             const table = document.getElementById('entries-table');
             const emptyMsg = document.getElementById('empty-msg');
+
+            if (!startDate || !endDate || !selectedSpecies) {
+                table.style.display = 'none';
+                updateResultCount(0);
+                emptyMsg.style.display = 'block';
+                emptyMsg.innerText = "Bitte wähle einen Zeitraum und eine Vogelart aus.";
+                return;
+            }
+
+            if (startDate > endDate) {
+                table.style.display = 'none';
+                updateResultCount(0);
+                emptyMsg.style.display = 'block';
+                emptyMsg.innerText = "Das Startdatum („Zeitraum von“) darf nicht nach dem Enddatum („Zeitraum bis“) liegen.";
+                showMessage("Ungültiger Zeitraum: Startdatum liegt nach dem Enddatum.", true);
+                return;
+            }
             
             tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;">Lade Einträge...</td></tr>';
             table.style.display = 'table';
             emptyMsg.style.display = 'none';
+            updateResultCount(0);
 
-            fetch(`/api/detections/by_date?date=${dateStr}`)
+            const params = new URLSearchParams({
+                start_date: startDate,
+                end_date: endDate,
+                species: selectedSpecies
+            });
+
+            fetch(`/api/detections/by_date?${params.toString()}`)
             .then(res => res.json())
             .then(data => {
                 tbody.innerHTML = '';
                 if(data.success) {
                     if(data.entries.length === 0) {
                         table.style.display = 'none';
+                        updateResultCount(0);
                         emptyMsg.style.display = 'block';
-                        emptyMsg.innerText = "Keine Einträge für dieses Datum gefunden.";
+                        emptyMsg.innerText = `Keine Einträge für „${selectedSpecies}“ im gewählten Zeitraum gefunden.`;
                     } else {
+                        updateResultCount(data.entries.length);
                         data.entries.forEach(entry => {
                             let tr = document.createElement('tr');
-                            const timeStr = entry.timestamp ? entry.timestamp.split(' ')[1] : '';
+                            const dateTimeStr = formatTimestampDE(entry.timestamp);
                             
                             // Falls die Art nicht in der Liste ist (z.B. alter englischer Name), temporär hinzufügen
                             let currentOptions = [...speciesList];
@@ -117,7 +191,7 @@
                             }
                             
                             tr.innerHTML = `
-                                <td>${timeStr}</td>
+                                <td>${dateTimeStr}</td>
                                 <td>
                                     <select class="edit-select" id="species-${entry.id}">
                                         ${currentOptions.map(s => `<option value="${s}" ${s === entry.species ? 'selected' : ''}>${s}</option>`).join('')}
@@ -131,15 +205,18 @@
                             `;
                             tbody.appendChild(tr);
                         });
-                        
-                        // Filter direkt anwenden, falls Text im Suchfeld steht
-                        filterEntries();
                     }
                 } else {
+                    table.style.display = 'none';
+                    emptyMsg.style.display = 'block';
+                    emptyMsg.innerText = data.error || "Fehler beim Laden.";
                     showMessage("Fehler beim Laden: " + data.error, true);
                 }
             })
             .catch(err => {
+                table.style.display = 'none';
+                emptyMsg.style.display = 'block';
+                emptyMsg.innerText = "Netzwerkfehler beim Laden!";
                 showMessage("Netzwerkfehler beim Laden!", true);
             });
         }
@@ -186,41 +263,24 @@
                     tr.remove();
                     showMessage("Eintrag erfolgreich gelöscht.");
                     
-                    // IF table is empty now -> hide
-                    if(document.getElementById('entries-body').children.length === 0) {
+                    const remaining = document.getElementById('entries-body').children.length;
+                    updateResultCount(remaining);
+                    if(remaining === 0) {
                         document.getElementById('entries-table').style.display = 'none';
                         document.getElementById('empty-msg').style.display = 'block';
-                        document.getElementById('empty-msg').innerText = "Alle Einträge für dieses Datum wurden gelöscht.";
+                        document.getElementById('empty-msg').innerText = "Alle Einträge für diesen Zeitraum und diese Vogelart wurden gelöscht.";
                     }
                 } else {
                     showMessage("Fehler beim Löschen: " + data.error, true);
                     btnElement.disabled = false;
-                    btnElement.innerText = "Löschen";
+                    btnElement.innerText = "🗑️ Del";
                 }
             })
             .catch(err => {
                 showMessage("Netzwerkfehler beim Löschen!", true);
                 btnElement.disabled = false;
-                btnElement.innerText = "Löschen";
+                btnElement.innerText = "🗑️ Del";
             });
-        }
-
-        function filterEntries() {
-            const query = document.getElementById('search-filter').value.toLowerCase();
-            const tbody = document.getElementById('entries-body');
-            const rows = tbody.getElementsByTagName('tr');
-            
-            for (let i = 0; i < rows.length; i++) {
-                const selectEl = rows[i].querySelector('.edit-select');
-                if (selectEl) {
-                    const selectedSpecies = selectEl.value.toLowerCase();
-                    if (selectedSpecies.includes(query)) {
-                        rows[i].style.display = '';
-                    } else {
-                        rows[i].style.display = 'none';
-                    }
-                }
-            }
         }
     </script>
 </body>

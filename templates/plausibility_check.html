@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <title>KI-Plausibilitätscheck – {{ info.species }}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        .pc-container {
+            max-width: 920px;
+            margin: 0 auto;
+            padding: 15px;
+        }
+
+        .pc-card {
+            background: #1e1e1e;
+            border: 1px solid #37474f;
+            border-radius: 10px;
+            padding: 20px 22px;
+            margin-bottom: 18px;
+            text-align: left;
+            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+        }
+
+        .pc-bird-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 15px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid #2f3e46;
+            margin-bottom: 16px;
+        }
+
+        .pc-bird-title-group {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+
+        .pc-bird-icon {
+            width: 56px;
+            height: 56px;
+            object-fit: contain;
+            background: #fff;
+            border-radius: 8px;
+            padding: 3px;
+            border: 2px solid #455a64;
+        }
+
+        .pc-side-pill {
+            display: inline-block;
+            padding: 5px 13px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            font-weight: bold;
+        }
+
+        .pc-side-first {
+            background: rgba(174, 213, 129, 0.16);
+            color: #aed581;
+            border: 1px solid #7cb342;
+        }
+
+        .pc-side-last {
+            background: rgba(144, 202, 249, 0.16);
+            color: #90caf9;
+            border: 1px solid #42a5f5;
+        }
+
+        .pc-params-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 12px;
+            margin-bottom: 14px;
+        }
+
+        .pc-param-item {
+            background: #263238;
+            border: 1px solid #37474f;
+            border-radius: 7px;
+            padding: 10px 13px;
+        }
+
+        .pc-param-label {
+            font-size: 0.78em;
+            color: #90a4ae;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+            margin-bottom: 4px;
+        }
+
+        .pc-param-value {
+            font-size: 1.02em;
+            font-weight: bold;
+            color: #eceff1;
+            word-break: break-word;
+        }
+
+        .pc-tech-banner {
+            background: #162025;
+            border: 1px dashed #455a64;
+            border-radius: 7px;
+            padding: 10px 14px;
+            font-size: 0.86em;
+            color: #b0bec5;
+            line-height: 1.55;
+        }
+
+        .pc-verdict-box {
+            border-radius: 8px;
+            padding: 15px 18px;
+            margin-bottom: 18px;
+            font-weight: bold;
+            font-size: 1.08em;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .pc-verdict-hoch {
+            background: rgba(46, 125, 50, 0.22);
+            border: 1px solid #66bb6a;
+            border-left: 5px solid #66bb6a;
+            color: #c8e6c9;
+        }
+
+        .pc-verdict-mittel {
+            background: rgba(245, 124, 0, 0.20);
+            border: 1px solid #ffb74d;
+            border-left: 5px solid #ffa726;
+            color: #ffe0b2;
+        }
+
+        .pc-verdict-gering {
+            background: rgba(198, 40, 40, 0.22);
+            border: 1px solid #ef5350;
+            border-left: 5px solid #ff5252;
+            color: #ffcdd2;
+        }
+
+        .pc-section {
+            background: #263238;
+            border-radius: 8px;
+            padding: 16px 18px;
+            margin-bottom: 14px;
+            border-left: 4px solid #4fc3f7;
+        }
+
+        .pc-section h3 {
+            margin: 0 0 8px 0;
+            font-size: 1.02em;
+            color: #81d4fa;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .pc-section p {
+            margin: 0;
+            color: #eceff1;
+            line-height: 1.62;
+            font-size: 0.97em;
+            white-space: pre-line;
+        }
+
+        .pc-section.fazit {
+            border-left-color: #aed581;
+            background: #1f2c24;
+        }
+
+        .pc-section.fazit h3 {
+            color: #aed581;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 3px 9px;
+            border-radius: 10px;
+            font-size: 0.9em;
+            font-weight: bold;
+        }
+
+        .badge-conf { background: #1b5e20; color: #a5d6a7; }
+        .badge-prob { background: #1a237e; color: #90caf9; }
+        .badge-snr  { background: #37474f; color: #eceff1; }
+        .badge-null { background: #424242; color: #9e9e9e; }
+
+        .pc-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 15px;
+            border-radius: 5px;
+            border: none;
+            font-weight: bold;
+            font-size: 0.9em;
+            cursor: pointer;
+            text-decoration: none;
+            color: #fff;
+            transition: opacity 0.2s;
+        }
+
+        .pc-btn:hover {
+            opacity: 0.9;
+        }
+    </style>
+</head>
+<body>
+    <div class="pc-container">
+        <div class="header-container">
+            <h1>🤖 KI-Plausibilitätscheck (Edge-Case Analyse)</h1>
+            <div style="margin-top: 10px; display: flex; justify-content: center; gap: 10px; flex-wrap: wrap;">
+                <a href="/yearly?year={{ info.year }}&view=firstseen" class="button-link" style="background:#546e7a;">
+                    &laquo; Zurück zu „Erstmals erkannt“ ({{ info.year }})
+                </a>
+                {% if gemini_meta and gemini_meta.active %}
+                <button type="button" id="btn-refresh-pc" class="pc-btn" style="background:#4CAF50;" onclick="triggerPlausibilityRun(true)">
+                    🔄 Bericht neu generieren
+                </button>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Übergebene Erkennungs- & Stationsdaten -->
+        <div class="pc-card">
+            <div class="pc-bird-header">
+                <div class="pc-bird-title-group">
+                    <img src="{{ url_for('static', filename=info.icon) }}" alt="{{ info.species }}" class="pc-bird-icon">
+                    <div>
+                        <div style="font-size: 1.45em; font-weight: bold; color: #fff;">{{ info.species }}</div>
+                        <div style="font-size: 0.86em; color: #90a4ae;">
+                            Deutscher Artname
+                            {% if info.dict_status %}&bull; Status: <strong style="color:#81d4fa;">{{ info.dict_status }}</strong>{% endif %}
+                            {% if info.dict_aufenthalt %}&bull; Zeitraum: {{ info.dict_aufenthalt }}{% endif %}
+                        </div>
+                    </div>
+                </div>
+                <div>
+                    {% if info.side == 'first' %}
+                    <span class="pc-side-pill pc-side-first">🟢 Erstmals erkannt ({{ info.year }})</span>
+                    {% else %}
+                    <span class="pc-side-pill pc-side-last">🕔 Zuletzt erkannt ({{ info.year }})</span>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="pc-params-grid">
+                <div class="pc-param-item">
+                    <div class="pc-param-label">📅 Datum</div>
+                    <div class="pc-param-value">{{ info.datum }}</div>
+                </div>
+                <div class="pc-param-item">
+                    <div class="pc-param-label">⏰ Uhrzeit (Zeitpunkt)</div>
+                    <div class="pc-param-value">{{ info.uhrzeit }}{% if info.uhrzeit != '–' %} Uhr{% endif %}</div>
+                </div>
+                <div class="pc-param-item">
+                    <div class="pc-param-label">📍 Stationsname</div>
+                    <div class="pc-param-value">{{ info.station_name }}</div>
+                </div>
+                <div class="pc-param-item">
+                    <div class="pc-param-label">🌐 GPS-Standort (Lat / Lon)</div>
+                    <div class="pc-param-value" style="color:#81d4fa;">{{ info.gps_display }}</div>
+                </div>
+                <div class="pc-param-item">
+                    <div class="pc-param-label">🎯 Konfidenz (BirdNET)</div>
+                    <div class="pc-param-value">
+                        {% if info.conf is not none %}
+                        <span class="badge badge-conf">{{ info.conf }}%</span>
+                        {% else %}
+                        <span class="badge badge-null">–</span>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="pc-param-item">
+                    <div class="pc-param-label">🗺️ Probability (eBird)</div>
+                    <div class="pc-param-value">
+                        {% if info.prob is not none %}
+                        <span class="badge badge-prob">{{ info.prob }}%</span>
+                        {% else %}
+                        <span class="badge badge-null">–</span>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="pc-param-item">
+                    <div class="pc-param-label">📶 Signal-Rausch-Abstand (SNR)</div>
+                    <div class="pc-param-value">
+                        {% if info.snr is not none %}
+                        <span class="badge badge-snr">{{ info.snr }} dB</span>
+                        {% else %}
+                        <span class="badge badge-null">–</span>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <div class="pc-tech-banner">
+                <div>🎙️ <strong>Erfassung:</strong> {{ info.mikrofon_info }}</div>
+                <div>🖥️ <strong>Decoder:</strong> <code>{{ info.decoder_info }}</code></div>
+                {% if info.sun_info and info.sun_info != 'Nicht berechnet' %}
+                <div>☀️ <strong>Astronomische Sonnenzeiten am Standort:</strong> {{ info.sun_info }}</div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Gemini Status / Fehler / Ladeanzeige -->
+        {% if gemini_meta and gemini_meta.active %}
+        <div style="background: #263238; border: 1px solid #37474f; border-radius: 8px; padding: 10px 15px; margin-bottom: 16px; font-size: 0.9em; color: #b0bec5; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+            <div>
+                ✨ <strong>Google Gemini Plausibilitätscheck</strong> (Modell: <code>{{ gemini_meta.model }}</code>)
+                {% if gemini_meta.updated_at %}
+                &nbsp;|&nbsp; Stand: <strong>{{ gemini_meta.updated_at }} Uhr</strong>
+                {% if gemini_meta.from_cache %}<span style="color: #81c784;">(aus Cache)</span>{% else %}<span style="color: #4fc3f7;">(frisch generiert)</span>{% endif %}
+                {% endif %}
+            </div>
+        </div>
+        {% else %}
+        <div class="pc-card" style="border-left: 4px solid #ff9800;">
+            <p style="margin: 0 0 12px 0; color: #ffe082; line-height: 1.5;">
+                ℹ️ <strong>Google Gemini KI ist derzeit nicht aktiviert oder es wurde noch kein API-Token hinterlegt.</strong><br>
+                Bitte öffnen Sie die Einstellungen, um im Bereich „Google Gemini KI-Integration“ Ihren API-Key einzutragen und die KI-Auswertung zu aktivieren.
+            </p>
+            <a href="/settings" class="button-link" style="background: #ff9800; padding: 8px 15px; font-size: 0.9em;">
+                ⚙️ Zu den Einstellungen (Gemini API-Token konfigurieren)
+            </a>
+        </div>
+        {% endif %}
+
+        {% if gemini_meta and gemini_meta.error %}
+        <div style="background: #3e2723; border-left: 4px solid #ff5252; border-radius: 6px; padding: 13px 16px; margin-bottom: 16px; color: #ffab91; text-align: left;">
+            ⚠️ {{ gemini_meta.error }}
+        </div>
+        {% endif %}
+
+        <div id="pc-loading-banner" style="display: {% if auto_run %}block{% else %}none{% endif %}; background: #1b2836; border: 1px solid #4fc3f7; border-radius: 8px; padding: 18px; margin-bottom: 18px; color: #81d4fa; font-weight: bold; text-align: center;">
+            ⏳ Google Gemini KI prüft Tageszeit/Dämmerung, GPS-Habitat (Wald, Wasser, Moor etc.) und Signalwerte für <em>{{ info.species }}</em>... Bitte einen Moment Geduld (ca. 3–8 Sekunden).
+        </div>
+
+        {% if report %}
+        <div class="pc-card" id="pc-report-container">
+            {% set stufe = report.plausibilitaet_stufe or 'mittel' %}
+            <div class="pc-verdict-box pc-verdict-{{ stufe }}">
+                <span style="font-size: 1.4em;">
+                    {% if stufe == 'hoch' %}✅{% elif stufe == 'gering' %}⚠️{% else %}🔎{% endif %}
+                </span>
+                <div>
+                    <div style="font-size: 0.78em; text-transform: uppercase; opacity: 0.85; letter-spacing: 0.5px;">
+                        KI-Gesamteinschätzung (Plausibilität: {{ stufe | upper }})
+                    </div>
+                    <div>{{ report.kurzurteil }}</div>
+                </div>
+            </div>
+
+            <div class="pc-section">
+                <h3>🌗 1. Tageszeit &amp; Lichtverhältnisse (Tag / Nacht / Dämmerung)</h3>
+                <p>{{ report.tageszeit_analyse }}</p>
+            </div>
+
+            <div class="pc-section" style="border-left-color: #69f0ae;">
+                <h3 style="color: #69f0ae;">🌲 2. GPS-Standort &amp; Vorherrschendes Habitat (Wald, Wasser, Moor etc.)</h3>
+                <p>{{ report.standort_habitat_analyse }}</p>
+            </div>
+
+            <div class="pc-section" style="border-left-color: #ba68c8;">
+                <h3 style="color: #ce93d8;">🎚️ 3. Bioakustische &amp; Technische Edge-Case-Bewertung</h3>
+                <p>{{ report.messwerte_technik_analyse }}</p>
+            </div>
+
+            <div class="pc-section fazit">
+                <h3>🧭 4. Fazit zur Meinungsfindung</h3>
+                <p>{{ report.fazit_meinungsfindung }}</p>
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="footer">
+            {{ version }} | {{ year }}
+        </div>
+    </div>
+
+    <script>
+        function triggerPlausibilityRun(forceRefresh) {
+            const banner = document.getElementById('pc-loading-banner');
+            if (banner) {
+                banner.style.display = 'block';
+            }
+            const btn = document.getElementById('btn-refresh-pc');
+            if (btn) {
+                btn.disabled = true;
+                btn.style.opacity = '0.6';
+                btn.textContent = '⏳ KI-Bericht wird erstellt...';
+            }
+            const reportBox = document.getElementById('pc-report-container');
+            if (reportBox && forceRefresh) {
+                reportBox.style.opacity = '0.45';
+            }
+
+            const params = new URLSearchParams(window.location.search);
+            params.set('run', '1');
+            if (forceRefresh) {
+                params.set('refresh', '1');
+            } else {
+                params.delete('refresh');
+            }
+            window.location.href = '/plausibility_check?' + params.toString();
+        }
+
+        {% if auto_run %}
+        document.addEventListener('DOMContentLoaded', function() {
+            setTimeout(function() {
+                triggerPlausibilityRun(false);
+            }, 120);
+        });
+        {% endif %}
+    </script>
+</body>
+</html>

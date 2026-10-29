@@ -104,6 +104,39 @@
             background: #1e2c34;
         }
 
+        .first-seen-table td.fs-clickable-left,
+        .first-seen-table td.fs-clickable-right {
+            cursor: pointer;
+            transition: background 0.15s ease;
+        }
+
+        .first-seen-table tr:has(td.fs-clickable-left:hover) td.fs-clickable-left {
+            background: rgba(174, 213, 129, 0.14);
+        }
+
+        .first-seen-table tr:has(td.fs-clickable-right:hover) td.fs-clickable-right {
+            background: rgba(144, 202, 249, 0.14);
+        }
+
+        .fs-ai-hint {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            font-weight: bold;
+        }
+
+        .fs-ai-icon {
+            font-size: 0.85em;
+            opacity: 0.55;
+            transition: opacity 0.15s ease, transform 0.15s ease;
+        }
+
+        .first-seen-table tr:has(td.fs-clickable-left:hover) td.fs-clickable-left .fs-ai-icon,
+        .first-seen-table tr:has(td.fs-clickable-right:hover) td.fs-clickable-right .fs-ai-icon {
+            opacity: 1;
+            transform: scale(1.15);
+        }
+
         .fs-separator {
             width: 1px;
             background: #37474f;
@@ -505,30 +538,33 @@
         <!-- VIEW: First Seen -->
         <div id="view-firstseen" style="display:none;">
             {% if first_seen_data %}
-            <div style="margin-top: 15px; margin-bottom: 15px; text-align: left;">
+            <div style="margin-top: 15px; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; text-align: left;">
                 <input type="text" id="fsSearchInput" placeholder="🔍 Vogelart suchen..."
                     onkeyup="filterFirstSeen()"
                     style="width: 100%; max-width: 400px; padding: 10px; border-radius: 4px;
                            border: 1px solid #37474f; background: #263238; color: #fff;">
+                <div style="font-size: 0.88em; color: #b0bec5; background: #263238; border: 1px solid #37474f; padding: 8px 14px; border-radius: 6px;">
+                    🤖 <strong>KI-Plausibilitätscheck:</strong> Vogelart links (🟢 <em>Erstmals erkannt</em>) oder rechts (🕔 <em>Zuletzt erkannt</em>) anklicken
+                </div>
             </div>
             <div style="background: #1e1e1e; padding: 20px; border-radius: 8px; border: 1px solid #333; overflow-x: auto; overflow-y: auto; max-height: 75vh;">
                 <table class="first-seen-table">
                     <thead>
                         <tr>
                             <th style="min-width:36px;"></th>
-                            <th>Vogelart</th>
-                            <th colspan="4" style="color:#aed581;">&#x1F7E2; Erstmals erkannt</th>
+                            <th colspan="5" style="color:#aed581;">&#x1F7E2; Erstmals erkannt <span style="font-size:0.8em; font-weight:normal; color:#81c784;">(🤖 Klick für KI-Check)</span></th>
                             <th class="fs-separator"></th>
-                            <th colspan="4" style="color:#90caf9;">&#x1F550; Zuletzt erkannt</th>
+                            <th colspan="5" style="color:#90caf9;">&#x1F550; Zuletzt erkannt <span style="font-size:0.8em; font-weight:normal; color:#64b5f6;">(🤖 Klick für KI-Check)</span></th>
                         </tr>
                         <tr style="font-size:0.8em; color:#78909c;">
                             <th></th>
-                            <th></th>
+                            <th>Vogelart</th>
                             <th>Datum &amp; Uhrzeit</th>
                             <th>Konfidenz</th>
                             <th>Probability</th>
                             <th>SNR</th>
                             <th class="fs-separator"></th>
+                            <th>Vogelart</th>
                             <th>Datum &amp; Uhrzeit</th>
                             <th>Konfidenz</th>
                             <th>Probability</th>
@@ -538,26 +574,42 @@
                     <tbody>
                         {% for bird in first_seen_data %}
                         <tr class="fs-row" data-species="{{ bird.species | lower }}">
-                            <td>
+                            <td class="fs-clickable-left"
+                                title="🤖 KI-Plausibilitätscheck für '{{ bird.species }}' (Erstmals erkannt: {{ bird.first_time }}) starten"
+                                onclick='openPlausibilityCheck({{ bird.species | tojson }}, "first", {{ bird.first_time | tojson }}, {{ bird.first_conf | tojson }}, {{ bird.first_prob | tojson }}, {{ bird.first_snr | tojson }})'>
                                 <img src="{{ url_for('static', filename=bird.icon) }}"
                                      style="width:32px; height:32px; object-fit:contain;
                                             border-radius:4px; background:#fff; display:block;">
                             </td>
-                            <td style="font-weight:bold;">{{ bird.species }}</td>
+                            <td class="fs-clickable-left"
+                                title="🤖 KI-Plausibilitätscheck für '{{ bird.species }}' (Erstmals erkannt: {{ bird.first_time }}) starten"
+                                onclick='openPlausibilityCheck({{ bird.species | tojson }}, "first", {{ bird.first_time | tojson }}, {{ bird.first_conf | tojson }}, {{ bird.first_prob | tojson }}, {{ bird.first_snr | tojson }})'>
+                                <span class="fs-ai-hint">{{ bird.species }} <span class="fs-ai-icon">🤖</span></span>
+                            </td>
 
                             <!-- First detection -->
-                            <td style="color:#aed581;">{{ bird.first_time }}</td>
-                            <td>
+                            <td class="fs-clickable-left" style="color:#aed581;"
+                                title="🤖 KI-Plausibilitätscheck für '{{ bird.species }}' (Erstmals erkannt: {{ bird.first_time }}) starten"
+                                onclick='openPlausibilityCheck({{ bird.species | tojson }}, "first", {{ bird.first_time | tojson }}, {{ bird.first_conf | tojson }}, {{ bird.first_prob | tojson }}, {{ bird.first_snr | tojson }})'>
+                                {{ bird.first_time }}
+                            </td>
+                            <td class="fs-clickable-left"
+                                title="🤖 KI-Plausibilitätscheck für '{{ bird.species }}' (Erstmals erkannt: {{ bird.first_time }}) starten"
+                                onclick='openPlausibilityCheck({{ bird.species | tojson }}, "first", {{ bird.first_time | tojson }}, {{ bird.first_conf | tojson }}, {{ bird.first_prob | tojson }}, {{ bird.first_snr | tojson }})'>
                                 {% if bird.first_conf is not none %}
                                 <span class="badge badge-conf">{{ bird.first_conf }}%</span>
                                 {% else %}<span class="badge badge-null">&#8211;</span>{% endif %}
                             </td>
-                            <td>
+                            <td class="fs-clickable-left"
+                                title="🤖 KI-Plausibilitätscheck für '{{ bird.species }}' (Erstmals erkannt: {{ bird.first_time }}) starten"
+                                onclick='openPlausibilityCheck({{ bird.species | tojson }}, "first", {{ bird.first_time | tojson }}, {{ bird.first_conf | tojson }}, {{ bird.first_prob | tojson }}, {{ bird.first_snr | tojson }})'>
                                 {% if bird.first_prob is not none %}
                                 <span class="badge badge-prob">{{ bird.first_prob }}%</span>
                                 {% else %}<span class="badge badge-null">&#8211;</span>{% endif %}
                             </td>
-                            <td>
+                            <td class="fs-clickable-left"
+                                title="🤖 KI-Plausibilitätscheck für '{{ bird.species }}' (Erstmals erkannt: {{ bird.first_time }}) starten"
+                                onclick='openPlausibilityCheck({{ bird.species | tojson }}, "first", {{ bird.first_time | tojson }}, {{ bird.first_conf | tojson }}, {{ bird.first_prob | tojson }}, {{ bird.first_snr | tojson }})'>
                                 {% if bird.first_snr is not none %}
                                 <span class="badge badge-snr">{{ bird.first_snr }} dB</span>
                                 {% else %}<span class="badge badge-null">&#8211;</span>{% endif %}
@@ -567,14 +619,23 @@
                             <td class="fs-separator"></td>
 
                             <!-- Last detection -->
-                            <td style="color:#90caf9;">
+                            <td class="fs-clickable-right"
+                                title="🤖 KI-Plausibilitätscheck für '{{ bird.species }}' (Zuletzt erkannt: {{ bird.last_time }}) starten"
+                                onclick='openPlausibilityCheck({{ bird.species | tojson }}, "last", {{ bird.last_time | tojson }}, {{ bird.last_conf | tojson }}, {{ bird.last_prob | tojson }}, {{ bird.last_snr | tojson }})'>
+                                <span class="fs-ai-hint" style="{% if bird.last_time == bird.first_time %}color:#90a4ae;{% endif %}">{{ bird.species }} <span class="fs-ai-icon">🤖</span></span>
+                            </td>
+                            <td class="fs-clickable-right" style="color:#90caf9;"
+                                title="🤖 KI-Plausibilitätscheck für '{{ bird.species }}' (Zuletzt erkannt: {{ bird.last_time }}) starten"
+                                onclick='openPlausibilityCheck({{ bird.species | tojson }}, "last", {{ bird.last_time | tojson }}, {{ bird.last_conf | tojson }}, {{ bird.last_prob | tojson }}, {{ bird.last_snr | tojson }})'>
                                 {% if bird.last_time != bird.first_time %}
                                     {{ bird.last_time }}
                                 {% else %}
                                     <span style="color:#546e7a;">= Erstmals</span>
                                 {% endif %}
                             </td>
-                            <td>
+                            <td class="fs-clickable-right"
+                                title="🤖 KI-Plausibilitätscheck für '{{ bird.species }}' (Zuletzt erkannt: {{ bird.last_time }}) starten"
+                                onclick='openPlausibilityCheck({{ bird.species | tojson }}, "last", {{ bird.last_time | tojson }}, {{ bird.last_conf | tojson }}, {{ bird.last_prob | tojson }}, {{ bird.last_snr | tojson }})'>
                                 {% if bird.last_time != bird.first_time %}
                                     {% if bird.last_conf is not none %}
                                     <span class="badge badge-conf">{{ bird.last_conf }}%</span>
@@ -583,7 +644,9 @@
                                     <span style="color:#546e7a;">&#8212;</span>
                                 {% endif %}
                             </td>
-                            <td>
+                            <td class="fs-clickable-right"
+                                title="🤖 KI-Plausibilitätscheck für '{{ bird.species }}' (Zuletzt erkannt: {{ bird.last_time }}) starten"
+                                onclick='openPlausibilityCheck({{ bird.species | tojson }}, "last", {{ bird.last_time | tojson }}, {{ bird.last_conf | tojson }}, {{ bird.last_prob | tojson }}, {{ bird.last_snr | tojson }})'>
                                 {% if bird.last_time != bird.first_time %}
                                     {% if bird.last_prob is not none %}
                                     <span class="badge badge-prob">{{ bird.last_prob }}%</span>
@@ -592,7 +655,9 @@
                                     <span style="color:#546e7a;">&#8212;</span>
                                 {% endif %}
                             </td>
-                            <td>
+                            <td class="fs-clickable-right"
+                                title="🤖 KI-Plausibilitätscheck für '{{ bird.species }}' (Zuletzt erkannt: {{ bird.last_time }}) starten"
+                                onclick='openPlausibilityCheck({{ bird.species | tojson }}, "last", {{ bird.last_time | tojson }}, {{ bird.last_conf | tojson }}, {{ bird.last_prob | tojson }}, {{ bird.last_snr | tojson }})'>
                                 {% if bird.last_time != bird.first_time %}
                                     {% if bird.last_snr is not none %}
                                     <span class="badge badge-snr">{{ bird.last_snr }} dB</span>
@@ -677,6 +742,18 @@
         let tmNodeMap = {};
         let tmInitialized = false;
         let tmSelectedSpecies = '';
+
+        function openPlausibilityCheck(species, side, timestamp, conf, prob, snr) {
+            const params = new URLSearchParams();
+            params.set('species', species || '');
+            params.set('side', side || 'first');
+            params.set('timestamp', timestamp || '');
+            if (conf !== null && conf !== undefined) params.set('conf', String(conf));
+            if (prob !== null && prob !== undefined) params.set('prob', String(prob));
+            if (snr !== null && snr !== undefined) params.set('snr', String(snr));
+            params.set('year', '{{ selected_year }}');
+            window.location.href = '/plausibility_check?' + params.toString();
+        }
 
         function populateTmSpeciesSelect(filterKey) {
             const sel = document.getElementById('tmSpeciesSelect');
@@ -1309,8 +1386,13 @@
             }
         }
 
-        // Restore last active tab after auto-refresh
+        // Restore last active tab after auto-refresh or URL parameter
         (function() {
+            const urlView = new URLSearchParams(window.location.search).get('view');
+            if (urlView === 'firstseen' || urlView === 'timemachine' || urlView === 'chart') {
+                showView(urlView);
+                return;
+            }
             const saved = sessionStorage.getItem('yearlyView_{{ selected_year }}');
             if (saved === 'firstseen' || saved === 'timemachine') {
                 showView(saved);

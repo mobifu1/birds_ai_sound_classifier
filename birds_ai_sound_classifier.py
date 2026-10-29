@@ -44,7 +44,7 @@ from birdnetlib import Recording
 START_TIME = time.time()
 
 # --- KONFIGURATION ---
-APP_VERSION = "V1.4.0-RC5"
+APP_VERSION = "V1.4.0-RC6"
 VERSION_YEAR = "2026"
 DB_FILE = "birds_audio_stats.db"
 SETTINGS_FILE = "settings.json"
@@ -3633,6 +3633,353 @@ def prediction_page():
         nacht_start_uhr=nacht_start_uhr,
         nacht_ende_uhr=nacht_ende_uhr,
         gemini_meta=gemini_meta
+    )
+
+_gemini_plausibility_cache = {}
+
+@app.route('/plausibility_check')
+def plausibility_check_page():
+    species = (request.args.get('species') or '').strip()
+    side = (request.args.get('side') or 'first').strip().lower()
+    if side not in ('first', 'last'):
+        side = 'first'
+    timestamp = (request.args.get('timestamp') or '').strip()
+    conf_arg = (request.args.get('conf') or '').strip()
+    prob_arg = (request.args.get('prob') or '').strip()
+    snr_arg = (request.args.get('snr') or '').strip()
+    year_arg = (request.args.get('year') or str(datetime.date.today().year)).strip()
+    run_ai = request.args.get('run', '0') == '1'
+    force_refresh = request.args.get('refresh', '0') == '1'
+
+    def _safe_float(v):
+        if v is None or v == '' or v == 'None':
+            return None
+        if isinstance(v, (bytes, bytearray)):
+            try:
+                import struct
+                if len(v) == 8:
+                    return struct.unpack('d', v)[0]
+                elif len(v) == 4:
+                    return struct.unpack('f', v)[0]
+                return float(v.decode('utf-8', errors='replace'))
+            except Exception:
+                return None
+        try:
+            return float(str(v).replace(',', '.').replace('%', '').replace('dB', '').strip())
+        except Exception:
+            return None
+
+    conf_val = _safe_float(conf_arg)
+    prob_val = _safe_float(prob_arg)
+    snr_val = _safe_float(snr_arg)
+
+    # Fallback: Werte direkt aus der SQLite-Datenbank laden, falls nicht in URL übergeben
+    if species and timestamp and (conf_val is None or prob_val is None or snr_val is None):
+        try:
+            conn = sqlite3.connect(DB_FILE)
+            c = conn.cursor()
+            c.execute("SELECT confidence, geo_prob, snr FROM detections WHERE species=? AND timestamp=? LIMIT 1", (species, timestamp))
+            row = c.fetchone()
+            conn.close()
+            if row:
+                if conf_val is None:
+                    f_c = _safe_float(row[0])
+                    if f_c is not None:
+                        conf_val = round(min(f_c if f_c > 1.0 else f_c * 100.0, 100.0), 1)
+                if prob_val is None:
+                    f_p = _safe_float(row[1])
+                    if f_p is not None:
+                        prob_val = round(min(f_p if f_p > 1.0 else f_p * 100.0, 100.0), 1)
+                if snr_val is None:
+                    f_s = _safe_float(row[2])
+                    if f_s is not None:
+                        snr_val = round(f_s, 1)
+        except Exception:
+            pass
+
+    # Icon für Vogelart ermitteln
+    icon_rel = 'bird_icons/Unbekannt.png'
+    static_folder = os.path.join(app.root_path, 'static', 'bird_icons')
+    if species and os.path.exists(static_folder):
+        clean_sp = species.strip().lower()
+        for f_name in os.listdir(static_folder):
+            if f_name.lower().endswith(('.png', '.jpg', '.jpeg', '.gif')):
+                stem = os.path.splitext(f_name)[0].lower()
+                if stem == clean_sp or f_name.lower() == clean_sp:
+                    icon_rel = f"bird_icons/{f_name}"
+                    break
+
+    # Datum & Uhrzeit aufbereiten
+    datum_str = timestamp
+    uhrzeit_str = ""
+    dt_obj = None
+    if timestamp:
+        for fmt in ('%Y-%m-%d %H:%M:%S', '%Y-%m-%d %H:%M', '%d.%m.%Y %H:%M:%S'):
+            try:
+                dt_obj = datetime.datetime.strptime(timestamp[:19], fmt)
+                datum_str = dt_obj.strftime('%d.%m.%Y')
+                uhrzeit_str = dt_obj.strftime('%H:%M:%S')
+                break
+            except Exception:
+                continue
+        if not uhrzeit_str and ' ' in timestamp:
+            parts = timestamp.split(' ', 1)
+            datum_str, uhrzeit_str = parts[0], parts[1]
+
+    # Stationsname & GPS-Koordinaten laden
+    settings = load_settings()
+    station_name = (settings.get("station_name") or "").strip() or "Nicht benannte Station"
+    raw_lat = settings.get("gps_lat")
+    raw_lon = settings.get("gps_lon")
+    try:
+        lat = float(raw_lat) if raw_lat is not None and str(raw_lat).lower() != 'none' else 51.1657
+        lon = float(raw_lon) if raw_lon is not None and str(raw_lon).lower() != 'none' else 10.4515
+        gps_configured = (raw_lat is not None and raw_lon is not None and str(raw_lat).lower() != 'none' and str(raw_lon).lower() != 'none')
+    except Exception:
+        lat, lon = 51.1657, 10.4515
+        gps_configured = False
+
+    gps_display = f"{lat:.6f}, {lon:.6f}" if gps_configured else f"{lat:.4f}, {lon:.4f} (Standard/Fallback)"
+
+    # Astronomische Sonnenstands-Referenz für den Erkennungszeitpunkt berechnen
+    sun_info_text = "Nicht berechnet"
+    if dt_obj is not None:
+        try:
+            loc = LocationInfo(latitude=lat, longitude=lon)
+            local_tz = datetime.datetime.now().astimezone().tzinfo
+            s_day = sun(loc.observer, date=dt_obj.date())
+            dawn_dt = s_day['dawn'].astimezone(local_tz)
+            sr_dt = s_day['sunrise'].astimezone(local_tz)
+            ss_dt = s_day['sunset'].astimezone(local_tz)
+            dusk_dt = s_day['dusk'].astimezone(local_tz)
+            sun_info_text = (
+                f"Morgendämmerung (Dawn): {dawn_dt.strftime('%H:%M')} Uhr, "
+                f"Sonnenaufgang: {sr_dt.strftime('%H:%M')} Uhr, "
+                f"Sonnenuntergang: {ss_dt.strftime('%H:%M')} Uhr, "
+                f"Abenddämmerung (Dusk): {dusk_dt.strftime('%H:%M')} Uhr"
+            )
+        except Exception:
+            pass
+
+    # Wörterbuch-Zusatzinfos (Phänologie/Status) falls vorhanden
+    dict_status = ""
+    dict_aufenthalt = ""
+    try:
+        full_dict = load_dictionary()
+        for en_k, v in full_dict.items():
+            if isinstance(v, dict):
+                tr = (v.get("translation") or en_k).strip()
+                if tr.lower() == species.lower() or en_k.lower() == species.lower():
+                    dict_status = v.get("status", "") or ""
+                    dict_aufenthalt = v.get("aufenthalt", "") or ""
+                    break
+    except Exception:
+        pass
+
+    detection_info = {
+        "species": species or "Unbekannt",
+        "icon": icon_rel,
+        "side": side,
+        "side_label": "Erstmals erkannt" if side == "first" else "Zuletzt erkannt",
+        "timestamp": timestamp,
+        "datum": datum_str or "–",
+        "uhrzeit": uhrzeit_str or "–",
+        "conf": conf_val,
+        "prob": prob_val,
+        "snr": snr_val,
+        "station_name": station_name,
+        "lat": lat,
+        "lon": lon,
+        "gps_display": gps_display,
+        "mikrofon_info": "Die Erkennung erfolgte mit einem stationären Mikrofon im Freien",
+        "decoder_info": "Audio to Spectrum to local-AI-BirdNet-Model > running on Standard-PC",
+        "sun_info": sun_info_text,
+        "dict_status": dict_status,
+        "dict_aufenthalt": dict_aufenthalt,
+        "year": year_arg
+    }
+
+    # Gemini Konfiguration prüfen
+    gm = load_gemini_settings()
+    gemini_active = gm.get("gemini_active", False)
+    gemini_api_key = gm.get("gemini_api_key", "").strip()
+    gemini_model = gm.get("gemini_model", "gemini-2.5-flash").strip() or "gemini-2.5-flash"
+    try:
+        gemini_cache_minutes = max(1, int(gm.get("gemini_cache_minutes", 60)))
+    except Exception:
+        gemini_cache_minutes = 60
+
+    gemini_meta = {
+        "active": bool(gemini_active and gemini_api_key),
+        "model": gemini_model,
+        "updated_at": None,
+        "from_cache": False,
+        "error": None,
+        "report_loaded": False
+    }
+
+    if not gemini_active or not gemini_api_key:
+        return render_template(
+            'plausibility_check.html',
+            info=detection_info,
+            report=None,
+            gemini_meta=gemini_meta,
+            auto_run=False
+        )
+
+    cache_key = (species.lower(), timestamp, side, gemini_model)
+    now_ts = time.time()
+    cached_entry = _gemini_plausibility_cache.get(cache_key)
+
+    if not force_refresh and cached_entry and (now_ts - cached_entry["ts"] < gemini_cache_minutes * 60):
+        gemini_meta["updated_at"] = cached_entry["updated_at"]
+        gemini_meta["from_cache"] = True
+        gemini_meta["report_loaded"] = True
+        return render_template(
+            'plausibility_check.html',
+            info=detection_info,
+            report=cached_entry["data"],
+            gemini_meta=gemini_meta,
+            auto_run=False
+        )
+
+    if not run_ai and not force_refresh:
+        # Sofortiges Laden der Webseite mit Lade-Animation; Client stößt run=1 automatisch an
+        return render_template(
+            'plausibility_check.html',
+            info=detection_info,
+            report=None,
+            gemini_meta=gemini_meta,
+            auto_run=True
+        )
+
+    # Übergebenes Datenpaket exakt gemäß Spezifikation
+    gemini_input_data = {
+        "Erfassung": "Die Erkennung erfolgte mit einem stationären Mikrofon im Freien",
+        "Decoder": "Audio to Spectrum to local-AI-BirdNet-Model > running on Standard-PC",
+        "GPS-Standort(Lat/Lon)": {
+            "lat": round(lat, 6),
+            "lon": round(lon, 6),
+            "koordinaten": gps_display
+        },
+        "Stationsname": station_name,
+        "Vogelart (deutscher Name)": species,
+        "Datum": datum_str,
+        "Uhrzeit (Zeitpunkt)": uhrzeit_str,
+        "Konfidenz": f"{conf_val}%" if conf_val is not None else "Nicht verfügbar",
+        "Probability": f"{prob_val}%" if prob_val is not None else "Nicht verfügbar",
+        "SNR": f"{snr_val} dB" if snr_val is not None else "Nicht verfügbar",
+        "Erkennungstyp_in_Jahresstatistik": detection_info["side_label"],
+        "Astronomische_Sonnenzeiten_am_Standort": sun_info_text
+    }
+    if dict_status or dict_aufenthalt:
+        gemini_input_data["Lokales_Woerterbuch_Metadaten"] = {
+            "Status": dict_status,
+            "Typische_Aufenthaltsmonate": dict_aufenthalt
+        }
+
+    prompt_text = (
+        "Du bist ein erfahrener Ornithologe, Bioakustik-Experte und Gutachter für automatisierte KI-Vogelstimmenerkennung. "
+        "Der Nutzer fragt hier gezielt einen Edge-Case ab, der sich nicht auf den ersten Blick eindeutig selbst bewerten lässt, "
+        "und wünscht sich einen fundierten Plausibilitätsbericht in Textform, der ihn bei der eigenen Meinungsfindung unterstützt.\n\n"
+        "Folgende Erkennungsdaten liegen vor:\n"
+        + json.dumps(gemini_input_data, ensure_ascii=False, indent=2) + "\n\n"
+        "Bitte führe einen detaillierten, sachlichen Plausibilitätscheck auf Deutsch durch und beantworte dabei zwingend folgende Aspekte:\n"
+        "1. 'tageszeit_analyse': Ermittle anhand des Datums (" + str(datum_str) + "), der Uhrzeit (" + str(uhrzeit_str) + ") und des GPS-Standorts, "
+        "ob zum Zeitpunkt der Aufnahme **Tag, Nacht oder Dämmerung (Morgen-/Abenddämmerung)** vorherrschte. "
+        "Bewerte ausführlich, ob diese Tages-/Nachtzeit zum typischen Ruf- oder Gesangsverhalten der Vogelart '" + str(species) + "' passt "
+        "(z. B. Tagaktivität, Morgen-/Abendchor, Dämmerungsaktivität, Eulenruf oder nächtlicher Zugruf / NocMig im Überflug).\n"
+        "2. 'standort_habitat_analyse': Ermittle anhand der GPS-Position (Lat/Lon: " + str(gps_display) + ") und des Stationsnamens ('" + str(station_name) + "'), "
+        "in welcher geografischen Region sich die Station befindet und ob dort landschaftlich eher ein Gebiet mit **viel Wald, Wasser/Gewässern, Moor/Feuchtgebieten, "
+        "Offenland/Agrarflächen oder Siedlungs-/Gartenstruktur** vorherrschend ist. Gleiche dies mit den Lebensraumansprüchen (Brut-, Rast- oder Überflughabitat) "
+        "und der Jahreszeit (Datum) der Vogelart ab.\n"
+        "3. 'messwerte_technik_analyse': Bewerte die technischen Parameter der Aufnahmekette (stationäres Mikrofon im Freien, "
+        "Decoder: Audio to Spectrum to local-AI-BirdNet-Model > running on Standard-PC) im Zusammenspiel mit den konkreten Messwerten "
+        "(Konfidenz, eBird-Probability, SNR in dB). Gehe gezielt auf typische Edge-Case-Szenarien ein: "
+        "Spricht die Kombination eher für einen echten Nachweis (z. B. seltener Durchzügler mit naturgemäß niedriger eBird-Probability, aber gutem Signal) "
+        "oder für eine mögliche Fehlklassifikation (z. B. niedriges SNR durch Wind/Regen/Umgebungsgeräusche im Freien, Frequenzüberlagerung oder Stimmimitation "
+        "durch Spötter wie Star, Eichelhäher, Sumpfrohrsänger, Gelbspötter, Singdrossel)?\n"
+        "4. 'fazit_meinungsfindung': Gib eine ausgewogene, klar verständliche Zusammenfassung zur Unterstützung der Meinungsfindung des Nutzers "
+        "(inklusive konkreter Tipps, worauf der Nutzer beim Anhören der WAV-Aufnahme bzw. Prüfen des Spektrogramms achten sollte).\n"
+        "5. 'kurzurteil': Ein prägnanter Satz als Überschrift für das Gesamtergebnis.\n"
+        "6. 'plausibilitaet_stufe': Exakt einer der Werte 'hoch' (sehr plausibel / gut nachvollziehbar), 'mittel' (denkbarer Edge-Case / Überprüfung empfohlen) "
+        "oder 'gering' (eher unwahrscheinlich / hoher Verdacht auf Verwechslung oder Störgeräusch)."
+    )
+
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{gemini_model}:generateContent?key={gemini_api_key}"
+    payload = {
+        "contents": [{"parts": [{"text": prompt_text}]}],
+        "generationConfig": {
+            "temperature": 0.3,
+            "responseMimeType": "application/json",
+            "responseSchema": {
+                "type": "OBJECT",
+                "properties": {
+                    "kurzurteil": {"type": "STRING"},
+                    "plausibilitaet_stufe": {"type": "STRING"},
+                    "tageszeit_analyse": {"type": "STRING"},
+                    "standort_habitat_analyse": {"type": "STRING"},
+                    "messwerte_technik_analyse": {"type": "STRING"},
+                    "fazit_meinungsfindung": {"type": "STRING"}
+                },
+                "required": [
+                    "kurzurteil",
+                    "plausibilitaet_stufe",
+                    "tageszeit_analyse",
+                    "standort_habitat_analyse",
+                    "messwerte_technik_analyse",
+                    "fazit_meinungsfindung"
+                ]
+            }
+        }
+    }
+
+    report_data = None
+    try:
+        resp = requests.post(url, json=payload, timeout=30)
+        if resp.status_code == 200:
+            resp_json = resp.json()
+            raw_text = (
+                resp_json.get("candidates", [{}])[0]
+                .get("content", {})
+                .get("parts", [{}])[0]
+                .get("text", "{}")
+            )
+            report_data = json.loads(raw_text)
+            stufe = (report_data.get("plausibilitaet_stufe") or "mittel").strip().lower()
+            if stufe not in ("hoch", "mittel", "gering"):
+                report_data["plausibilitaet_stufe"] = "mittel"
+            else:
+                report_data["plausibilitaet_stufe"] = stufe
+            updated_str = datetime.datetime.now().strftime("%H:%M:%S")
+            _gemini_plausibility_cache[cache_key] = {
+                "ts": now_ts,
+                "updated_at": updated_str,
+                "data": report_data
+            }
+            gemini_meta["updated_at"] = updated_str
+            gemini_meta["from_cache"] = False
+            gemini_meta["report_loaded"] = True
+        else:
+            try:
+                err_detail = resp.json().get("error", {}).get("message", resp.text[:200])
+            except Exception:
+                err_detail = resp.text[:200]
+            raise Exception(f"HTTP {resp.status_code}: {err_detail}")
+    except Exception as e:
+        gemini_meta["error"] = f"Fehler bei der Gemini-Abfrage: {e}"
+        if cached_entry:
+            report_data = cached_entry["data"]
+            gemini_meta["updated_at"] = cached_entry["updated_at"] + " (Cache nach Fehler)"
+            gemini_meta["from_cache"] = True
+            gemini_meta["report_loaded"] = True
+
+    return render_template(
+        'plausibility_check.html',
+        info=detection_info,
+        report=report_data,
+        gemini_meta=gemini_meta,
+        auto_run=False
     )
 
 @app.route('/api/settings/save', methods=['POST'])

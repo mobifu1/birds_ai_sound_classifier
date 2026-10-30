@@ -334,7 +334,7 @@
         {% endif %}
 
         <div id="pc-loading-banner" style="display: {% if auto_run %}block{% else %}none{% endif %}; background: #1b2836; border: 1px solid #4fc3f7; border-radius: 8px; padding: 18px; margin-bottom: 18px; color: #81d4fa; font-weight: bold; text-align: center;">
-            ⏳ Google Gemini KI prüft Tageszeit/Dämmerung, GPS-Habitat (Wald, Wasser, Moor etc.) und Signalwerte für <em>{{ info.species }}</em>... Bitte einen Moment Geduld (ca. 3–8 Sekunden).
+            ⏳ Google Gemini KI prüft Tageszeit/Dämmerung, GPS-Habitat (Wald, Wasser, Moor etc.), Signalwerte sowie mögliche Klimawandel-Einflüsse für <em>{{ info.species }}</em>... Bitte einen Moment Geduld (ca. 3–8 Sekunden).
         </div>
 
         {% if report %}
@@ -367,8 +367,15 @@
                 <p>{{ report.messwerte_technik_analyse }}</p>
             </div>
 
+            {% if report.klimawandel_analyse %}
+            <div class="pc-section" style="border-left-color: #ffb74d;">
+                <h3 style="color: #ffcc80;">🌍 4. Klimawandel &amp; Phänologische Verschiebungen (Edge-Case-Begünstigung)</h3>
+                <p>{{ report.klimawandel_analyse }}</p>
+            </div>
+            {% endif %}
+
             <div class="pc-section fazit">
-                <h3>🧭 4. Fazit zur Meinungsfindung</h3>
+                <h3>🧭 5. Fazit zur Meinungsfindung</h3>
                 <p>{{ report.fazit_meinungsfindung }}</p>
             </div>
         </div>

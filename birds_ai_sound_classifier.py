@@ -44,7 +44,7 @@ from birdnetlib import Recording
 START_TIME = time.time()
 
 # --- KONFIGURATION ---
-APP_VERSION = "V1.4.0-RC6"
+APP_VERSION = "V1.4.0-RC7"
 VERSION_YEAR = "2026"
 DB_FILE = "birds_audio_stats.db"
 SETTINGS_FILE = "settings.json"
@@ -3831,7 +3831,7 @@ def plausibility_check_page():
     now_ts = time.time()
     cached_entry = _gemini_plausibility_cache.get(cache_key)
 
-    if not force_refresh and cached_entry and (now_ts - cached_entry["ts"] < gemini_cache_minutes * 60):
+    if not force_refresh and cached_entry and (now_ts - cached_entry["ts"] < gemini_cache_minutes * 60) and "klimawandel_analyse" in cached_entry.get("data", {}):
         gemini_meta["updated_at"] = cached_entry["updated_at"]
         gemini_meta["from_cache"] = True
         gemini_meta["report_loaded"] = True
@@ -3899,10 +3899,20 @@ def plausibility_check_page():
         "Spricht die Kombination eher für einen echten Nachweis (z. B. seltener Durchzügler mit naturgemäß niedriger eBird-Probability, aber gutem Signal) "
         "oder für eine mögliche Fehlklassifikation (z. B. niedriges SNR durch Wind/Regen/Umgebungsgeräusche im Freien, Frequenzüberlagerung oder Stimmimitation "
         "durch Spötter wie Star, Eichelhäher, Sumpfrohrsänger, Gelbspötter, Singdrossel)?\n"
-        "4. 'fazit_meinungsfindung': Gib eine ausgewogene, klar verständliche Zusammenfassung zur Unterstützung der Meinungsfindung des Nutzers "
+        "4. 'klimawandel_analyse': Untersuche fundiert zur Unterstützung der Meinungsfindung, ob und inwiefern der **Klimawandel** diesen konkreten Edge-Case "
+        "begünstigen könnte. Berücksichtige dabei insbesondere: "
+        "a) **Phänologische Verschiebungen** (z. B. verfrühte Rückkehr aus den Überwinterungsgebieten im Frühjahr, verzögerter Wegzug / längeres Verweilen im Spätherbst "
+        "oder zunehmende Überwinterungstendenz von Kurzstreckenziehern und Teilziehern infolge milderer Winter), "
+        "b) **Arealverschiebungen und Nordwärts-Ausbreitung** wärmeliebender bzw. mediterraner Arten oder veränderte Rast-/Zugrouten durch Großwetterlagen, sowie "
+        "c) die **Diskrepanz zu historischen eBird-Wahrscheinlichkeiten (Probability)**, da historische Vergleichsdaten jüngste klimabedingte Phänologie- und "
+        "Verbreitungsänderungen oft noch unterschätzen. Ordne klar ein, ob der Klimawandel im vorliegenden Fall für die Vogelart '" + str(species) + "' "
+        "am Datum " + str(datum_str) + " (" + str(detection_info["side_label"]) + ") eine plausible biologische Erklärung liefert oder ob die Abweichung auch "
+        "unter Berücksichtigung klimatischer Trends ungewöhnlich bleibt.\n"
+        "5. 'fazit_meinungsfindung': Gib eine ausgewogene, klar verständliche Zusammenfassung zur Unterstützung der Meinungsfindung des Nutzers unter "
+        "Einbeziehung von Tageszeit, Habitat, Messwerten und möglichen Klimawandel-Effekten "
         "(inklusive konkreter Tipps, worauf der Nutzer beim Anhören der WAV-Aufnahme bzw. Prüfen des Spektrogramms achten sollte).\n"
-        "5. 'kurzurteil': Ein prägnanter Satz als Überschrift für das Gesamtergebnis.\n"
-        "6. 'plausibilitaet_stufe': Exakt einer der Werte 'hoch' (sehr plausibel / gut nachvollziehbar), 'mittel' (denkbarer Edge-Case / Überprüfung empfohlen) "
+        "6. 'kurzurteil': Ein prägnanter Satz als Überschrift für das Gesamtergebnis.\n"
+        "7. 'plausibilitaet_stufe': Exakt einer der Werte 'hoch' (sehr plausibel / gut nachvollziehbar), 'mittel' (denkbarer Edge-Case / Überprüfung empfohlen) "
         "oder 'gering' (eher unwahrscheinlich / hoher Verdacht auf Verwechslung oder Störgeräusch)."
     )
 
@@ -3920,6 +3930,7 @@ def plausibility_check_page():
                     "tageszeit_analyse": {"type": "STRING"},
                     "standort_habitat_analyse": {"type": "STRING"},
                     "messwerte_technik_analyse": {"type": "STRING"},
+                    "klimawandel_analyse": {"type": "STRING"},
                     "fazit_meinungsfindung": {"type": "STRING"}
                 },
                 "required": [
@@ -3928,6 +3939,7 @@ def plausibility_check_page():
                     "tageszeit_analyse",
                     "standort_habitat_analyse",
                     "messwerte_technik_analyse",
+                    "klimawandel_analyse",
                     "fazit_meinungsfindung"
                 ]
             }
@@ -4023,6 +4035,7 @@ def api_save_settings():
         except Exception:
             save_gemini_setting("gemini_cache_minutes", 60)
     _gemini_prediction_cache.clear()
+    _gemini_plausibility_cache.clear()
     save_setting("threshold", data.get("threshold", 30))
     save_setting("occurrence_threshold", float(data.get("occurrence_threshold", 0.03)))
     if "auto_season_lowering" in data:

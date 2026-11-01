@@ -94,12 +94,27 @@ class MonitorApp:
         """Beendet einen Prozess inklusive aller Kindprozesse (z.B. Audio-Kindprozess) und Konsolenfenster."""
         try:
             pid = proc.pid
-            # 1. Zugehöriges cmd.exe-Elternfenster merken (von start.bat)
-            parent_cmd = None
+            # 1. Zugehörige cmd.exe-Elternfenster über die gesamte Elternkette merken (von start.bat)
+            parent_cmds = []
+            seen_cmd_pids = set()
             try:
-                par = proc.parent()
-                if par and par.name().lower() == 'cmd.exe':
-                    parent_cmd = par
+                for anc in proc.parents():
+                    if anc and anc.name().lower() == 'cmd.exe' and anc.pid not in seen_cmd_pids:
+                        parent_cmds.append(anc)
+                        seen_cmd_pids.add(anc.pid)
+            except Exception:
+                pass
+            try:
+                curr = proc
+                for _ in range(6):
+                    ppid = curr.ppid()
+                    if not ppid or ppid <= 0:
+                        break
+                    par = psutil.Process(ppid)
+                    if par.name().lower() == 'cmd.exe' and par.pid not in seen_cmd_pids:
+                        parent_cmds.append(par)
+                        seen_cmd_pids.add(par.pid)
+                    curr = par
             except Exception:
                 pass
 
@@ -135,10 +150,10 @@ class MonitorApp:
             except Exception:
                 pass
 
-            # 5. Falls vorhanden, das cmd.exe-Fenster schließen
-            if parent_cmd:
+            # 5. Falls vorhanden, die zugehörigen cmd.exe-Fenster hart schließen
+            for parent_cmd in parent_cmds:
                 try:
-                    parent_cmd.terminate()
+                    parent_cmd.kill()
                 except Exception:
                     pass
 
@@ -146,7 +161,7 @@ class MonitorApp:
             self.log_message(f"Fehler beim Beenden des Prozessbaums PID {proc.pid}: {e}")
 
     def cleanup_orphaned_processes(self):
-        """Beendet verwaiste Audio-/Subprozesse im Anwendungsverzeichnis, bevor neu gestartet wird."""
+        """Beendet verwaiste Audio-/Subprozesse sowie verwaiste CMD-Fenster im Anwendungsverzeichnis, bevor neu gestartet wird."""
         my_pid = os.getpid()
         cleaned_count = 0
         norm_app_dir = os.path.normpath(APP_DIR).lower()
@@ -163,16 +178,16 @@ class MonitorApp:
                 if "autostart_monitor" in cmd_str:
                     continue
 
-                if "python" in name:
-                    is_in_app_dir = False
-                    try:
-                        p_cwd = p.cwd()
-                        if p_cwd and os.path.normpath(p_cwd).lower() == norm_app_dir:
-                            is_in_app_dir = True
-                    except Exception:
-                        if norm_app_dir in cmd_str:
-                            is_in_app_dir = True
+                is_in_app_dir = False
+                try:
+                    p_cwd = p.cwd()
+                    if p_cwd and os.path.normpath(p_cwd).lower() == norm_app_dir:
+                        is_in_app_dir = True
+                except Exception:
+                    if norm_app_dir in cmd_str:
+                        is_in_app_dir = True
 
+                if "python" in name:
                     # Multiprocessing-Spawn-Worker oder verwaiste Reste im App-Verzeichnis beenden
                     if is_in_app_dir and ("multiprocessing.spawn" in cmd_str or TARGET_APP.lower() in cmd_str):
                         self.log_message(f"Verwaisten Hintergrundprozess PID {p.pid} gefunden. Beende...")
@@ -184,6 +199,15 @@ class MonitorApp:
                                 p.kill()
                             except Exception:
                                 pass
+                        cleaned_count += 1
+                elif name == "cmd.exe":
+                    # Verwaistes cmd.exe-Fenster von start.bat (z.B. hängend bei "Batchvorgang abbrechen (J/N)?") schließen
+                    if "start.bat" in cmd_str and (is_in_app_dir or norm_app_dir in cmd_str):
+                        self.log_message(f"Verwaistes CMD-Fenster PID {p.pid} gefunden. Schließe...")
+                        try:
+                            p.kill()
+                        except Exception:
+                            pass
                         cleaned_count += 1
             except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
                 pass
@@ -221,15 +245,15 @@ class MonitorApp:
         try:
             bat_path = os.path.join(APP_DIR, "start.bat")
             if os.path.exists(bat_path):
-                # Starte per start.bat in einem neuen Konsolenfenster
-                subprocess.Popen(bat_path, cwd=APP_DIR, creationflags=subprocess.CREATE_NEW_CONSOLE)
+                # Starte per start.bat in einem neuen Konsolenfenster (stdin=DEVNULL verhindert Blockieren bei "Batchvorgang abbrechen (J/N)?")
+                subprocess.Popen(bat_path, cwd=APP_DIR, stdin=subprocess.DEVNULL, creationflags=subprocess.CREATE_NEW_CONSOLE)
             else:
                 target_path = os.path.join(APP_DIR, TARGET_APP)
                 if not os.path.exists(target_path):
                     self.log_message(f"Fehler: '{TARGET_APP}' nicht gefunden.")
                     return
                 # Starte das Python-Skript in einem neuen Konsolenfenster
-                subprocess.Popen(["python", TARGET_APP], cwd=APP_DIR, creationflags=subprocess.CREATE_NEW_CONSOLE)
+                subprocess.Popen(["python", TARGET_APP], cwd=APP_DIR, stdin=subprocess.DEVNULL, creationflags=subprocess.CREATE_NEW_CONSOLE)
             
             self.log_message("Anwendung wurde erfolgreich gestartet.")
         except Exception as e:

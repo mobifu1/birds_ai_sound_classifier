@@ -44,7 +44,7 @@ from birdnetlib import Recording
 START_TIME = time.time()
 
 # --- KONFIGURATION ---
-APP_VERSION = "V1.4.0-RC8"
+APP_VERSION = "V1.4.0-RC9"
 VERSION_YEAR = "2026"
 DB_FILE = "birds_audio_stats.db"
 SETTINGS_FILE = "settings.json"
@@ -4724,6 +4724,27 @@ def check_app_update():
     return jsonify(_check_github_app_update_internal())
 
 
+def _create_db_backup_internal():
+    try:
+        import shutil
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        backup_dir = "backup_db"
+        abs_backup_dir = os.path.join(base_dir, backup_dir)
+        os.makedirs(abs_backup_dir, exist_ok=True)
+        filename = f"birds_log_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.db"
+        rel_backup_file = os.path.join(backup_dir, filename)
+        abs_backup_file = os.path.join(abs_backup_dir, filename)
+        abs_db_file = DB_FILE if os.path.isabs(DB_FILE) else os.path.join(base_dir, DB_FILE)
+        if os.path.exists(abs_db_file):
+            shutil.copy2(abs_db_file, abs_backup_file)
+            update_log(f"DB-Backup erstellt: {rel_backup_file}")
+            return {"success": True, "backup_file": rel_backup_file, "msg": f"Backup erstellt: {rel_backup_file}"}
+        else:
+            return {"success": False, "backup_file": None, "msg": f"Fehler beim Backup: {DB_FILE} nicht gefunden."}
+    except Exception as e:
+        return {"success": False, "backup_file": None, "msg": f"Fehler beim Backup: {e}"}
+
+
 def _perform_app_update_internal(update_source='release', replace_dict=False, requested_tag=''):
     import zipfile
     import shutil
@@ -4733,6 +4754,10 @@ def _perform_app_update_internal(update_source='release', replace_dict=False, re
     update_temp_dir = os.path.join(base_dir, "update_temp")
 
     try:
+        # 0. Automatisches Datenbank-Backup vor dem Start des Updates erstellen
+        backup_res = _create_db_backup_internal()
+        backup_info_str = f"Vorab-DB-Backup erstellt ({backup_res['backup_file']}). " if backup_res.get("success") else f"Hinweis zum DB-Backup: {backup_res.get('msg', '')}. "
+
         # 1. Ziel-URL für das GitHub-ZIP bestimmen
         if update_source == 'release':
             target_tag = requested_tag
@@ -4896,6 +4921,16 @@ def _perform_app_update_internal(update_source='release', replace_dict=False, re
         # 6. Verzögertes sauberes Beenden des Webservers + Schließen des CMD-Fensters
         #    (autostart_monitor.py startet die App innerhalb von max. 60s in einem neuen CMD-Fenster neu)
         def delayed_server_exit():
+            # Konsolen-Signale (CTRL+C / CTRL+BREAK) während des Update-Shutdowns ignorieren,
+            # damit der Hauptthread nicht vorzeitig abbricht und cmd.exe nicht "Batchvorgang abbrechen (J/N)?" fragt
+            try:
+                import signal as py_signal
+                py_signal.signal(py_signal.SIGINT, py_signal.SIG_IGN)
+                if hasattr(py_signal, 'SIGBREAK'):
+                    py_signal.signal(py_signal.SIGBREAK, py_signal.SIG_IGN)
+            except Exception:
+                pass
+
             time.sleep(1.5)
             try:
                 update_log(f"Update auf {version_label} installiert. Beende Prozess für Neustart durch autostart_monitor...")
@@ -4921,26 +4956,76 @@ def _perform_app_update_internal(update_source='release', replace_dict=False, re
             except Exception as e:
                 print(f"Fehler beim Beenden von mDNS/Zeroconf: {e}")
 
-            # Eltern-CMD-Fenster (start.bat -> "Drücken Sie eine beliebige Taste...") schließen,
+            # Eltern-CMD-Fenster (start.bat -> inkl. Schutz gegen "Batchvorgang abbrechen (J/N)?") zuverlässig schließen,
             # damit das alte Konsolenfenster nicht offen stehen bleibt
             try:
                 import psutil
+                import subprocess
                 curr_proc = psutil.Process(os.getpid())
-                for anc in curr_proc.parents():
-                    if anc.name().lower() == 'cmd.exe':
-                        anc.kill()
-                        break
+                cmd_pids = []
+
+                # a) Über psutil.parents() suchen
+                try:
+                    for anc in curr_proc.parents():
+                        if anc.name().lower() == 'cmd.exe' and anc.pid not in cmd_pids:
+                            cmd_pids.append(anc.pid)
+                except Exception:
+                    pass
+
+                # b) Direkt über ppid-Kette suchen (unabhängig von create_time / NTP-Zeitsynchronisation)
+                try:
+                    p_iter = curr_proc
+                    for _ in range(6):
+                        ppid = p_iter.ppid()
+                        if not ppid or ppid <= 0:
+                            break
+                        par = psutil.Process(ppid)
+                        if par.name().lower() == 'cmd.exe' and par.pid not in cmd_pids:
+                            cmd_pids.append(par.pid)
+                        p_iter = par
+                except Exception:
+                    pass
+
+                # c) Über das eigene Konsolenfenster (Win32 API) prüfen
+                if os.name == 'nt':
+                    try:
+                        import ctypes
+                        hwnd = ctypes.windll.kernel32.GetConsoleWindow()
+                        if hwnd:
+                            win_pid = ctypes.c_ulong(0)
+                            ctypes.windll.user32.GetWindowThreadProcessId(hwnd, ctypes.byref(win_pid))
+                            if win_pid.value and win_pid.value not in cmd_pids:
+                                w_proc = psutil.Process(win_pid.value)
+                                if w_proc.name().lower() == 'cmd.exe':
+                                    cmd_pids.append(win_pid.value)
+                    except Exception:
+                        pass
+
+                # Alle gefundenen cmd.exe-Prozesse hart beenden
+                for c_pid in cmd_pids:
+                    try:
+                        psutil.Process(c_pid).kill()
+                    except Exception:
+                        try:
+                            subprocess.Popen(
+                                ["taskkill", "/F", "/PID", str(c_pid), "/T"],
+                                stdout=subprocess.DEVNULL,
+                                stderr=subprocess.DEVNULL,
+                                creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0x08000000)
+                            )
+                        except Exception:
+                            pass
             except Exception as e:
                 print(f"Hinweis beim Schließen des CMD-Fensters: {e}")
 
             os._exit(0)
 
-        threading.Thread(target=delayed_server_exit, daemon=True).start()
+        threading.Thread(target=delayed_server_exit, daemon=False).start()
 
         dict_info = "Dictionary wurde durch Repository-Version ersetzt." if replace_dict else "Lokales Dictionary wurde unverändert beibehalten."
         return {
             'success': True,
-            'msg': f'Update ({version_label}) erfolgreich installiert ({", ".join(updated_items)}). {dict_info} Der Webserver wird nun beendet und durch autostart_monitor.py (innerhalb von max. 60 Sekunden) automatisch neu gestartet...'
+            'msg': f'{backup_info_str}Update ({version_label}) erfolgreich installiert ({", ".join(updated_items)}). {dict_info} Der Webserver wird nun beendet und durch autostart_monitor.py (innerhalb von max. 60 Sekunden) automatisch neu gestartet...'
         }
 
     except Exception as e:
@@ -5106,17 +5191,8 @@ def api_control_dbreset():
 
 @app.route('/api/control/dbbackup', methods=['POST'])
 def api_control_dbbackup():
-    try:
-        import shutil
-        import os
-        backup_dir = "backup_db"
-        if not os.path.exists(backup_dir):
-            os.makedirs(backup_dir)
-        backup_file = os.path.join(backup_dir, f"birds_log_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.db")
-        shutil.copy2(DB_FILE, backup_file)
-        return jsonify({"msg": f"Backup erstellt: {backup_file}"})
-    except Exception as e:
-        return jsonify({"msg": f"Fehler beim Backup: {e}"})
+    res = _create_db_backup_internal()
+    return jsonify({"msg": res["msg"]})
 
 @app.route('/api/top_species')
 def api_top_species():

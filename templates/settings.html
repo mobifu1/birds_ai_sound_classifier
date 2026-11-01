@@ -631,7 +631,7 @@
                             Beim Update werden die Programmdateien (<code>birds_ai_sound_classifier.py</code>, Ordner <code>templates/</code>, <code>static/</code> sowie Hilfe-Dokumente) aktualisiert.<br>
                             Folgende persönliche Daten und Einstellungen werden <strong>lokal nicht verändert</strong>:
                             <ul style="margin: 6px 0 0 18px; padding: 0;">
-                                <li><strong>Datenbank</strong> (<code>birds_audio_stats.db</code>)</li>
+                                <li><strong>Datenbank</strong> (<code>birds_audio_stats.db</code> – <em>zudem wird vor jedem Update automatisch ein DB-Backup im Ordner <code>backup_db/</code> erstellt</em>)</li>
                                 <li><strong>Audio-Records / Aufnahmen</strong> (<code>audio_temp/archive</code> &amp; <code>latest</code>)</li>
                                 <li><strong>Settings &amp; Auto Season Lowering</strong> (<code>settings.json</code>, <code>auto_season_lowering.json</code> – Ihre allgemeinen &amp; saisonalen Einstellungen)</li>
                                 <li><strong>BirdWeather, Pushover &amp; Gemini</strong> (<code>birdweather.json</code>, <code>pushover.json</code>, <code>gemini.json</code> – persönliche Einstellungen &amp; API-Keys)</li>
@@ -720,6 +720,7 @@
             const confirmMsg = `Möchten Sie das System-Update jetzt durchführen?\n\n` +
                 `• Quelle: ${sourceText}\n` +
                 `• Dictionary ersetzen: ${dictText}\n\n` +
+                `Vor der Installation wird automatisch ein DB-Backup (backup_db/) angelegt.\n` +
                 `Datenbank, Audio-Records, Settings, BirdWeather, Pushover und Blocklist-Log bleiben unverändert.\n` +
                 `Nach dem Update startet der Webserver automatisch neu.`;
 

@@ -44,7 +44,7 @@ from birdnetlib import Recording
 START_TIME = time.time()
 
 # --- KONFIGURATION ---
-APP_VERSION = "V1.4.0-RC7"
+APP_VERSION = "V1.4.0-RC8"
 VERSION_YEAR = "2026"
 DB_FILE = "birds_audio_stats.db"
 SETTINGS_FILE = "settings.json"
@@ -207,10 +207,18 @@ def load_settings():
     if os.path.exists(SETTINGS_FILE):
         try:
             with open(SETTINGS_FILE, 'r') as f:
-                return json.load(f)
+                data = json.load(f)
+            if "auto_app_update" not in data:
+                data["auto_app_update"] = True
+                try:
+                    with open(SETTINGS_FILE, 'w') as fw:
+                        json.dump(data, fw)
+                except:
+                    pass
+            return data
         except:
             pass
-    return {}
+    return {"auto_app_update": True}
 
 def get_effective_occurrence_threshold():
     settings = load_settings()
@@ -4081,6 +4089,8 @@ def api_save_settings():
         save_setting("log_blocklist_prob_switch", bool(data.get("log_blocklist_prob_switch", False)))
     if "log_blocklist_pushover" in data:
         save_setting("log_blocklist_pushover", bool(data.get("log_blocklist_pushover", False)))
+    if "auto_app_update" in data:
+        save_setting("auto_app_update", bool(data.get("auto_app_update", True)))
     if "spectrogram_enabled" in data:
         save_setting("spectrogram_enabled", bool(data.get("spectrogram_enabled", True)))
     if "settings_password" in data:
@@ -4643,8 +4653,7 @@ def check_model_update():
     except Exception as e:
         return jsonify({"success": False, "error": str(e)})
 
-@app.route('/api/check_app_update')
-def check_app_update():
+def _check_github_app_update_internal():
     current_version = APP_VERSION
     try:
         import urllib.request
@@ -4653,14 +4662,14 @@ def check_app_update():
             'https://api.github.com/repos/mobifu1/birds_ai_sound_classifier/tags',
             headers={'User-Agent': 'Mozilla/5.0'}
         )
-        with urllib.request.urlopen(req, timeout=5) as response:
+        with urllib.request.urlopen(req, timeout=10) as response:
             data = json.loads(response.read().decode())
             if not data:
-                return jsonify({
+                return {
                     "success": False,
                     "current_version": current_version,
                     "error": "Keine Tags/Versionen auf GitHub gefunden."
-                })
+                }
                 
             latest_version = data[0].get('name', '')
             html_url = f"https://github.com/mobifu1/birds_ai_sound_classifier/releases/tag/{latest_version}"
@@ -4695,35 +4704,30 @@ def check_app_update():
                     if lat_norm != cur_norm and lat_norm > cur_norm:
                         is_newer = True
                 
-            return jsonify({
+            return {
                 "success": True,
                 "current_version": current_version,
                 "latest_version": latest_version,
                 "is_newer": is_newer,
                 "download_url": html_url
-            })
+            }
     except Exception as e:
-        return jsonify({
+        return {
             "success": False,
             "current_version": current_version,
             "error": str(e)
-        })
+        }
 
 
-@app.route('/api/control/perform_app_update', methods=['POST'])
-def perform_app_update():
-    s = load_settings()
-    if s.get('settings_password', '') == 'admin' and not session.get('authenticated'):
-        return jsonify({'success': False, 'msg': 'Nicht authentifiziert.'}), 401
+@app.route('/api/check_app_update')
+def check_app_update():
+    return jsonify(_check_github_app_update_internal())
 
+
+def _perform_app_update_internal(update_source='release', replace_dict=False, requested_tag=''):
     import zipfile
     import shutil
     import py_compile
-
-    req_data = request.get_json(silent=True) or {}
-    update_source = req_data.get('source', 'release')  # 'release' oder 'dev'
-    replace_dict = bool(req_data.get('replace_dictionary', False))
-    requested_tag = str(req_data.get('tag', '')).strip()
 
     base_dir = os.path.dirname(os.path.abspath(__file__))
     update_temp_dir = os.path.join(base_dir, "update_temp")
@@ -4739,13 +4743,13 @@ def perform_app_update():
                     timeout=10
                 )
                 if tags_resp.status_code != 200 or not tags_resp.json():
-                    return jsonify({
+                    return {
                         'success': False,
                         'msg': f'Konnte letzte Release-Version nicht von GitHub abrufen (Status: {tags_resp.status_code}).'
-                    })
+                    }
                 target_tag = tags_resp.json()[0].get('name', '').strip()
                 if not target_tag:
-                    return jsonify({'success': False, 'msg': 'Kein gültiger Release-Tag auf GitHub gefunden.'})
+                    return {'success': False, 'msg': 'Kein gültiger Release-Tag auf GitHub gefunden.'}
 
             zip_urls = [
                 f"https://github.com/mobifu1/birds_ai_sound_classifier/archive/refs/tags/{target_tag}.zip",
@@ -4773,10 +4777,10 @@ def perform_app_update():
                 continue
 
         if not zip_content:
-            return jsonify({
+            return {
                 'success': False,
                 'msg': f'Fehler beim Herunterladen des Update-Pakets von GitHub (Status: {last_status}).'
-            })
+            }
 
         # 3. In temporären Ordner entpacken
         if os.path.exists(update_temp_dir):
@@ -4796,19 +4800,19 @@ def perform_app_update():
 
         if not os.path.isfile(new_main_py) or not os.path.isdir(new_templates_dir):
             shutil.rmtree(update_temp_dir, ignore_errors=True)
-            return jsonify({
+            return {
                 'success': False,
                 'msg': 'Update-Paket unvollständig: birds_ai_sound_classifier.py oder Ordner templates fehlt.'
-            })
+            }
 
         try:
             py_compile.compile(new_main_py, doraise=True)
         except Exception as syn_err:
             shutil.rmtree(update_temp_dir, ignore_errors=True)
-            return jsonify({
+            return {
                 'success': False,
                 'msg': f'Sicherheitsabbruch: Heruntergeladene Programmdatei enthält einen Syntaxfehler ({syn_err}).'
-            })
+            }
 
         # Hilfsfunktion zum Aktualisieren von Dateien und Verzeichnissen
         # (wandelt unter Windows LF -> CRLF bei Textdateien um, damit start.bat & git status sauber bleiben)
@@ -4934,16 +4938,35 @@ def perform_app_update():
         threading.Thread(target=delayed_server_exit, daemon=True).start()
 
         dict_info = "Dictionary wurde durch Repository-Version ersetzt." if replace_dict else "Lokales Dictionary wurde unverändert beibehalten."
-        return jsonify({
+        return {
             'success': True,
             'msg': f'Update ({version_label}) erfolgreich installiert ({", ".join(updated_items)}). {dict_info} Der Webserver wird nun beendet und durch autostart_monitor.py (innerhalb von max. 60 Sekunden) automatisch neu gestartet...'
-        })
+        }
 
     except Exception as e:
         if os.path.exists(update_temp_dir):
             shutil.rmtree(update_temp_dir, ignore_errors=True)
         traceback.print_exc()
-        return jsonify({'success': False, 'msg': f'Fehler beim Update: {str(e)}'})
+        return {'success': False, 'msg': f'Fehler beim Update: {str(e)}'}
+
+
+@app.route('/api/control/perform_app_update', methods=['POST'])
+def perform_app_update():
+    s = load_settings()
+    if s.get('settings_password', '') == 'admin' and not session.get('authenticated'):
+        return jsonify({'success': False, 'msg': 'Nicht authentifiziert.'}), 401
+
+    req_data = request.get_json(silent=True) or {}
+    update_source = req_data.get('source', 'release')  # 'release' oder 'dev'
+    replace_dict = bool(req_data.get('replace_dictionary', False))
+    requested_tag = str(req_data.get('tag', '')).strip()
+
+    res = _perform_app_update_internal(
+        update_source=update_source,
+        replace_dict=replace_dict,
+        requested_tag=requested_tag
+    )
+    return jsonify(res)
 
 
 from flask import Response
@@ -6057,6 +6080,45 @@ def log_reader_thread():
         else:
             time.sleep(1)
 
+
+def auto_update_scheduler_thread():
+    """Prüft täglich um 02:00 Uhr nachts auf ein neues GitHub-Release und installiert dieses automatisch, sofern auto_app_update aktiv ist."""
+    last_check_date = None
+    while True:
+        try:
+            time.sleep(30)
+            s = load_settings()
+            if not s.get("auto_app_update", True):
+                continue
+
+            now = datetime.datetime.now()
+            today_str = now.strftime("%Y-%m-%d")
+
+            # Täglich um 02:00 Uhr nachts prüfen (Zeitfenster 02:00 - 02:04 Uhr, maximal 1x pro Kalendertag)
+            if now.hour == 2 and now.minute < 5 and last_check_date != today_str:
+                last_check_date = today_str
+                update_log("Auto-Update (02:00 Uhr): Prüfe auf neues GitHub-Release...")
+                check_res = _check_github_app_update_internal()
+                if not check_res.get("success"):
+                    update_log(f"Auto-Update Prüfung fehlgeschlagen: {check_res.get('error', 'Unbekannter Fehler')}")
+                elif check_res.get("is_newer"):
+                    latest_ver = check_res.get("latest_version", "")
+                    update_log(f"Auto-Update: Neues Release {latest_ver} gefunden (aktuell: {APP_VERSION}). Starte automatische Installation...")
+                    upd_res = _perform_app_update_internal(
+                        update_source='release',
+                        replace_dict=False,
+                        requested_tag=latest_ver
+                    )
+                    if not upd_res.get("success"):
+                        update_log(f"Auto-Update Installation fehlgeschlagen: {upd_res.get('msg', 'Unbekannter Fehler')}")
+                else:
+                    update_log(f"Auto-Update Prüfung: Version {APP_VERSION} ist bereits auf dem neuesten Stand (GitHub: {check_res.get('latest_version', '')}).")
+        except Exception as e:
+            try:
+                update_log(f"Fehler im Auto-Update-Scheduler: {e}")
+            except Exception:
+                pass
+
 if __name__ == '__main__':
     mp.freeze_support()
     init_db()
@@ -6099,6 +6161,10 @@ if __name__ == '__main__':
     # Start log reader thread
     t = threading.Thread(target=log_reader_thread, daemon=True)
     t.start()
+
+    # Start daily auto-update scheduler thread (02:00 AM check & install)
+    t_auto_upd = threading.Thread(target=auto_update_scheduler_thread, daemon=True)
+    t_auto_upd.start()
     
     # Start audio process
     monitor_process = mp.Process(target=run_audio_process, args=(

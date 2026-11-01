@@ -191,6 +191,9 @@
                 <div style="display: flex; align-items: center; gap: 10px; width: 100%;">
                     <button class="btn btn-blue" style="width: auto; padding: 5px 15px; margin: 0;" onclick="updateBirdIcons()" id="btn-update-icons">Update Bird Icons</button>
                     <button class="btn btn-blue" style="width: auto; padding: 5px 15px; margin: 0;" onclick="updateDictionary()" id="btn-update-dict">Update Dictionary</button>
+                    <label style="margin: 0; color: #ccc; display: flex; align-items: center; margin-left: 15px; cursor: pointer;" title="Wenn aktiv, prüft das System täglich auf ein neues GitHub-Release und installiert dieses vollautomatisch um 02:00 Uhr nachts.">Auto-Update (täglich 02:00 Uhr):
+                        <input type="checkbox" id="auto_app_update" style="width: 18px; height: 18px; margin-left: 10px; cursor: pointer;" {% if s.get('auto_app_update', True) %}checked{% endif %}>
+                    </label>
                 </div>
             </div>
         </div>
@@ -1319,6 +1322,7 @@
                 log_blocklist: document.getElementById('log_blocklist').checked,
                 log_blocklist_prob_switch: document.getElementById('log_blocklist_prob_switch').checked,
                 log_blocklist_pushover: document.getElementById('log_blocklist_pushover').checked,
+                auto_app_update: document.getElementById('auto_app_update').checked,
                 settings_password: document.getElementById('settings_password_enable').checked ? 'admin' : '',
                 bird_dictionary: birdDict
             };

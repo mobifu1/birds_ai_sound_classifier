@@ -6,26 +6,37 @@ import datetime
 import subprocess
 import os
 import sys
+import shutil
+
+def get_python_exe():
+    """Ermittelt zuverlässig den Pfad zur 'python.exe' (Konsolen-Interpreter),
+    auch wenn dieses Skript als .pyw über 'pythonw.exe' oder 'pyw.exe' gestartet wurde."""
+    candidates = []
+    if sys.executable:
+        exe_dir = os.path.dirname(os.path.abspath(sys.executable))
+        candidates.append(os.path.join(exe_dir, "python.exe"))
+    for prefix in (getattr(sys, "prefix", None), getattr(sys, "base_prefix", None)):
+        if prefix:
+            candidates.append(os.path.join(os.path.abspath(prefix), "python.exe"))
+            candidates.append(os.path.join(os.path.abspath(prefix), "Scripts", "python.exe"))
+    for candidate in candidates:
+        if os.path.isfile(candidate):
+            return candidate
+    found = shutil.which("python.exe") or shutil.which("python")
+    return found if found else "python.exe"
+
+PYTHON_EXE = get_python_exe()
 
 # Installiere psutil automatisch, falls nicht vorhanden, da es für die Prozesserkennung am besten funktioniert
 try:
     import psutil
 except ImportError:
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "psutil"])
+    subprocess.check_call([PYTHON_EXE, "-m", "pip", "install", "psutil"])
     import psutil
 
 TARGET_APP = "birds_ai_sound_classifier.py"
-MONITOR_VERSION = "V1.0"
-
-# Pfadweiche: Unterscheide zwischen kompilierter .exe (z.B. PyInstaller) und normalem Python-Skript
-if getattr(sys, 'frozen', False):
-    APP_DIR = os.path.dirname(os.path.abspath(sys.executable))
-else:
-    APP_DIR = os.path.dirname(os.path.abspath(__file__))
-
-# Falls die .exe direkt aus einem Unterordner (wie "dist") gestartet wird, eine Ordnerebene höher prüfen
-if not os.path.exists(os.path.join(APP_DIR, TARGET_APP)) and os.path.exists(os.path.join(os.path.dirname(APP_DIR), TARGET_APP)):
-    APP_DIR = os.path.dirname(APP_DIR)
+MONITOR_VERSION = "V1.1"
+APP_DIR = os.path.dirname(os.path.abspath(__file__))
 
 class MonitorApp:
     def __init__(self, root):
@@ -56,7 +67,7 @@ class MonitorApp:
         self.log_area.pack(expand=True, fill='both', padx=15, pady=10)
         
         self.running = True
-        self.log_message("Monitoring gestartet. Überprüfe alle 60 Sekunden...")
+        self.log_message(f"Monitoring ({MONITOR_VERSION}) gestartet. Überprüfe alle 60 Sekunden...")
         
         # Starte den Überwachungs-Thread
         self.monitor_thread = threading.Thread(target=self.monitor_loop, daemon=True)
@@ -67,10 +78,13 @@ class MonitorApp:
         timestamp = datetime.datetime.now().strftime("%d.%m.%Y %H:%M:%S")
         log_entry = f"[{timestamp}] {message}\n"
         
-        self.log_area.config(state='normal')
-        self.log_area.insert(tk.END, log_entry)
-        self.log_area.see(tk.END)
-        self.log_area.config(state='disabled')
+        try:
+            self.log_area.config(state='normal')
+            self.log_area.insert(tk.END, log_entry)
+            self.log_area.see(tk.END)
+            self.log_area.config(state='disabled')
+        except tk.TclError:
+            pass
         
     def get_running_instances(self):
         """Findet alle laufenden Instanzen der Ziel-Anwendung, sortiert nach Alter (ältester zuerst)."""
@@ -81,7 +95,8 @@ class MonitorApp:
                 if cmdline:
                     # Wandle Befehlszeile in String um für eine einfache Suche
                     cmd_str = ' '.join(cmdline).lower()
-                    if TARGET_APP.lower() in cmd_str and "python" in p.info.get('name', '').lower():
+                    name_str = (p.info.get('name') or '').lower()
+                    if TARGET_APP.lower() in cmd_str and "python" in name_str and "multiprocessing.spawn" not in cmd_str:
                         instances.append(p)
             except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
                 pass
@@ -174,7 +189,7 @@ class MonitorApp:
                 cmdline = p.info.get('cmdline') or []
                 cmd_str = ' '.join(cmdline).lower()
 
-                # Den Monitor selbst niemals anfassen (egal ob .py oder compilierte .exe)
+                # Den Monitor selbst niemals anfassen (egal ob .py oder .pyw)
                 if "autostart_monitor" in cmd_str:
                     continue
 
@@ -241,21 +256,31 @@ class MonitorApp:
                 time.sleep(1)
             
     def start_app(self):
-        """Startet die Ziel-Anwendung über das start.bat Skript, falls vorhanden, oder direkt."""
+        """Startet die Ziel-Anwendung direkt über python.exe in einem neuen, sichtbaren Konsolenfenster."""
         try:
-            bat_path = os.path.join(APP_DIR, "start.bat")
-            if os.path.exists(bat_path):
-                # Starte per start.bat in einem neuen Konsolenfenster (stdin=DEVNULL verhindert Blockieren bei "Batchvorgang abbrechen (J/N)?")
-                subprocess.Popen(bat_path, cwd=APP_DIR, stdin=subprocess.DEVNULL, creationflags=subprocess.CREATE_NEW_CONSOLE)
-            else:
-                target_path = os.path.join(APP_DIR, TARGET_APP)
-                if not os.path.exists(target_path):
-                    self.log_message(f"Fehler: '{TARGET_APP}' nicht gefunden.")
-                    return
-                # Starte das Python-Skript in einem neuen Konsolenfenster
-                subprocess.Popen(["python", TARGET_APP], cwd=APP_DIR, stdin=subprocess.DEVNULL, creationflags=subprocess.CREATE_NEW_CONSOLE)
+            target_path = os.path.join(APP_DIR, TARGET_APP)
+            if not os.path.exists(target_path):
+                self.log_message(f"Fehler: '{TARGET_APP}' nicht gefunden in {APP_DIR}.")
+                return
+
+            # Wichtig bei Start aus .pyw (pythonw.exe):
+            # - Es MUSS python.exe (Konsolen-Subsystem) statt pythonw.exe verwendet werden.
+            # - stdin/stdout/stderr dürfen NICHT umgeleitet werden (kein stdin=DEVNULL),
+            #   da Python sonst STARTF_USESTDHANDLES setzt und unter pythonw.exe ungültige
+            #   Standard-Handles an das neue Konsolenfenster übergibt.
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            startupinfo.wShowWindow = 1  # SW_SHOWNORMAL: Konsolenfenster garantiert sichtbar öffnen
+
+            proc = subprocess.Popen(
+                [PYTHON_EXE, target_path],
+                cwd=APP_DIR,
+                creationflags=subprocess.CREATE_NEW_CONSOLE,
+                startupinfo=startupinfo,
+                close_fds=True
+            )
             
-            self.log_message("Anwendung wurde erfolgreich gestartet.")
+            self.log_message(f"Anwendung wurde erfolgreich gestartet (PID {proc.pid}).")
         except Exception as e:
             self.log_message(f"Fehler beim Starten: {e}")
 

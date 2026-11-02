@@ -4840,8 +4840,8 @@ def _perform_app_update_internal(update_source='release', replace_dict=False, re
             }
 
         # Hilfsfunktion zum Aktualisieren von Dateien und Verzeichnissen
-        # (wandelt unter Windows LF -> CRLF bei Textdateien um, damit start.bat & git status sauber bleiben)
-        text_exts = ('.py', '.html', '.css', '.js', '.json', '.bat', '.txt', '.md')
+        # (wandelt unter Windows LF -> CRLF bei Textdateien um, damit git status sauber bleibt)
+        text_exts = ('.py', '.pyw', '.html', '.css', '.js', '.json', '.txt', '.md')
 
         def copy_update_file(src_file, dst_file):
             if os.name == 'nt' and src_file.lower().endswith(text_exts):
@@ -4891,10 +4891,18 @@ def _perform_app_update_internal(update_source='release', replace_dict=False, re
             copy_update_file(new_lowering_file, local_lowering_file)
             updated_items.append("auto_season_lowering.json (initial angelegt)")
 
-        # d) start.bat aktualisieren (falls im Repo vorhanden)
-        new_start_bat = os.path.join(extracted_root, "start.bat")
-        if os.path.isfile(new_start_bat):
-            copy_update_file(new_start_bat, os.path.join(base_dir, "start.bat"))
+        # d) autostart_monitor.py und autostart_monitor.pyw aktualisieren
+        new_monitor_py = os.path.join(extracted_root, "autostart_monitor.py")
+        new_monitor_pyw = os.path.join(extracted_root, "autostart_monitor.pyw")
+        if os.path.isfile(new_monitor_py):
+            copy_update_file(new_monitor_py, os.path.join(base_dir, "autostart_monitor.py"))
+            updated_items.append("autostart_monitor.py")
+        if os.path.isfile(new_monitor_pyw):
+            copy_update_file(new_monitor_pyw, os.path.join(base_dir, "autostart_monitor.pyw"))
+            updated_items.append("autostart_monitor.pyw")
+        elif os.path.isfile(new_monitor_py):
+            copy_update_file(new_monitor_py, os.path.join(base_dir, "autostart_monitor.pyw"))
+            updated_items.append("autostart_monitor.pyw")
 
         # e) PDF-Dokumentationen im Hauptverzeichnis (z. B. Einstellungen_Beschreibung.pdf) aktualisieren
         for item_name in os.listdir(extracted_root):

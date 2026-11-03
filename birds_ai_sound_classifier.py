@@ -6333,6 +6333,15 @@ def auto_update_scheduler_thread():
 if __name__ == '__main__':
     mp.freeze_support()
     init_db()
+
+    # Falls nach einem Update von einer älteren Version noch die alte autostart_monitor.exe (App1)
+    # läuft oder im Installationsordner existiert, wird autostart_monitor.pyw (App3) gestartet,
+    # damit diese App1 sofort automatisch beendet, löscht und die Überwachung übernimmt.
+    try:
+        if _start_or_restart_monitor_pyw(force_restart=False):
+            print("Migration: autostart_monitor.pyw gestartet, um autostart_monitor.exe abzulösen.")
+    except Exception as e:
+        print(f"Hinweis bei der Prüfung auf autostart_monitor.exe: {e}")
     
     # Run migration/pruning on startup to enforce the new 50% limit
     try:

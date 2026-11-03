@@ -231,9 +231,124 @@ class MonitorApp:
             self.log_message(f"{cleaned_count} verwaiste(n) Prozess(e) bereinigt.")
             time.sleep(1)
 
+    def cleanup_legacy_exe_monitor(self):
+        """Prüft, ob noch ältere Monitor-Prozesse oder die alte 'autostart_monitor.exe' (App1)
+        laufen bzw. im Installationsordner existieren, beendet diese und löscht 'autostart_monitor.exe'."""
+        my_pid = os.getpid()
+        my_ancestor_pids = set()
+        try:
+            my_proc = psutil.Process(my_pid)
+            for anc in my_proc.parents():
+                my_ancestor_pids.add(anc.pid)
+        except Exception:
+            pass
+        try:
+            curr = psutil.Process(my_pid)
+            for _ in range(6):
+                ppid = curr.ppid()
+                if not ppid or ppid <= 0:
+                    break
+                my_ancestor_pids.add(ppid)
+                curr = psutil.Process(ppid)
+        except Exception:
+            pass
+
+        # 1. Eventuell noch laufende ältere Instanzen von autostart_monitor.pyw / .py sowie
+        # 2. laufende Prozesse von autostart_monitor.exe (App1) erfassen
+        old_py_monitors = []
+        legacy_exe_name = "autostart_monitor.exe"
+        legacy_exe_procs = []
+
+        for p in psutil.process_iter(['pid', 'name', 'cmdline', 'exe']):
+            try:
+                pid = p.info['pid']
+                if pid == my_pid or pid in my_ancestor_pids:
+                    continue
+                p_name = (p.info.get('name') or '').lower()
+                p_exe = os.path.basename(p.info.get('exe') or '').lower()
+                cmdline = p.info.get('cmdline') or []
+                cmd_str = ' '.join(cmdline).lower()
+
+                if p_name == legacy_exe_name or p_exe == legacy_exe_name or (legacy_exe_name in cmd_str and "python" not in p_name):
+                    legacy_exe_procs.append(p)
+                elif ('python' in p_name or p_name in ('py.exe', 'pyw.exe')) and (
+                    'autostart_monitor.pyw' in cmd_str or 'autostart_monitor.py' in cmd_str
+                ):
+                    old_py_monitors.append(p)
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                pass
+
+        if old_py_monitors:
+            for p in old_py_monitors:
+                try:
+                    p.terminate()
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    pass
+            try:
+                _, alive_py = psutil.wait_procs(old_py_monitors, timeout=2)
+                for p in alive_py:
+                    try:
+                        p.kill()
+                    except (psutil.NoSuchProcess, psutil.AccessDenied):
+                        pass
+            except Exception:
+                pass
+
+        if legacy_exe_procs:
+            self.log_message(f"Alte '{legacy_exe_name}' erkannt ({len(legacy_exe_procs)} Prozess(e)). Beende...")
+            for p in legacy_exe_procs:
+                try:
+                    p.terminate()
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    pass
+            try:
+                _, alive_exe = psutil.wait_procs(legacy_exe_procs, timeout=3)
+                for p in alive_exe:
+                    try:
+                        p.kill()
+                    except (psutil.NoSuchProcess, psutil.AccessDenied):
+                        pass
+                if alive_exe:
+                    psutil.wait_procs(alive_exe, timeout=2)
+            except Exception:
+                pass
+            self.log_message(f"Prozess '{legacy_exe_name}' wurde beendet.")
+
+        # 3. Datei 'autostart_monitor.exe' aus dem Installationsordner löschen
+        legacy_exe_path = os.path.join(APP_DIR, legacy_exe_name)
+        if os.path.isfile(legacy_exe_path):
+            removed = False
+            last_err = None
+            for _ in range(10):
+                try:
+                    if os.path.isfile(legacy_exe_path):
+                        try:
+                            os.chmod(legacy_exe_path, 0o777)
+                        except Exception:
+                            pass
+                        os.remove(legacy_exe_path)
+                    if not os.path.exists(legacy_exe_path):
+                        removed = True
+                        break
+                except Exception as e:
+                    last_err = e
+                    time.sleep(0.3)
+            if removed:
+                self.log_message(f"Alte Datei '{legacy_exe_name}' wurde aus dem Installationsordner gelöscht.")
+            else:
+                self.log_message(f"Hinweis: '{legacy_exe_name}' konnte noch nicht gelöscht werden ({last_err}).")
+
     def monitor_loop(self):
         """Die Hauptschleife, die periodisch den Prozessstatus überprüft."""
+        # Beim Start prüfen, ob noch eine alte autostart_monitor.exe (App1) läuft oder existiert,
+        # diese beenden und aus dem Installationsordner löschen
+        self.cleanup_legacy_exe_monitor()
+
         while self.running:
+            # Falls autostart_monitor.exe beim ersten Versuch noch kurz durch Windows gesperrt war, erneut bereinigen
+            if os.path.exists(os.path.join(APP_DIR, "autostart_monitor.exe")):
+                self.cleanup_legacy_exe_monitor()
+
             instances = self.get_running_instances()
             
             if len(instances) == 0:

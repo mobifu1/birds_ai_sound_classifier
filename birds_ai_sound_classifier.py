@@ -4745,6 +4745,123 @@ def _create_db_backup_internal():
         return {"success": False, "backup_file": None, "msg": f"Fehler beim Backup: {e}"}
 
 
+def _get_pythonw_exe():
+    """Ermittelt zuverlässig den Pfad zu 'pythonw.exe' für den fensterlosen Start von .pyw-Skripten."""
+    import sys
+    import shutil
+    candidates = []
+    if sys.executable:
+        exe_dir = os.path.dirname(os.path.abspath(sys.executable))
+        candidates.append(os.path.join(exe_dir, "pythonw.exe"))
+    for prefix in (getattr(sys, "prefix", None), getattr(sys, "base_prefix", None)):
+        if prefix:
+            candidates.append(os.path.join(os.path.abspath(prefix), "pythonw.exe"))
+            candidates.append(os.path.join(os.path.abspath(prefix), "Scripts", "pythonw.exe"))
+    for candidate in candidates:
+        if os.path.isfile(candidate):
+            return candidate
+    found = shutil.which("pythonw.exe") or shutil.which("pythonw")
+    if found:
+        return found
+    return sys.executable or "pythonw.exe"
+
+
+def _start_or_restart_monitor_pyw(base_dir=None, force_restart=True):
+    """Startet 'autostart_monitor.pyw' (App3).
+    Wenn force_restart=True (nach einem Update), werden evtl. laufende Instanzen von
+    'autostart_monitor.pyw' / 'autostart_monitor.py' zuerst beendet und anschließend mit dem
+    neuen Code frisch gestartet.
+    Wenn force_restart=False (beim Anwendungsstart), wird geprüft, ob noch die alte
+    'autostart_monitor.exe' (App1) läuft oder im Ordner liegt; falls ja, wird 'autostart_monitor.pyw'
+    gestartet, damit App3 die alte App1 beendet, löscht und die Überwachung übernimmt."""
+    import subprocess
+    try:
+        import psutil
+    except ImportError:
+        psutil = None
+
+    if base_dir is None:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+
+    monitor_pyw_path = os.path.join(base_dir, "autostart_monitor.pyw")
+    if not os.path.isfile(monitor_pyw_path):
+        monitor_pyw_path = os.path.join(base_dir, "autostart_monitor.py")
+    if not os.path.isfile(monitor_pyw_path):
+        return False
+
+    my_pid = os.getpid()
+    running_py_monitors = []
+    legacy_exe_running = False
+    legacy_exe_exists = os.path.isfile(os.path.join(base_dir, "autostart_monitor.exe"))
+
+    if psutil is not None:
+        for p in psutil.process_iter(['pid', 'name', 'cmdline', 'exe']):
+            try:
+                if p.info['pid'] == my_pid:
+                    continue
+                p_name = (p.info.get('name') or '').lower()
+                p_exe = os.path.basename(p.info.get('exe') or '').lower()
+                cmdline = p.info.get('cmdline') or []
+                cmd_str = ' '.join(cmdline).lower()
+
+                if p_name == 'autostart_monitor.exe' or p_exe == 'autostart_monitor.exe' or (
+                    'autostart_monitor.exe' in cmd_str and 'python' not in p_name
+                ):
+                    legacy_exe_running = True
+                elif ('python' in p_name or p_name in ('py.exe', 'pyw.exe')) and (
+                    'autostart_monitor.pyw' in cmd_str or 'autostart_monitor.py' in cmd_str
+                ):
+                    running_py_monitors.append(p)
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                pass
+
+    if not force_restart:
+        # Beim normalen Start nur eingreifen, wenn noch die alte autostart_monitor.exe aktiv/vorhanden ist
+        if not ((legacy_exe_running or legacy_exe_exists) and (legacy_exe_running or not running_py_monitors)):
+            return False
+
+    # Falls bereits alte Instanzen von autostart_monitor.pyw / .py laufen, diese beenden
+    if running_py_monitors and psutil is not None:
+        for p in running_py_monitors:
+            try:
+                p.terminate()
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                pass
+        try:
+            _, alive = psutil.wait_procs(running_py_monitors, timeout=3)
+            for p in alive:
+                try:
+                    p.kill()
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    pass
+            if alive:
+                psutil.wait_procs(alive, timeout=1)
+        except Exception:
+            pass
+
+    # Neue Instanz von autostart_monitor.pyw entkoppelt starten
+    pythonw_exe = _get_pythonw_exe()
+    creation_flags = 0
+    startupinfo = None
+    if os.name == 'nt':
+        creation_flags = (
+            getattr(subprocess, 'DETACHED_PROCESS', 0x00000008) |
+            getattr(subprocess, 'CREATE_NEW_PROCESS_GROUP', 0x00000200)
+        )
+        startupinfo = subprocess.STARTUPINFO()
+        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        startupinfo.wShowWindow = 1  # SW_SHOWNORMAL
+
+    subprocess.Popen(
+        [pythonw_exe, monitor_pyw_path],
+        cwd=base_dir,
+        creationflags=creation_flags,
+        startupinfo=startupinfo,
+        close_fds=True
+    )
+    return True
+
+
 def _perform_app_update_internal(update_source='release', replace_dict=False, requested_tag=''):
     import zipfile
     import shutil
@@ -4926,6 +5043,16 @@ def _perform_app_update_internal(update_source='release', replace_dict=False, re
         # Temporäres Verzeichnis aufräumen
         shutil.rmtree(update_temp_dir, ignore_errors=True)
 
+        # h) autostart_monitor.pyw (App3) mit dem aktualisierten Code (neu) starten:
+        #    Falls App3 bereits läuft, wird der alte Prozess beendet und neu gestartet.
+        #    App3 prüft beim Start auf eine evtl. noch laufende autostart_monitor.exe (App1),
+        #    beendet diese, löscht sie aus dem Installationsordner und übernimmt die Kontrolle über App2.
+        try:
+            if _start_or_restart_monitor_pyw(base_dir=base_dir, force_restart=True):
+                updated_items.append("autostart_monitor.pyw (neu gestartet)")
+        except Exception as mon_err:
+            print(f"Hinweis beim Starten/Neustarten von autostart_monitor.pyw: {mon_err}")
+
         # 6. Verzögertes sauberes Beenden des Webservers + Schließen des CMD-Fensters
         #    (autostart_monitor.py startet die App innerhalb von max. 60s in einem neuen CMD-Fenster neu)
         def delayed_server_exit():
@@ -4939,7 +5066,7 @@ def _perform_app_update_internal(update_source='release', replace_dict=False, re
             except Exception:
                 pass
 
-            time.sleep(1.5)
+            time.sleep(2.0)
             try:
                 update_log(f"Update auf {version_label} installiert. Beende Prozess für Neustart durch autostart_monitor...")
             except Exception:
@@ -5009,14 +5136,14 @@ def _perform_app_update_internal(update_source='release', replace_dict=False, re
                     except Exception:
                         pass
 
-                # Alle gefundenen cmd.exe-Prozesse hart beenden
+                # Alle gefundenen cmd.exe-Prozesse hart beenden (ohne /T, damit die entkoppelte autostart_monitor.pyw unberührt bleibt)
                 for c_pid in cmd_pids:
                     try:
                         psutil.Process(c_pid).kill()
                     except Exception:
                         try:
                             subprocess.Popen(
-                                ["taskkill", "/F", "/PID", str(c_pid), "/T"],
+                                ["taskkill", "/F", "/PID", str(c_pid)],
                                 stdout=subprocess.DEVNULL,
                                 stderr=subprocess.DEVNULL,
                                 creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0x08000000)
@@ -6206,6 +6333,15 @@ def auto_update_scheduler_thread():
 if __name__ == '__main__':
     mp.freeze_support()
     init_db()
+
+    # Falls nach einem Update von einer älteren Version noch die alte autostart_monitor.exe (App1)
+    # läuft oder im Installationsordner existiert, wird autostart_monitor.pyw (App3) gestartet,
+    # damit diese App1 automatisch beendet, löscht und die Überwachung übernimmt.
+    try:
+        if _start_or_restart_monitor_pyw(force_restart=False):
+            print("Migration: autostart_monitor.pyw gestartet, um autostart_monitor.exe abzulösen.")
+    except Exception as e:
+        print(f"Hinweis bei der Prüfung auf autostart_monitor.exe: {e}")
     
     # Run migration/pruning on startup to enforce the new 50% limit
     try:

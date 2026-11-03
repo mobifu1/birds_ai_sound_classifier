@@ -35,7 +35,7 @@ except ImportError:
     import psutil
 
 TARGET_APP = "birds_ai_sound_classifier.py"
-MONITOR_VERSION = "V1.1"
+MONITOR_VERSION = "V1.2"
 APP_DIR = os.path.dirname(os.path.abspath(sys.executable)) if getattr(sys, "frozen", False) else os.path.dirname(os.path.abspath(__file__))
 
 class MonitorApp:

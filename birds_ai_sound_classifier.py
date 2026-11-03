@@ -4784,8 +4784,31 @@ def _start_or_restart_monitor_pyw(base_dir=None, force_restart=True):
         base_dir = os.path.dirname(os.path.abspath(__file__))
 
     monitor_pyw_path = os.path.join(base_dir, "autostart_monitor.pyw")
-    if not os.path.isfile(monitor_pyw_path):
-        monitor_pyw_path = os.path.join(base_dir, "autostart_monitor.py")
+    monitor_py_path = os.path.join(base_dir, "autostart_monitor.py")
+
+    # Falls nach einem Update von einer älteren Version autostart_monitor.pyw / .py
+    # noch nicht im Installationsordner liegen, diese automatisch von GitHub nachladen
+    for fname, fpath in (("autostart_monitor.pyw", monitor_pyw_path), ("autostart_monitor.py", monitor_py_path)):
+        if not os.path.isfile(fpath):
+            try:
+                raw_url = f"https://raw.githubusercontent.com/mobifu1/birds_ai_sound_classifier/main/{fname}"
+                resp = requests.get(raw_url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=15)
+                if resp.status_code == 200 and "TARGET_APP" in resp.text:
+                    raw_bytes = resp.content
+                    if os.name == 'nt':
+                        raw_bytes = raw_bytes.replace(b'\r\n', b'\n').replace(b'\n', b'\r\n')
+                    with open(fpath, 'wb') as f:
+                        f.write(raw_bytes)
+                    print(f"Migration: '{fname}' erfolgreich von GitHub heruntergeladen.")
+            except Exception as dl_err:
+                print(f"Hinweis beim Nachladen von '{fname}': {dl_err}")
+
+    if not os.path.isfile(monitor_pyw_path) and os.path.isfile(monitor_py_path):
+        try:
+            import shutil
+            shutil.copy2(monitor_py_path, monitor_pyw_path)
+        except Exception:
+            monitor_pyw_path = monitor_py_path
     if not os.path.isfile(monitor_pyw_path):
         return False
 
@@ -6335,8 +6358,9 @@ if __name__ == '__main__':
     init_db()
 
     # Falls nach einem Update von einer älteren Version noch die alte autostart_monitor.exe (App1)
-    # läuft oder im Installationsordner existiert, wird autostart_monitor.pyw (App3) gestartet,
-    # damit diese App1 sofort automatisch beendet, löscht und die Überwachung übernimmt.
+    # läuft oder im Installationsordner existiert (oder autostart_monitor.pyw noch fehlt),
+    # wird autostart_monitor.pyw (App3) ggf. nachgeladen und gestartet, damit App3 die alte App1
+    # sofort automatisch beendet, löscht und die Überwachung übernimmt.
     try:
         if _start_or_restart_monitor_pyw(force_restart=False):
             print("Migration: autostart_monitor.pyw gestartet, um autostart_monitor.exe abzulösen.")

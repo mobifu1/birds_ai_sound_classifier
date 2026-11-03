@@ -4839,26 +4839,25 @@ def _start_or_restart_monitor_pyw(base_dir=None, force_restart=True):
         except Exception:
             pass
 
-    # Neue Instanz von autostart_monitor.pyw entkoppelt starten
-    pythonw_exe = _get_pythonw_exe()
-    creation_flags = 0
-    startupinfo = None
-    if os.name == 'nt':
-        creation_flags = (
-            getattr(subprocess, 'DETACHED_PROCESS', 0x00000008) |
-            getattr(subprocess, 'CREATE_NEW_PROCESS_GROUP', 0x00000200)
-        )
-        startupinfo = subprocess.STARTUPINFO()
-        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-        startupinfo.wShowWindow = 1  # SW_SHOWNORMAL
+    # Neue Instanz von autostart_monitor.pyw starten (unter Windows primär via os.startfile / Windows-Shell,
+    # exakt wie beim manuellen Doppelklick im Explorer, völlig losgelöst von der Konsole)
+    launched = False
+    if os.name == 'nt' and hasattr(os, 'startfile'):
+        try:
+            os.startfile(monitor_pyw_path)
+            launched = True
+        except Exception:
+            launched = False
 
-    subprocess.Popen(
-        [pythonw_exe, monitor_pyw_path],
-        cwd=base_dir,
-        creationflags=creation_flags,
-        startupinfo=startupinfo,
-        close_fds=True
-    )
+    if not launched:
+        pythonw_exe = _get_pythonw_exe()
+        creation_flags = getattr(subprocess, 'CREATE_NEW_PROCESS_GROUP', 0x00000200) if os.name == 'nt' else 0
+        subprocess.Popen(
+            [pythonw_exe, monitor_pyw_path],
+            cwd=base_dir,
+            creationflags=creation_flags,
+            close_fds=True
+        )
     return True
 
 
@@ -5043,18 +5042,10 @@ def _perform_app_update_internal(update_source='release', replace_dict=False, re
         # Temporäres Verzeichnis aufräumen
         shutil.rmtree(update_temp_dir, ignore_errors=True)
 
-        # h) autostart_monitor.pyw (App3) mit dem aktualisierten Code (neu) starten:
-        #    Falls App3 bereits läuft, wird der alte Prozess beendet und neu gestartet.
-        #    App3 prüft beim Start auf eine evtl. noch laufende autostart_monitor.exe (App1),
-        #    beendet diese, löscht sie aus dem Installationsordner und übernimmt die Kontrolle über App2.
-        try:
-            if _start_or_restart_monitor_pyw(base_dir=base_dir, force_restart=True):
-                updated_items.append("autostart_monitor.pyw (neu gestartet)")
-        except Exception as mon_err:
-            print(f"Hinweis beim Starten/Neustarten von autostart_monitor.pyw: {mon_err}")
+        if os.path.isfile(os.path.join(base_dir, "autostart_monitor.pyw")):
+            updated_items.append("autostart_monitor.pyw (wird neu gestartet)")
 
-        # 6. Verzögertes sauberes Beenden des Webservers + Schließen des CMD-Fensters
-        #    (autostart_monitor.py startet die App innerhalb von max. 60s in einem neuen CMD-Fenster neu)
+        # 6. Verzögertes sauberes Beenden des Webservers + Neustart von autostart_monitor.pyw + Schließen des CMD-Fensters
         def delayed_server_exit():
             # Konsolen-Signale (CTRL+C / CTRL+BREAK) während des Update-Shutdowns ignorieren,
             # damit der Hauptthread nicht vorzeitig abbricht und cmd.exe nicht "Batchvorgang abbrechen (J/N)?" fragt
@@ -5066,7 +5057,7 @@ def _perform_app_update_internal(update_source='release', replace_dict=False, re
             except Exception:
                 pass
 
-            time.sleep(2.0)
+            time.sleep(1.5)
             try:
                 update_log(f"Update auf {version_label} installiert. Beende Prozess für Neustart durch autostart_monitor...")
             except Exception:
@@ -5090,6 +5081,15 @@ def _perform_app_update_internal(update_source='release', replace_dict=False, re
                     zc.close()
             except Exception as e:
                 print(f"Fehler beim Beenden von mDNS/Zeroconf: {e}")
+
+            # autostart_monitor.pyw (App3) mit dem aktualisierten Code (neu) starten:
+            # Falls App3 bereits läuft, wird der alte Prozess beendet und neu gestartet.
+            # App3 prüft beim Start auf eine evtl. noch laufende autostart_monitor.exe (App1),
+            # beendet diese, löscht sie aus dem Installationsordner und startet anschließend App2 neu.
+            try:
+                _start_or_restart_monitor_pyw(base_dir=base_dir, force_restart=True)
+            except Exception as mon_err:
+                print(f"Hinweis beim Starten/Neustarten von autostart_monitor.pyw: {mon_err}")
 
             # Eltern-CMD-Fenster (start.bat -> inkl. Schutz gegen "Batchvorgang abbrechen (J/N)?") zuverlässig schließen,
             # damit das alte Konsolenfenster nicht offen stehen bleibt
@@ -6333,15 +6333,6 @@ def auto_update_scheduler_thread():
 if __name__ == '__main__':
     mp.freeze_support()
     init_db()
-
-    # Falls nach einem Update von einer älteren Version noch die alte autostart_monitor.exe (App1)
-    # läuft oder im Installationsordner existiert, wird autostart_monitor.pyw (App3) gestartet,
-    # damit diese App1 automatisch beendet, löscht und die Überwachung übernimmt.
-    try:
-        if _start_or_restart_monitor_pyw(force_restart=False):
-            print("Migration: autostart_monitor.pyw gestartet, um autostart_monitor.exe abzulösen.")
-    except Exception as e:
-        print(f"Hinweis bei der Prüfung auf autostart_monitor.exe: {e}")
     
     # Run migration/pruning on startup to enforce the new 50% limit
     try:

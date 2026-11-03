@@ -36,7 +36,7 @@ except ImportError:
 
 TARGET_APP = "birds_ai_sound_classifier.py"
 MONITOR_VERSION = "V1.1"
-APP_DIR = os.path.dirname(os.path.abspath(__file__))
+APP_DIR = os.path.dirname(os.path.abspath(sys.executable)) if getattr(sys, "frozen", False) else os.path.dirname(os.path.abspath(__file__))
 
 class MonitorApp:
     def __init__(self, root):
@@ -234,22 +234,15 @@ class MonitorApp:
     def cleanup_legacy_exe_monitor(self):
         """Prüft, ob noch ältere Monitor-Prozesse oder die alte 'autostart_monitor.exe' (App1)
         laufen bzw. im Installationsordner existieren, beendet diese und löscht 'autostart_monitor.exe'."""
+        if getattr(sys, "frozen", False):
+            return
+
         my_pid = os.getpid()
-        my_ancestor_pids = set()
+        my_launcher_pids = set()
         try:
-            my_proc = psutil.Process(my_pid)
-            for anc in my_proc.parents():
-                my_ancestor_pids.add(anc.pid)
-        except Exception:
-            pass
-        try:
-            curr = psutil.Process(my_pid)
-            for _ in range(6):
-                ppid = curr.ppid()
-                if not ppid or ppid <= 0:
-                    break
-                my_ancestor_pids.add(ppid)
-                curr = psutil.Process(ppid)
+            parent_proc = psutil.Process(my_pid).parent()
+            if parent_proc and parent_proc.name().lower() in ('py.exe', 'pyw.exe'):
+                my_launcher_pids.add(parent_proc.pid)
         except Exception:
             pass
 
@@ -262,16 +255,17 @@ class MonitorApp:
         for p in psutil.process_iter(['pid', 'name', 'cmdline', 'exe']):
             try:
                 pid = p.info['pid']
-                if pid == my_pid or pid in my_ancestor_pids:
+                if pid == my_pid:
                     continue
                 p_name = (p.info.get('name') or '').lower()
                 p_exe = os.path.basename(p.info.get('exe') or '').lower()
                 cmdline = p.info.get('cmdline') or []
                 cmd_str = ' '.join(cmdline).lower()
 
+                # App1 (autostart_monitor.exe) IMMER erfassen, auch wenn sie Großelternprozess ist
                 if p_name == legacy_exe_name or p_exe == legacy_exe_name or (legacy_exe_name in cmd_str and "python" not in p_name):
                     legacy_exe_procs.append(p)
-                elif ('python' in p_name or p_name in ('py.exe', 'pyw.exe')) and (
+                elif pid not in my_launcher_pids and ('python' in p_name or p_name in ('py.exe', 'pyw.exe')) and (
                     'autostart_monitor.pyw' in cmd_str or 'autostart_monitor.py' in cmd_str
                 ):
                     old_py_monitors.append(p)

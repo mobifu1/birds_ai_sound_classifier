@@ -165,6 +165,19 @@
                 <a href="/manual_pdf" target="_blank" class="btn btn-blue" style="text-decoration: none;">❓ Hilfe</a>
             </div>
             <div id="app-update-result" style="margin-top: 15px; display: none; padding: 10px; border-radius: 5px;"></div>
+            <!-- Community Versionen Tabelle -->
+            <div id="community-versions-box" style="margin-top: 15px; background: #222; padding: 15px; border-radius: 6px; border: 1px solid #444;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="font-size: 1.1rem;">🌐</span>
+                        <strong style="color: #4CAF50; font-size: 1rem;">Community Versionsverteilung</strong>
+                    </div>
+                    <button type="button" class="btn btn-gray" style="padding: 4px 10px; font-size: 0.8rem; margin: 0; width: auto;" onclick="loadCommunityVersions()">🔄 Aktualisieren</button>
+                </div>
+                <div id="community-versions-content" style="font-size: 0.9rem; color: #ccc;">
+                    <span style="color: #888;">Lade Community-Statistiken...</span>
+                </div>
+            </div>
             <div class="control-row" style="margin-top: 15px; border-top: 1px solid #444; padding-top: 15px;">
                 <div style="display: flex; align-items: center; gap: 10px; width: 100%;">
                     <label style="margin: 0; color: #ccc;">Exportiere Wochen-Statistik als CSV für das Jahr:</label>
@@ -548,6 +561,71 @@
         function dbBackup() {
             fetch('/api/control/dbbackup', { method: 'POST' }).then(r => r.json()).then(d => alert(d.msg));
         }
+
+        function loadCommunityVersions() {
+            const container = document.getElementById('community-versions-content');
+            if (!container) return;
+            container.innerHTML = '<span style="color: #aaa;">Lade Community-Statistiken...</span>';
+
+            fetch('/api/community_versions')
+                .then(r => r.json())
+                .then(res => {
+                    if (!res.success || !res.versions || Object.keys(res.versions).length === 0) {
+                        container.innerHTML = '<span style="color: #888;">Noch keine Community-Daten erfasst oder offline.</span>';
+                        return;
+                    }
+
+                    const versions = res.versions;
+                    const current = res.current_version || '';
+
+                    // Neueste Versionen zuerst
+                    const sortedKeys = Object.keys(versions).sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
+
+                    let totalCount = 0;
+                    sortedKeys.forEach(k => { totalCount += Number(versions[k]) || 0; });
+
+                    let html = '<table style="width: 100%; border-collapse: collapse; margin-top: 5px;">';
+                    html += '<tr style="border-bottom: 1px solid #444; color: #888; font-size: 0.8rem; text-align: left;">';
+                    html += '<th style="padding: 6px 8px;">Software Version</th>';
+                    html += '<th style="padding: 6px 8px; text-align: center;">Anteil</th>';
+                    html += '<th style="padding: 6px 8px; text-align: right;">Installationen</th>';
+                    html += '</tr>';
+
+                    sortedKeys.forEach(v => {
+                        const count = Number(versions[v]) || 0;
+                        const isCurrent = (v === current);
+                        const pct = totalCount > 0 ? Math.round((count / totalCount) * 100) : 0;
+
+                        const rowStyle = isCurrent 
+                            ? 'background: rgba(76, 175, 80, 0.15); font-weight: bold; color: #4CAF50;' 
+                            : 'color: #ddd;';
+                        const badge = isCurrent 
+                            ? ' <span style="background: #4CAF50; color: #000; font-size: 0.7rem; padding: 2px 6px; border-radius: 3px; margin-left: 6px;">Deine Version</span>' 
+                            : '';
+
+                        html += `<tr style="border-bottom: 1px solid #333; ${rowStyle}">`;
+                        html += `<td style="padding: 8px;">${v}${badge}</td>`;
+                        html += `<td style="padding: 8px; text-align: center;">${pct}%</td>`;
+                        html += `<td style="padding: 8px; text-align: right; font-weight: bold;">${count}</td>`;
+                        html += '</tr>';
+                    });
+
+                    html += '<tr style="color: #888; font-size: 0.8rem;">';
+                    html += '<td style="padding: 8px;">Gesamt erfasste Updates</td>';
+                    html += '<td></td>';
+                    html += `<td style="padding: 8px; text-align: right; font-weight: bold;">${totalCount}</td>`;
+                    html += '</tr>';
+                    html += '</table>';
+
+                    container.innerHTML = html;
+                })
+                .catch(() => {
+                    container.innerHTML = '<span style="color: #ff9800;">Community-Daten konnten nicht geladen werden (Offline).</span>';
+                });
+        }
+
+        // Beim Laden der Einstellungen abrufen
+        loadCommunityVersions();
 
         let latestGithubReleaseTag = '';
 

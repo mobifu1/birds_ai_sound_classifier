@@ -6306,12 +6306,22 @@ def check_dictionary_route():
 def api_community_versions():
     """Gibt die Community-Versionsverteilung von KVdb.io zurueck."""
     try:
-        url = f"{KVDB_BUCKET_URL}/?format=json"
+        url = f"{KVDB_BUCKET_URL}/?values=true&format=json"
         resp = requests.get(url, timeout=4)
         if resp.status_code == 200:
             data = resp.json()
-            if isinstance(data, dict):
-                return jsonify({'success': True, 'versions': data, 'current_version': APP_VERSION})
+            versions_dict = {}
+            if isinstance(data, list):
+                for item in data:
+                    if isinstance(item, list) and len(item) == 2:
+                        try:
+                            val = int(item[1])
+                        except Exception:
+                            val = item[1]
+                        versions_dict[str(item[0])] = val
+            elif isinstance(data, dict):
+                versions_dict = data
+            return jsonify({'success': True, 'versions': versions_dict, 'current_version': APP_VERSION})
     except Exception:
         pass
     return jsonify({'success': False, 'versions': {}, 'current_version': APP_VERSION})
@@ -6320,15 +6330,15 @@ def api_community_versions():
 def report_version_update_thread():
     """Prueft beim Start, ob die aktuelle APP_VERSION neuer als die zuletzt gemeldete ist, und meldet das Update an KVdb.io."""
     try:
-        time.sleep(5)
+        time.sleep(3)
         s = load_settings()
         last_reported = s.get("last_reported_version")
         if last_reported != APP_VERSION:
             try:
                 import urllib.parse
                 quoted_ver = urllib.parse.quote(APP_VERSION, safe='')
-                url = f"{KVDB_BUCKET_URL}/{quoted_ver}?action=increment"
-                resp = requests.post(url, timeout=5)
+                url = f"{KVDB_BUCKET_URL}/{quoted_ver}"
+                resp = requests.patch(url, data="+1", timeout=5)
                 if resp.status_code in [200, 201]:
                     save_setting("last_reported_version", APP_VERSION)
                     update_log(f"Community-Statistik: Version {APP_VERSION} erfolgreich gemeldet.")

@@ -44,8 +44,9 @@ from birdnetlib import Recording
 START_TIME = time.time()
 
 # --- KONFIGURATION ---
-APP_VERSION = "V1.4.1-RC1"
-KVDB_BUCKET_URL = "https://kvdb.io/3qwqKQXZ432J9gcw92qbk3"
+APP_VERSION = "V1.4.1-RC2"
+COUNTERAPI_URL = "https://api.counterapi.dev/v2/birds_ai_sound_classifier/birds_ai_sound_classifier"
+COUNTERAPI_TOKEN = "ut_lzriKTlSuUcOse5rqmKUp23OoXKwpbA0rYiMDHQm"
 VERSION_YEAR = "2026"
 DB_FILE = "birds_audio_stats.db"
 SETTINGS_FILE = "settings.json"
@@ -6304,23 +6305,17 @@ def check_dictionary_route():
 
 @app.route('/api/community_versions')
 def api_community_versions():
-    """Gibt die Community-Versionsverteilung von KVdb.io zurueck."""
+    """Gibt die Community-Versionsverteilung von CounterAPI.dev zurueck."""
     try:
-        url = f"{KVDB_BUCKET_URL}/?values=true&format=json"
-        resp = requests.get(url, timeout=4)
+        headers = {"Authorization": f"Bearer {COUNTERAPI_TOKEN}"}
+        resp = requests.get(COUNTERAPI_URL, headers=headers, timeout=5)
         if resp.status_code == 200:
-            data = resp.json()
-            versions_dict = {}
-            if isinstance(data, list):
-                for item in data:
-                    if isinstance(item, list) and len(item) == 2:
-                        try:
-                            val = int(item[1])
-                        except Exception:
-                            val = item[1]
-                        versions_dict[str(item[0])] = val
-            elif isinstance(data, dict):
-                versions_dict = data
+            payload = resp.json()
+            data = payload.get("data", {}) if isinstance(payload, dict) else {}
+            up_count = int(data.get("up_count", 0) or 0)
+            down_count = int(data.get("down_count", 0) or 0)
+            count = max(0, up_count - down_count)
+            versions_dict = {APP_VERSION: count}
             return jsonify({'success': True, 'versions': versions_dict, 'current_version': APP_VERSION})
     except Exception:
         pass
@@ -6328,17 +6323,16 @@ def api_community_versions():
 
 
 def report_version_update_thread():
-    """Prueft beim Start, ob die aktuelle APP_VERSION neuer als die zuletzt gemeldete ist, und meldet das Update an KVdb.io."""
+    """Prueft beim Start, ob die aktuelle APP_VERSION neuer als die zuletzt gemeldete ist, und meldet das Update an CounterAPI.dev."""
     try:
         time.sleep(3)
         s = load_settings()
         last_reported = s.get("last_reported_version")
         if last_reported != APP_VERSION:
             try:
-                import urllib.parse
-                quoted_ver = urllib.parse.quote(APP_VERSION, safe='')
-                url = f"{KVDB_BUCKET_URL}/{quoted_ver}"
-                resp = requests.patch(url, data="+1", timeout=5)
+                url = f"{COUNTERAPI_URL}/up"
+                headers = {"Authorization": f"Bearer {COUNTERAPI_TOKEN}"}
+                resp = requests.get(url, headers=headers, timeout=5)
                 if resp.status_code in [200, 201]:
                     save_setting("last_reported_version", APP_VERSION)
                     update_log(f"Community-Statistik: Version {APP_VERSION} erfolgreich gemeldet.")

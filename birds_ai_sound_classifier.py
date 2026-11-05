@@ -44,7 +44,8 @@ from birdnetlib import Recording
 START_TIME = time.time()
 
 # --- KONFIGURATION ---
-APP_VERSION = "V1.4.0"
+APP_VERSION = "V1.4.1-RC1"
+KVDB_BUCKET_URL = "https://kvdb.io/3qwqKQXZ432J9gcw92qbk3"
 VERSION_YEAR = "2026"
 DB_FILE = "birds_audio_stats.db"
 SETTINGS_FILE = "settings.json"
@@ -1186,7 +1187,7 @@ def settings_page():
         except Exception:
             pass
     pa.terminate()
-    return render_template('settings.html', s=s, mics=mics, queue_size=queue_size)
+    return render_template('settings.html', s=s, mics=mics, queue_size=queue_size, version=APP_VERSION, year=VERSION_YEAR)
 
 def create_chart(title, labels, values):
     height = max(6, len(labels) * 0.4)
@@ -6301,6 +6302,42 @@ def check_dictionary_route():
         return jsonify({'success': True, 'msg': info_msg + 'Folgende mögliche Probleme wurden gefunden:\n\n' + '\n'.join(issues)})
 
 
+@app.route('/api/community_versions')
+def api_community_versions():
+    """Gibt die Community-Versionsverteilung von KVdb.io zurueck."""
+    try:
+        url = f"{KVDB_BUCKET_URL}/?format=json"
+        resp = requests.get(url, timeout=4)
+        if resp.status_code == 200:
+            data = resp.json()
+            if isinstance(data, dict):
+                return jsonify({'success': True, 'versions': data, 'current_version': APP_VERSION})
+    except Exception:
+        pass
+    return jsonify({'success': False, 'versions': {}, 'current_version': APP_VERSION})
+
+
+def report_version_update_thread():
+    """Prueft beim Start, ob die aktuelle APP_VERSION neuer als die zuletzt gemeldete ist, und meldet das Update an KVdb.io."""
+    try:
+        time.sleep(5)
+        s = load_settings()
+        last_reported = s.get("last_reported_version")
+        if last_reported != APP_VERSION:
+            try:
+                import urllib.parse
+                quoted_ver = urllib.parse.quote(APP_VERSION, safe='')
+                url = f"{KVDB_BUCKET_URL}/{quoted_ver}?action=increment"
+                resp = requests.post(url, timeout=5)
+                if resp.status_code in [200, 201]:
+                    save_setting("last_reported_version", APP_VERSION)
+                    update_log(f"Community-Statistik: Version {APP_VERSION} erfolgreich gemeldet.")
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+
 def log_reader_thread():
     while True:
         if log_queue_global is not None:
@@ -6409,6 +6446,10 @@ if __name__ == '__main__':
     # Start daily auto-update scheduler thread (02:00 AM check & install)
     t_auto_upd = threading.Thread(target=auto_update_scheduler_thread, daemon=True)
     t_auto_upd.start()
+
+    # Start thread to report updated app version to community stats if changed
+    t_comm_upd = threading.Thread(target=report_version_update_thread, daemon=True)
+    t_comm_upd.start()
     
     # Start audio process
     monitor_process = mp.Process(target=run_audio_process, args=(

@@ -99,6 +99,7 @@
                 <label for="species-select" style="font-weight: bold; color: white;">Vogelart auswählen:</label>
                 <select name="species" id="species-select" class="species-select" onchange="this.form.submit()">
                     <option value="" {% if not selected_species %}selected{% endif %}>-- Bitte wählen --</option>
+                    <option value="Wartebereich" {% if selected_species == 'Wartebereich' %}selected{% endif %}>Wartebereich</option>
                     {% for sp in all_species %}
                     <option value="{{ sp }}" {% if sp == selected_species %}selected{% endif %}>{{ sp }}</option>
                     {% endfor %}
@@ -117,7 +118,361 @@
             </form>
         </div>
 
-        {% if selected_species %}
+        {% if selected_species == 'Wartebereich' %}
+            <div style="margin-top: 20px; background: #263238; padding: 15px; border-radius: 8px; border: 1px solid #37474f;">
+                <h3 style="margin-top: 0; color: #81d4fa;">Wartebereich &ndash; Manuelle Überprüfung</h3>
+                <p style="color: #aaa; margin-bottom: 15px;">
+                    Hier befinden sich Aufnahmen von Vogelarten, die auf der Blockliste gelandet sind und in der <code>dictionary.json</code> als deutscher Vogel angelegt sind.
+                    Sie können jede Aufnahme über das Frequenz-/Phasen-/Amplitudenspektrum sowie per Gehör prüfen und anschließend ablehnen, akzeptieren (Übernahme in Datenbank, Archiv &amp; BirdWeather) oder herunterladen.
+                </p>
+
+                <div style="font-size: 1.2em; font-weight: bold; margin: 10px 0 15px 0; color: #81d4fa;">
+                    Aufnahmen im Wartebereich: {{ waiting_files|length }}
+                </div>
+
+                {% if waiting_files %}
+                <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px; max-height: 260px; overflow-y: auto; padding: 5px;">
+                    {% for item in waiting_files %}
+                    <button class="wav-btn" onclick="loadWaitingSpectrogram('{{ item.filename }}')" style="padding: 8px 12px; background: #37474f; color: white; border: 1px solid #546e7a; border-radius: 4px; cursor: pointer; transition: background 0.2s; text-align: left;">
+                        &#9203; <strong>{{ item.species }}</strong> | {{ item.timestamp }} | {{ item.confidence_pct }}% | {{ item.snr }} dB | Geo: {{ item.geo_prob_pct }}%<br>
+                        <span style="font-size: 0.82em; color: #b0bec5;">&#128190; {{ item.filename }}</span>
+                    </button>
+                    {% endfor %}
+                </div>
+
+                <div id="spectrogram-container" style="display: none; text-align: center; margin-top: 20px;">
+                    <h4 id="spectrogram-title" style="color: #81d4fa; margin-bottom: 15px;"></h4>
+
+                    <div style="margin-bottom: 15px; display: flex; justify-content: center; gap: 10px;">
+                        <button id="btn-freq" onclick="switchWaitingSpectrum('freq')" style="padding: 6px 12px; background: #4caf50; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; transition: background 0.2s;">Frequenzspektrum</button>
+                        <button id="btn-phase" onclick="switchWaitingSpectrum('phase')" style="padding: 6px 12px; background: #37474f; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; transition: background 0.2s;">Phasenstabilität</button>
+                    </div>
+
+                    <div id="loading-text" style="color: #aaa; margin-bottom: 10px; font-style: italic;">Spektrum wird generiert (kann einige Sekunden dauern)...</div>
+                    <div id="image-wrapper" style="position: relative; display: inline-block; max-width: 100%;">
+                        <img id="spectrogram-img" src="" alt="Spectrogramm" style="max-width: 100%; border-radius: 8px; border: 1px solid #333; margin-bottom: 15px; display: none;" onload="document.getElementById('loading-text').style.display='none'; this.style.display='block';">
+                        <div id="markers-container" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; overflow: hidden; border-radius: 8px;"></div>
+                    </div>
+                    <br>
+                    <div id="loading-text-waveform" style="color: #aaa; margin-bottom: 10px; font-style: italic; display: none;">Amplitudenspektrum wird generiert...</div>
+                    <img id="waveform-img" src="" alt="Amplitudenspektrum" style="max-width: 100%; border-radius: 8px; border: 1px solid #333; margin-bottom: 15px; display: none;" onload="document.getElementById('loading-text-waveform').style.display='none'; this.style.display='inline';">
+                    <br>
+                    <audio id="audio-player" controls style="width: 100%; max-width: 600px; margin-top: 10px;">
+                        <source id="audio-source" src="" type="audio/wav">
+                        Ihr Browser unterstützt das Audio-Element nicht.
+                    </audio>
+                    <div style="margin-top: 15px; display: flex; justify-content: center; gap: 10px; flex-wrap: wrap;">
+                        <button id="reject-waiting-btn" style="padding: 9px 16px; background: #f44336; color: white; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; transition: background 0.2s; display: none;" onclick="rejectSelectedWaitingWav()">1. Ablehnen (Löschen)</button>
+                        <button id="accept-waiting-btn" style="padding: 9px 16px; background: #4caf50; color: white; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; transition: background 0.2s; display: none;" onclick="acceptSelectedWaitingWav()">2. Akzeptieren (DB, Archiv &amp; BirdWeather)</button>
+                        <button id="download-waiting-btn" style="padding: 9px 16px; background: #0288d1; color: white; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; transition: background 0.2s; display: none;" onclick="downloadSelectedWaitingWav()">3. Soundfile herunterladen</button>
+                    </div>
+                </div>
+
+                <script>
+                    var currentSelectedWaitingWav = null;
+                    var currentSelectedWaitingWavFile = null;
+                    var currentWaitingSpectrumMode = 'freq';
+
+                    let plotLeft = 0, plotBottom = 0, plotWidth = 1, plotHeight = 1, audioDuration = 0;
+                    let plotYMap = [];
+                    let clickState = 0;
+                    let firstClickData = null;
+
+                    function fetchWaitingSpectrogram(url) {
+                        var img = document.getElementById('spectrogram-img');
+                        var loadingText = document.getElementById('loading-text');
+
+                        img.style.display = 'none';
+                        loadingText.style.display = 'block';
+                        resetMarkers();
+
+                        fetch(url)
+                            .then(response => {
+                                if (!response.ok) throw new Error("Netzwerkfehler");
+                                plotLeft = parseFloat(response.headers.get('X-Plot-Left')) || 0.125;
+                                plotBottom = parseFloat(response.headers.get('X-Plot-Bottom')) || 0.11;
+                                plotWidth = parseFloat(response.headers.get('X-Plot-Width')) || 0.775;
+                                plotHeight = parseFloat(response.headers.get('X-Plot-Height')) || 0.77;
+                                audioDuration = parseFloat(response.headers.get('X-Audio-Duration')) || 0;
+                                let ymapStr = response.headers.get('X-Plot-YMap');
+                                plotYMap = ymapStr ? JSON.parse(ymapStr) : [];
+                                return response.blob();
+                            })
+                            .then(blob => {
+                                img.src = URL.createObjectURL(blob);
+                            })
+                            .catch(err => {
+                                console.error("Fehler beim Laden:", err);
+                                loadingText.innerText = "Fehler beim Laden.";
+                            });
+                    }
+
+                    function switchWaitingSpectrum(mode) {
+                        currentWaitingSpectrumMode = mode;
+                        document.getElementById('btn-freq').style.background = (mode === 'freq') ? '#4caf50' : '#37474f';
+                        document.getElementById('btn-phase').style.background = (mode === 'phase') ? '#4caf50' : '#37474f';
+
+                        if (currentSelectedWaitingWav) {
+                            let url = (mode === 'freq') ? "/api/waiting/spectrogram/" : "/api/waiting/phase_spectrogram/";
+                            fetchWaitingSpectrogram(url + encodeURIComponent(currentSelectedWaitingWav));
+                        }
+                    }
+
+                    function loadWaitingSpectrogram(filename) {
+                        var container = document.getElementById('spectrogram-container');
+                        var waveformImg = document.getElementById('waveform-img');
+                        var audio = document.getElementById('audio-player');
+                        var source = document.getElementById('audio-source');
+                        var title = document.getElementById('spectrogram-title');
+                        var loadingTextWaveform = document.getElementById('loading-text-waveform');
+
+                        container.style.display = 'block';
+                        title.innerText = "Ausgewählt: " + filename;
+
+                        waveformImg.style.display = 'none';
+                        loadingTextWaveform.style.display = 'block';
+                        waveformImg.src = "/api/waiting/waveform/" + encodeURIComponent(filename);
+
+                        let url = (currentWaitingSpectrumMode === 'freq') ? "/api/waiting/spectrogram/" : "/api/waiting/phase_spectrogram/";
+                        fetchWaitingSpectrogram(url + encodeURIComponent(filename));
+
+                        let audioUrl = "/api/waiting/audio/" + encodeURIComponent(filename);
+                        source.src = audioUrl;
+                        audio.load();
+
+                        currentSelectedWaitingWav = filename;
+                        currentSelectedWaitingWavFile = null;
+                        if (navigator.canShare) {
+                            let cleanName = filename.split('/').pop();
+                            fetch(audioUrl)
+                                .then(res => res.ok ? res.blob() : null)
+                                .then(blob => {
+                                    if (blob && currentSelectedWaitingWav === filename) {
+                                        currentSelectedWaitingWavFile = new File([blob], cleanName, { type: 'audio/wav' });
+                                    }
+                                })
+                                .catch(() => {});
+                        }
+                        document.getElementById('reject-waiting-btn').style.display = 'inline-block';
+                        document.getElementById('accept-waiting-btn').style.display = 'inline-block';
+                        document.getElementById('download-waiting-btn').style.display = 'inline-block';
+                    }
+
+                    function resetMarkers() {
+                        clickState = 0;
+                        firstClickData = null;
+                        document.getElementById('markers-container').innerHTML = '';
+                    }
+
+                    function createMarker(x, y, text, color) {
+                        let container = document.getElementById('markers-container');
+                        let marker = document.createElement('div');
+                        marker.style.position = 'absolute';
+                        marker.style.left = x + 'px';
+                        marker.style.top = y + 'px';
+                        marker.style.width = '10px';
+                        marker.style.height = '10px';
+                        marker.style.backgroundColor = color;
+                        marker.style.borderRadius = '50%';
+                        marker.style.transform = 'translate(-50%, -50%)';
+                        marker.style.border = '2px solid white';
+                        marker.style.boxShadow = '0 0 5px rgba(0,0,0,0.5)';
+
+                        let label = document.createElement('div');
+                        label.innerText = text;
+                        label.style.position = 'absolute';
+                        label.style.left = '15px';
+                        label.style.top = '-10px';
+                        label.style.backgroundColor = 'rgba(0, 0, 0, 0.8)';
+                        label.style.color = '#fff';
+                        label.style.padding = '4px 8px';
+                        label.style.borderRadius = '4px';
+                        label.style.fontSize = '12px';
+                        label.style.whiteSpace = 'nowrap';
+                        marker.appendChild(label);
+
+                        container.appendChild(marker);
+                        return marker;
+                    }
+
+                    function createLine(x1, y1, x2, y2, text) {
+                        let container = document.getElementById('markers-container');
+                        let length = Math.sqrt((x2-x1)*(x2-x1) + (y2-y1)*(y2-y1));
+                        let angle = Math.atan2(y2-y1, x2-x1) * 180 / Math.PI;
+
+                        let line = document.createElement('div');
+                        line.style.position = 'absolute';
+                        line.style.left = x1 + 'px';
+                        line.style.top = y1 + 'px';
+                        line.style.width = length + 'px';
+                        line.style.height = '2px';
+                        line.style.backgroundColor = '#ffeb3b';
+                        line.style.transformOrigin = '0 0';
+                        line.style.transform = 'rotate(' + angle + 'deg)';
+                        line.style.boxShadow = '0 0 3px rgba(0,0,0,0.5)';
+
+                        let label = document.createElement('div');
+                        label.innerText = text;
+                        label.style.position = 'absolute';
+                        label.style.left = '50%';
+                        label.style.top = '-25px';
+                        label.style.backgroundColor = 'rgba(255, 235, 59, 0.9)';
+                        label.style.color = '#000';
+                        label.style.padding = '4px 8px';
+                        label.style.borderRadius = '4px';
+                        label.style.fontSize = '12px';
+                        label.style.fontWeight = 'bold';
+                        label.style.transformOrigin = 'center';
+                        label.style.transform = 'translateX(-50%) rotate(' + (-angle) + 'deg)';
+
+                        line.appendChild(label);
+                        container.appendChild(line);
+                    }
+
+                    document.getElementById('spectrogram-img').addEventListener('click', function(e) {
+                        if (clickState === 2) {
+                            resetMarkers();
+                            return;
+                        }
+                        const rect = this.getBoundingClientRect();
+                        const offsetX = e.clientX - rect.left;
+                        const offsetY = e.clientY - rect.top;
+
+                        const pLeft = plotLeft * this.clientWidth;
+                        const pWidth = plotWidth * this.clientWidth;
+                        const pTop = (1.0 - (plotBottom + plotHeight)) * this.clientHeight;
+                        const pHeight = plotHeight * this.clientHeight;
+
+                        if (offsetX < pLeft || offsetX > pLeft + pWidth ||
+                            offsetY < pTop || offsetY > pTop + pHeight) {
+                            return;
+                        }
+
+                        let xRel = (offsetX - pLeft) / pWidth;
+                        let yRel = ((pTop + pHeight) - offsetY) / pHeight;
+                        let clickTime = xRel * audioDuration;
+
+                        let clickFreq = 0;
+                        if (plotYMap && plotYMap.length > 0) {
+                            let idx = yRel * (plotYMap.length - 1);
+                            let i = Math.floor(idx);
+                            let frac = idx - i;
+                            if (i < 0) clickFreq = plotYMap[0];
+                            else if (i >= plotYMap.length - 1) clickFreq = plotYMap[plotYMap.length - 1];
+                            else clickFreq = plotYMap[i] + frac * (plotYMap[i+1] - plotYMap[i]);
+                        }
+                        let clickFreqText = Math.round(clickFreq) + " Hz";
+
+                        if (clickState === 0) {
+                            firstClickData = { x: offsetX, y: offsetY, time: clickTime, freq: clickFreqText };
+                            createMarker(offsetX, offsetY, clickFreqText + " | " + clickTime.toFixed(2) + "s", "#4caf50");
+                            clickState = 1;
+                        } else if (clickState === 1) {
+                            let dt = Math.abs(clickTime - firstClickData.time) * 1000;
+                            createMarker(offsetX, offsetY, clickFreqText + " | " + clickTime.toFixed(2) + "s", "#f44336");
+                            createLine(firstClickData.x, firstClickData.y, offsetX, offsetY, "Δt: " + Math.round(dt) + " ms");
+                            clickState = 2;
+                        }
+                    });
+
+                    function triggerBrowserDownload(downloadUrl, cleanName) {
+                        var link = document.createElement('a');
+                        link.href = downloadUrl;
+                        link.download = cleanName;
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                    }
+
+                    async function downloadSelectedWaitingWav() {
+                        if (!currentSelectedWaitingWav) return;
+                        var cleanName = currentSelectedWaitingWav.split('/').pop();
+                        var audioUrl = '/api/waiting/audio/' + encodeURIComponent(currentSelectedWaitingWav);
+                        var downloadUrl = audioUrl + '?download=1';
+                        var isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+                        if (isMobile && navigator.share && navigator.canShare) {
+                            try {
+                                var fileToShare = currentSelectedWaitingWavFile;
+                                if (!fileToShare) {
+                                    var response = await fetch(audioUrl);
+                                    if (response.ok) {
+                                        var blob = await response.blob();
+                                        fileToShare = new File([blob], cleanName, { type: 'audio/wav' });
+                                        currentSelectedWaitingWavFile = fileToShare;
+                                    }
+                                }
+                                if (fileToShare && navigator.canShare({ files: [fileToShare] })) {
+                                    await navigator.share({
+                                        files: [fileToShare],
+                                        title: cleanName
+                                    });
+                                    return;
+                                }
+                            } catch (err) {
+                                if (err && err.name === 'AbortError') {
+                                    return;
+                                }
+                            }
+                        }
+
+                        triggerBrowserDownload(downloadUrl, cleanName);
+                    }
+
+                    function rejectSelectedWaitingWav() {
+                        if (!currentSelectedWaitingWav) return;
+                        if (confirm("Möchten Sie die Aufnahme '" + currentSelectedWaitingWav + "' wirklich ablehnen und aus dem Wartebereich löschen?")) {
+                            fetch('/api/waiting/reject/' + encodeURIComponent(currentSelectedWaitingWav), {
+                                method: 'POST'
+                            })
+                            .then(response => response.json())
+                            .then(data => {
+                                if (data.success) {
+                                    alert(data.msg);
+                                    location.reload();
+                                } else {
+                                    alert("Fehler: " + data.msg);
+                                }
+                            })
+                            .catch(err => {
+                                alert("Fehler beim Ablehnen der Datei.");
+                                console.error(err);
+                            });
+                        }
+                    }
+
+                    function acceptSelectedWaitingWav() {
+                        if (!currentSelectedWaitingWav) return;
+                        if (confirm("Möchten Sie die Aufnahme '" + currentSelectedWaitingWav + "' akzeptieren und in Datenbank, Archiv sowie BirdWeather übernehmen?")) {
+                            fetch('/api/waiting/accept/' + encodeURIComponent(currentSelectedWaitingWav), {
+                                method: 'POST'
+                            })
+                            .then(response => response.json())
+                            .then(data => {
+                                if (data.success) {
+                                    alert(data.msg);
+                                    location.reload();
+                                } else {
+                                    alert("Fehler: " + data.msg);
+                                }
+                            })
+                            .catch(err => {
+                                alert("Fehler beim Akzeptieren der Datei.");
+                                console.error(err);
+                            });
+                        }
+                    }
+                </script>
+                <style>
+                    .wav-btn:hover {
+                        background: #546e7a !important;
+                    }
+                </style>
+                {% else %}
+                <p style="color: #aaa; font-style: italic; margin-top: 10px;">Aktuell befinden sich keine Aufnahmen im Wartebereich.</p>
+                {% endif %}
+            </div>
+        {% elif selected_species %}
             <p>24h-Aktivität für <strong>{{ selected_species }}</strong> über alle aufgezeichneten Daten.</p>
 
             <div style="font-size: 1.5em; font-weight: bold; margin: 15px 0; color: #81d4fa;">

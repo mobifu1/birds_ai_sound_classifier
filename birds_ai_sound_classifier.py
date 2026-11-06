@@ -44,7 +44,7 @@ from birdnetlib import Recording
 START_TIME = time.time()
 
 # --- KONFIGURATION ---
-APP_VERSION = "V1.4.1-RC2"
+APP_VERSION = "V1.4.1-RC3"
 COUNTERAPI_URL = "https://api.counterapi.dev/v2/birds_ai_sound_classifier/birds_ai_sound_classifier"
 COUNTERAPI_TOKEN = "ut_lzriKTlSuUcOse5rqmKUp23OoXKwpbA0rYiMDHQm"
 VERSION_YEAR = "2026"
@@ -64,7 +64,9 @@ CHANNELS = 1
 RATE = 48000 # BirdNET standard is 48kHz
 MIN_CONFIDENCE = 0.3 # Konfidenz-Schwellenwert
 AUDIO_DIR = "audio_temp"
+WAITING_DIR = os.path.join(AUDIO_DIR, "waiting")
 os.makedirs(AUDIO_DIR, exist_ok=True)
+os.makedirs(WAITING_DIR, exist_ok=True)
 os.makedirs(BIRDWEATHER_QUEUE_DIR, exist_ok=True)
 TEMP_WAV = os.path.join(AUDIO_DIR, "temp.wav")
 
@@ -337,6 +339,251 @@ def save_detection(species, confidence, snr=0.0, ts=None, geo_prob=0.0):
         conn.close()
     except Exception as e:
         update_log(f"DB Fehler: {e}")
+
+def has_german_translation_in_dict(eng_species, full_bird_dict=None):
+    if full_bird_dict is None:
+        full_bird_dict = load_dictionary()
+    if eng_species not in full_bird_dict:
+        return False, None
+    entry = full_bird_dict[eng_species]
+    if isinstance(entry, dict):
+        trans = str(entry.get("translation", "")).strip()
+    else:
+        trans = str(entry).strip()
+    if trans != "":
+        return True, trans
+    return False, None
+
+def resolve_eng_and_sci_name(species_de, eng_species="", scientific_name=""):
+    eng_res = str(eng_species or "").strip()
+    sci_res = str(scientific_name or "").strip()
+    full_bird_dict = load_dictionary()
+    if not eng_res and species_de:
+        sp_clean = str(species_de).strip().lower()
+        for k, v in full_bird_dict.items():
+            trans = v.get("translation", "") if isinstance(v, dict) else str(v)
+            if str(trans).strip().lower() == sp_clean or str(k).strip().lower() == sp_clean:
+                eng_res = k
+                break
+    if not eng_res:
+        eng_res = str(species_de or "").strip()
+    if not sci_res and eng_res:
+        try:
+            label_file = getattr(birdnetlib.analyzer, 'LABEL_PATH', '')
+            if label_file and os.path.exists(label_file):
+                eng_low = eng_res.lower()
+                with open(label_file, 'r', encoding='utf-8') as f:
+                    for line in f:
+                        line_s = line.strip()
+                        if '_' in line_s:
+                            s_part, c_part = line_s.split('_', 1)
+                            if c_part.strip().lower() == eng_low:
+                                sci_res = s_part.strip()
+                                break
+        except Exception:
+            pass
+    return eng_res, sci_res
+
+def send_or_queue_birdweather(wav_path, eng_species, scientific_name, confidence, lat, lon, iso_time=None):
+    bw_settings = load_birdweather_settings()
+    birdweather_id = bw_settings.get("birdweather_id", "").strip()
+    birdweather_active = bw_settings.get("birdweather_active", False)
+    if not (birdweather_active and birdweather_id):
+        return
+    if not wav_path or not os.path.exists(wav_path):
+        return
+    flac_data = None
+    if not iso_time:
+        iso_time = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    try:
+        data_sf, samplerate_sf = sf.read(wav_path)
+        buf_sf = io.BytesIO()
+        sf.write(buf_sf, data_sf, samplerate_sf, format='FLAC')
+        flac_data = buf_sf.getvalue()
+
+        soundscape_url = f'https://app.birdweather.com/api/v1/stations/{birdweather_id}/soundscapes?timestamp={iso_time}'
+        resp = requests.post(url=soundscape_url, data=flac_data, timeout=10, headers={'Content-Type': 'audio/flac'})
+        sdata = resp.json()
+        if sdata.get('success'):
+            soundscape_id = sdata['soundscape']['id']
+            det_url = f'https://app.birdweather.com/api/v1/stations/{birdweather_id}/detections'
+            det_data = {
+                'timestamp': iso_time,
+                'lat': lat,
+                'lon': lon,
+                'soundscapeId': soundscape_id,
+                'soundscapeStartTime': 0.0,
+                'soundscapeEndTime': float(RECORD_SECONDS),
+                'commonName': eng_species,
+                'scientificName': scientific_name or '',
+                'algorithm': '2p4',
+                'confidence': float(confidence)
+            }
+            requests.post(det_url, json=det_data, timeout=10)
+            update_log(f"An BirdWeather gesendet: {eng_species}")
+        else:
+            raise Exception(f"API Fehler: {sdata.get('message')}")
+    except Exception as e:
+        update_log(f"BirdWeather Upload verzögert ({e}), ab in Warteschlange.")
+        if flac_data:
+            try:
+                ts_filename = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+                flac_path = os.path.join(BIRDWEATHER_QUEUE_DIR, f"{ts_filename}.flac")
+                json_path = os.path.join(BIRDWEATHER_QUEUE_DIR, f"{ts_filename}.json")
+                with open(flac_path, 'wb') as f:
+                    f.write(flac_data)
+                queue_data = {
+                    'iso_time': iso_time,
+                    'lat': lat,
+                    'lon': lon,
+                    'eng_species': eng_species,
+                    'scientific_name': scientific_name or '',
+                    'confidence': float(confidence)
+                }
+                with open(json_path, 'w') as f:
+                    json.dump(queue_data, f)
+
+                all_json = sorted([f for f in os.listdir(BIRDWEATHER_QUEUE_DIR) if f.endswith('.json')])
+                if len(all_json) > MAX_BIRDWEATHER_QUEUE:
+                    for f_to_del in all_json[:-MAX_BIRDWEATHER_QUEUE]:
+                        base = f_to_del[:-5]
+                        try:
+                            os.remove(os.path.join(BIRDWEATHER_QUEUE_DIR, base + ".json"))
+                            os.remove(os.path.join(BIRDWEATHER_QUEUE_DIR, base + ".flac"))
+                        except Exception:
+                            pass
+            except Exception as qe:
+                update_log(f"Fehler Warteschlange: {qe}")
+
+def store_audio_in_latest_and_archive(wav_source_path, species, ts_file, confidence, calculated_snr, settings=None, is_new_species=False, force_archive=False):
+    import shutil
+    if settings is None:
+        settings = load_settings()
+    safe_species = species.replace(" ", "_").replace("/", "_")
+    latest_species_filepath = None
+    try:
+        latest_dir = os.path.join(AUDIO_DIR, "latest")
+        os.makedirs(latest_dir, exist_ok=True)
+        latest_species_filepath = os.path.join(latest_dir, f"{safe_species}.wav")
+        shutil.copy(wav_source_path, latest_species_filepath)
+    except Exception as e:
+        update_log(f"Fehler beim Speichern der letzten Art-Audio-Datei: {e}")
+
+    archive_species_str = settings.get("archive_species", "")
+    should_archive = force_archive
+    if not should_archive and archive_species_str:
+        should_archive, _ = check_species_match(species, archive_species_str, is_new_species)
+
+    if should_archive:
+        archive_dir = os.path.join(AUDIO_DIR, "archive")
+        highscore_dir = os.path.join(archive_dir, "highscore")
+        os.makedirs(archive_dir, exist_ok=True)
+        os.makedirs(highscore_dir, exist_ok=True)
+
+        max_archive_files = int(settings.get("max_archive_files", 0))
+        if max_archive_files > 0:
+            half_max = max(1, max_archive_files // 2)
+
+            # 1. FIFO Logic in archive_dir
+            new_filename = f"{safe_species}_{ts_file}.wav"
+            new_filepath = os.path.join(archive_dir, new_filename)
+            try:
+                shutil.copy(wav_source_path, new_filepath)
+                update_log(f"Audio archiviert (FIFO): {new_filename}")
+            except Exception as e:
+                update_log(f"Fehler beim Archivieren: {e}")
+
+            existing_fifo = [f for f in os.listdir(archive_dir) if f.startswith(safe_species + "_") and f.endswith(".wav") and os.path.isfile(os.path.join(archive_dir, f))]
+            if len(existing_fifo) > half_max:
+                existing_fifo.sort(key=lambda x: os.path.getmtime(os.path.join(archive_dir, x)))
+                files_to_delete = existing_fifo[:len(existing_fifo) - half_max]
+                for f in files_to_delete:
+                    try:
+                        os.remove(os.path.join(archive_dir, f))
+                    except Exception:
+                        pass
+
+            # 2. Highscore Logic
+            score = int((float(confidence) * 100) + (float(calculated_snr) * 2))
+            highscore_filename = f"{safe_species}_{score}_{ts_file}.wav"
+            highscore_filepath = os.path.join(highscore_dir, highscore_filename)
+
+            existing_high = [f for f in os.listdir(highscore_dir) if f.startswith(safe_species + "_") and f.endswith(".wav") and os.path.isfile(os.path.join(highscore_dir, f))]
+            if len(existing_high) < half_max:
+                try:
+                    shutil.copy(wav_source_path, highscore_filepath)
+                    update_log(f"Audio archiviert (Highscore {score}): {highscore_filename}")
+                except Exception:
+                    pass
+            else:
+                lowest_score = float('inf')
+                lowest_file = None
+                for f in existing_high:
+                    parts = f.replace(".wav", "").split("_")
+                    try:
+                        f_score = int(parts[-2])
+                        if f_score < lowest_score:
+                            lowest_score = f_score
+                            lowest_file = f
+                    except Exception:
+                        pass
+
+                if score > lowest_score and lowest_file is not None:
+                    try:
+                        os.remove(os.path.join(highscore_dir, lowest_file))
+                        shutil.copy(wav_source_path, highscore_filepath)
+                        update_log(f"Neuer Highscore ({score} > {lowest_score}), Audio archiviert.")
+                    except Exception:
+                        pass
+        elif force_archive:
+            new_filename = f"{safe_species}_{ts_file}.wav"
+            new_filepath = os.path.join(archive_dir, new_filename)
+            try:
+                shutil.copy(wav_source_path, new_filepath)
+                update_log(f"Audio archiviert: {new_filename}")
+            except Exception as e:
+                update_log(f"Fehler beim Archivieren: {e}")
+
+    return latest_species_filepath
+
+def save_waiting_detection(de_species, eng_species, scientific_name, confidence, calculated_snr, geo_prob_val, lat, lon, now_dt=None, wav_source_path=None):
+    try:
+        import shutil
+        os.makedirs(WAITING_DIR, exist_ok=True)
+        if now_dt is None:
+            now_dt = datetime.datetime.now()
+        if wav_source_path is None:
+            wav_source_path = TEMP_WAV
+        if not os.path.exists(wav_source_path):
+            return
+        ts_db = now_dt.strftime("%Y-%m-%d %H:%M:%S")
+        ts_file = now_dt.strftime("%y-%m-%d-%H-%M-%S")
+        iso_time = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z")
+        safe_species = de_species.replace(" ", "_").replace("/", "_")
+        wav_filename = f"{safe_species}_{ts_file}.wav"
+        json_filename = f"{safe_species}_{ts_file}.json"
+        wav_filepath = os.path.join(WAITING_DIR, wav_filename)
+        json_filepath = os.path.join(WAITING_DIR, json_filename)
+
+        shutil.copy(wav_source_path, wav_filepath)
+        meta = {
+            "filename": wav_filename,
+            "species": de_species,
+            "eng_species": eng_species,
+            "scientific_name": scientific_name or "",
+            "timestamp": ts_db,
+            "ts_file": ts_file,
+            "iso_time": iso_time,
+            "confidence": float(confidence),
+            "snr": float(calculated_snr),
+            "geo_prob": float(geo_prob_val),
+            "lat": float(lat),
+            "lon": float(lon)
+        }
+        with open(json_filepath, "w", encoding="utf-8") as jf:
+            json.dump(meta, jf, ensure_ascii=False, indent=2)
+    except Exception as e:
+        update_log(f"Fehler beim Speichern im Wartebereich: {e}")
 
 class AudioMonitor:
     def __init__(self):
@@ -935,6 +1182,19 @@ class AudioMonitor:
                                                 with open("blocklist-log.txt", "a", encoding="utf-8") as f:
                                                     ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                                                     f.write(f"{ts} > Low probability for your area,LAT:{lat},LON:{lon},K:{raw_d.confidence*100:.0f}%,P:{geo_prob_val*100:.2f}%,SNR:{calculated_snr:.1f}dB,Species:{species} > erkannt\n")
+                                                has_de, de_name = has_german_translation_in_dict(eng_species, full_bird_dict)
+                                                if has_de:
+                                                    raw_sci = getattr(raw_d, 'scientific_name', '') or (raw_d.label.split('_')[0] if hasattr(raw_d, 'label') and '_' in str(raw_d.label) else '')
+                                                    save_waiting_detection(
+                                                        de_species=de_name,
+                                                        eng_species=eng_species,
+                                                        scientific_name=raw_sci,
+                                                        confidence=float(raw_d.confidence),
+                                                        calculated_snr=calculated_snr,
+                                                        geo_prob_val=geo_prob_val,
+                                                        lat=lat,
+                                                        lon=lon
+                                                    )
                                                 if settings.get("log_blocklist_pushover", False) and eng_species in full_bird_dict:
                                                     is_dict_blocked = isinstance(full_bird_dict[eng_species], dict) and full_bird_dict[eng_species].get("blocklist", False)
                                                     if not is_dict_blocked:
@@ -1002,6 +1262,18 @@ class AudioMonitor:
                                             with open("blocklist-log.txt", "a", encoding="utf-8") as f:
                                                 ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                                                 f.write(f"{ts}, {species}, {confidence*100:.0f}%, {calculated_snr:.1f} dB, Geo-Prob: {geo_prob_val*100:.2f}%, {lat}, {lon}\n")
+                                            has_de, de_name = has_german_translation_in_dict(eng_species, full_bird_dict)
+                                            if has_de:
+                                                save_waiting_detection(
+                                                    de_species=de_name,
+                                                    eng_species=eng_species,
+                                                    scientific_name=best.get('scientific_name', ''),
+                                                    confidence=confidence,
+                                                    calculated_snr=calculated_snr,
+                                                    geo_prob_val=geo_prob_val,
+                                                    lat=lat,
+                                                    lon=lon
+                                                )
                                 except Exception as e:
                                     pass
                                 update_log(f"Ignoriert (Blocklist): {species}")
@@ -2490,7 +2762,9 @@ def species_page():
             
     conn.close()
     
+    waiting_files = get_waiting_files_list() if selected_species == 'Wartebereich' else []
     return render_template('species.html', 
+        waiting_files=waiting_files,
         all_species=all_species, 
         selected_species=selected_species,
         chart_url=chart_url,
@@ -2718,6 +2992,401 @@ def delete_archive_audio(filename):
         except Exception as e:
             return jsonify({"success": False, "msg": str(e)}), 500
     return jsonify({"success": False, "msg": "Datei nicht gefunden."}), 404
+
+def get_waiting_files_list():
+    """Liest alle Soundfiles + Metadaten aus dem Wartebereich (audio_temp/waiting)."""
+    items = []
+    if not os.path.exists(WAITING_DIR):
+        return items
+    full_bird_dict = load_dictionary()
+    de_to_eng = {}
+    for eng_k, val in full_bird_dict.items():
+        if isinstance(val, dict):
+            tr = str(val.get("translation", "")).strip()
+            if tr:
+                de_to_eng[tr] = eng_k
+                de_to_eng[tr.replace(" ", "_").replace("/", "_")] = eng_k
+        elif isinstance(val, str) and val.strip():
+            tr = val.strip()
+            de_to_eng[tr] = eng_k
+            de_to_eng[tr.replace(" ", "_").replace("/", "_")] = eng_k
+
+    for fname in os.listdir(WAITING_DIR):
+        if not fname.endswith(".wav"):
+            continue
+        fpath = os.path.join(WAITING_DIR, fname)
+        if not os.path.isfile(fpath):
+            continue
+        base_no_ext = os.path.splitext(fname)[0]
+        json_path = os.path.join(WAITING_DIR, base_no_ext + ".json")
+        meta = {}
+        if os.path.exists(json_path):
+            try:
+                with open(json_path, "r", encoding="utf-8") as jf:
+                    meta = json.load(jf)
+            except Exception:
+                meta = {}
+
+        species = meta.get("species", "")
+        eng_species = meta.get("eng_species", "")
+        scientific_name = meta.get("scientific_name", "")
+        timestamp = meta.get("timestamp", "")
+        ts_file = meta.get("ts_file", "")
+        confidence = meta.get("confidence", None)
+        snr = meta.get("snr", None)
+        geo_prob = meta.get("geo_prob", 0.0)
+
+        # Fallback-Parsing aus Dateiname: {safe_species}_{YYYYMMDD}_{HHMMSS}_{conf}%_{snr}dB.wav
+        if not species or confidence is None or snr is None or not timestamp:
+            m = re.match(r"^(.+)_(\d{8})_(\d{6})_(\d+)%_([+-]?\d+(?:\.\d+)?)dB\.wav$", fname)
+            if m:
+                raw_sp, d_str, t_str, conf_str, snr_str = m.groups()
+                if not species:
+                    species = raw_sp.replace("_", " ")
+                if not ts_file:
+                    ts_file = f"{d_str}_{t_str}"
+                if not timestamp:
+                    try:
+                        dt = datetime.datetime.strptime(ts_file, "%Y%m%d_%H%M%S")
+                        timestamp = dt.strftime("%Y-%m-%d %H:%M:%S")
+                    except Exception:
+                        timestamp = ts_file
+                if confidence is None:
+                    confidence = float(conf_str) / 100.0
+                if snr is None:
+                    snr = float(snr_str)
+
+        if not eng_species and species:
+            eng_species = de_to_eng.get(species, "")
+
+        # Prüfen ob die Vogelart in dictionary.json als deutscher Vogel angelegt ist
+        if eng_species:
+            has_de, de_name = has_german_translation_in_dict(eng_species, full_bird_dict)
+            if not has_de:
+                continue
+            if de_name:
+                species = de_name
+        elif species not in de_to_eng:
+            continue
+
+        conf_pct = int(round(float(confidence or 0.0) * 100))
+        snr_val = round(float(snr or 0.0), 1)
+        geo_pct = round(float(geo_prob or 0.0) * 100, 2)
+
+        items.append({
+            "filename": fname,
+            "species": species,
+            "eng_species": eng_species,
+            "scientific_name": scientific_name,
+            "timestamp": timestamp or fname,
+            "confidence_pct": conf_pct,
+            "snr": snr_val,
+            "geo_prob_pct": geo_pct
+        })
+
+    items.sort(key=lambda x: x["timestamp"], reverse=True)
+    return items
+
+@app.route('/api/waiting/audio/<path:filename>')
+def serve_waiting_audio(filename):
+    safe_name = os.path.basename(filename)
+    file_path = os.path.join(WAITING_DIR, safe_name)
+    if os.path.exists(file_path) and os.path.isfile(file_path):
+        as_attachment = request.args.get('download') == '1'
+        return send_file(
+            file_path,
+            mimetype="audio/wav",
+            as_attachment=as_attachment,
+            download_name=safe_name
+        )
+    abort(404)
+
+@app.route('/api/waiting/spectrogram/<path:filename>')
+def serve_waiting_spectrogram(filename):
+    safe_name = os.path.basename(filename)
+    file_path = os.path.join(WAITING_DIR, safe_name)
+    if not os.path.exists(file_path):
+        abort(404)
+    try:
+        y, sr = librosa.load(file_path, sr=None)
+        fig = plt.figure(figsize=(8, 4))
+        ax = fig.add_axes([0.12, 0.15, 0.75, 0.75])
+        S = librosa.feature.melspectrogram(y=y, sr=sr, n_mels=128, fmax=20000)
+        S_dB = librosa.power_to_db(S, ref=np.max)
+        img = librosa.display.specshow(S_dB, x_axis='time', y_axis='mel', sr=sr, fmax=20000, ax=ax)
+        ax.set_title(f"Spectrogram: {safe_name}")
+
+        cax = fig.add_axes([0.88, 0.15, 0.02, 0.75])
+        fig.colorbar(img, cax=cax, format='%+2.0f dB')
+
+        fig.canvas.draw()
+        pos = ax.get_position()
+        duration = librosa.get_duration(y=y, sr=sr)
+
+        buf = io.BytesIO()
+        fig.savefig(buf, format='png')
+        buf.seek(0)
+        plt.close(fig)
+
+        from flask import make_response
+        response = make_response(send_file(buf, mimetype='image/png'))
+        trans = (ax.transScale + ax.transLimits).inverted()
+        ymap = [round(float(trans.transform((0.5, yr))[1]), 1) for yr in np.linspace(0, 1, 101)]
+        response.headers['X-Plot-Left'] = str(pos.x0)
+        response.headers['X-Plot-Bottom'] = str(pos.y0)
+        response.headers['X-Plot-Width'] = str(pos.width)
+        response.headers['X-Plot-Height'] = str(pos.height)
+        response.headers['X-Audio-Duration'] = str(duration)
+        response.headers['X-Plot-YMap'] = json.dumps(ymap)
+        response.headers['Access-Control-Expose-Headers'] = 'X-Plot-Left, X-Plot-Bottom, X-Plot-Width, X-Plot-Height, X-Audio-Duration, X-Plot-YMap'
+        return response
+    except Exception as e:
+        print(f"Error generating waiting spectrogram: {e}")
+        abort(500)
+
+@app.route('/api/waiting/phase_spectrogram/<path:filename>')
+def serve_waiting_phase_spectrogram(filename):
+    safe_name = os.path.basename(filename)
+    file_path = os.path.join(WAITING_DIR, safe_name)
+    if not os.path.exists(file_path):
+        abort(404)
+    try:
+        y, sr = librosa.load(file_path, sr=None)
+        D = librosa.stft(y)
+        phase = np.angle(D)
+        unwrapped_phase = np.unwrap(phase, axis=1)
+        inst_freq = np.gradient(unwrapped_phase, axis=1)
+
+        from scipy.interpolate import interp1d
+        mel_frequencies = librosa.mel_frequencies(n_mels=128, fmin=0.0, fmax=20000)
+        linear_frequencies = librosa.fft_frequencies(sr=sr, n_fft=2048)
+
+        f = interp1d(linear_frequencies, inst_freq, axis=0, bounds_error=False, fill_value='extrapolate')
+        inst_freq_mel = f(mel_frequencies)
+        inst_freq_deg = np.angle(np.exp(1j * inst_freq_mel), deg=True)
+
+        fig = plt.figure(figsize=(8, 4))
+        ax = fig.add_axes([0.12, 0.15, 0.75, 0.75])
+        cmap = plt.get_cmap('twilight').copy()
+        img = librosa.display.specshow(inst_freq_deg, x_axis='time', y_axis='mel', sr=sr, fmax=20000, ax=ax, cmap=cmap, vmin=-180, vmax=180)
+
+        duration = len(y) / sr
+        ax.set_xlim(0, duration)
+        ax.set_title(f"Phasenstabilität: {safe_name}")
+
+        cax = fig.add_axes([0.88, 0.15, 0.02, 0.75])
+        fig.colorbar(img, cax=cax, format='%+2.0f\u00b0')
+
+        fig.canvas.draw()
+        pos = ax.get_position()
+
+        buf = io.BytesIO()
+        fig.savefig(buf, format='png')
+        buf.seek(0)
+        plt.close(fig)
+
+        from flask import make_response
+        response = make_response(send_file(buf, mimetype='image/png'))
+        trans = (ax.transScale + ax.transLimits).inverted()
+        ymap = [round(float(trans.transform((0.5, yr))[1]), 1) for yr in np.linspace(0, 1, 101)]
+        response.headers['X-Plot-Left'] = str(pos.x0)
+        response.headers['X-Plot-Bottom'] = str(pos.y0)
+        response.headers['X-Plot-Width'] = str(pos.width)
+        response.headers['X-Plot-Height'] = str(pos.height)
+        response.headers['X-Audio-Duration'] = str(duration)
+        response.headers['X-Plot-YMap'] = json.dumps(ymap)
+        response.headers['Access-Control-Expose-Headers'] = 'X-Plot-Left, X-Plot-Bottom, X-Plot-Width, X-Plot-Height, X-Audio-Duration, X-Plot-YMap'
+        return response
+    except Exception as e:
+        print(f"Error generating waiting phase spectrogram: {e}")
+        abort(500)
+
+@app.route('/api/waiting/waveform/<path:filename>')
+def serve_waiting_waveform(filename):
+    safe_name = os.path.basename(filename)
+    file_path = os.path.join(WAITING_DIR, safe_name)
+    if not os.path.exists(file_path):
+        abort(404)
+    try:
+        y, sr = librosa.load(file_path, sr=None)
+        fig = plt.figure(figsize=(8, 2.5))
+        ax = fig.add_axes([0.12, 0.25, 0.75, 0.65])
+        librosa.display.waveshow(y, sr=sr, ax=ax, color='b')
+        ax.set_title(f"Amplitudenspektrum: {safe_name}")
+        ax.set_ylabel("Amplitude (dB)")
+        ax.set_xlabel("Zeit (s)")
+
+        import matplotlib.ticker as ticker
+        def lin_to_db(x, pos):
+            val = np.abs(x)
+            if val < 1e-10:
+                return '-inf'
+            return f'{20 * np.log10(val):.0f}'
+        ax.yaxis.set_major_formatter(ticker.FuncFormatter(lin_to_db))
+
+        duration = len(y) / sr
+        ax.set_xlim(0, duration)
+
+        from matplotlib.colors import ListedColormap
+        transparent_cmap = ListedColormap([(0, 0, 0, 0)])
+        sm = plt.cm.ScalarMappable(cmap=transparent_cmap)
+        sm.set_array([])
+
+        cax = fig.add_axes([0.88, 0.25, 0.02, 0.65])
+        cbar = fig.colorbar(sm, cax=cax, format='%+2.0f dB')
+        cbar.ax.tick_params(color='none', labelcolor='none')
+        cbar.outline.set_visible(False)
+
+        fig.canvas.draw()
+        buf = io.BytesIO()
+        fig.savefig(buf, format='png')
+        buf.seek(0)
+        plt.close(fig)
+        return send_file(buf, mimetype='image/png')
+    except Exception as e:
+        print(f"Error generating waiting waveform: {e}")
+        abort(500)
+
+@app.route('/api/waiting/reject/<path:filename>', methods=['POST', 'DELETE'])
+def reject_waiting_audio(filename):
+    safe_name = os.path.basename(filename)
+    wav_path = os.path.join(WAITING_DIR, safe_name)
+    json_path = os.path.join(WAITING_DIR, os.path.splitext(safe_name)[0] + ".json")
+    removed = False
+    try:
+        if os.path.exists(wav_path):
+            os.remove(wav_path)
+            removed = True
+        if os.path.exists(json_path):
+            os.remove(json_path)
+            removed = True
+        if removed:
+            update_log(f"Wartebereich: Aufnahme abgelehnt und gelöscht ({safe_name})")
+            return jsonify({"success": True, "msg": "Aufnahme aus dem Wartebereich gelöscht."})
+        return jsonify({"success": False, "msg": "Datei nicht gefunden."}), 404
+    except Exception as e:
+        return jsonify({"success": False, "msg": str(e)}), 500
+
+@app.route('/api/waiting/accept/<path:filename>', methods=['POST'])
+def accept_waiting_audio(filename):
+    safe_name = os.path.basename(filename)
+    wav_path = os.path.join(WAITING_DIR, safe_name)
+    json_path = os.path.join(WAITING_DIR, os.path.splitext(safe_name)[0] + ".json")
+    if not os.path.exists(wav_path):
+        return jsonify({"success": False, "msg": "Soundfile nicht im Wartebereich gefunden."}), 404
+
+    try:
+        meta = {}
+        if os.path.exists(json_path):
+            try:
+                with open(json_path, "r", encoding="utf-8") as jf:
+                    meta = json.load(jf)
+            except Exception:
+                meta = {}
+
+        species = meta.get("species", "")
+        eng_species = meta.get("eng_species", "")
+        scientific_name = meta.get("scientific_name", "")
+        timestamp = meta.get("timestamp", "")
+        ts_file = meta.get("ts_file", "")
+        iso_time = meta.get("iso_time", "")
+        confidence = meta.get("confidence", None)
+        snr = meta.get("snr", None)
+        geo_prob = float(meta.get("geo_prob", 0.0) or 0.0)
+        lat = meta.get("lat", None)
+        lon = meta.get("lon", None)
+
+        # Fallback-Parsing aus Dateiname
+        if not species or confidence is None or snr is None or not timestamp or not ts_file:
+            m = re.match(r"^(.+)_(\d{8})_(\d{6})_(\d+)%_([+-]?\d+(?:\.\d+)?)dB\.wav$", safe_name)
+            if m:
+                raw_sp, d_str, t_str, conf_str, snr_str = m.groups()
+                if not species:
+                    species = raw_sp.replace("_", " ")
+                if not ts_file:
+                    ts_file = f"{d_str}_{t_str}"
+                if not timestamp:
+                    dt = datetime.datetime.strptime(ts_file, "%Y%m%d_%H%M%S")
+                    timestamp = dt.strftime("%Y-%m-%d %H:%M:%S")
+                if confidence is None:
+                    confidence = float(conf_str) / 100.0
+                if snr is None:
+                    snr = float(snr_str)
+
+        if not timestamp:
+            now_dt = datetime.datetime.now()
+            timestamp = now_dt.strftime("%Y-%m-%d %H:%M:%S")
+            ts_file = now_dt.strftime("%Y%m%d_%H%M%S")
+
+        if not iso_time:
+            try:
+                dt_parsed = datetime.datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S")
+                iso_time = dt_parsed.astimezone().isoformat()
+            except Exception:
+                iso_time = datetime.datetime.now().astimezone().isoformat()
+
+        confidence = float(confidence if confidence is not None else 0.7)
+        snr = float(snr if snr is not None else 0.0)
+
+        settings = load_settings()
+        if lat is None or lon is None:
+            lat = float(settings.get("gps_lat", -1.0))
+            lon = float(settings.get("gps_lon", -1.0))
+        else:
+            lat = float(lat)
+            lon = float(lon)
+
+        eng_species, scientific_name = resolve_eng_and_sci_name(species, eng_species, scientific_name)
+
+        # Prüfen ob die Vogelart neu in der Datenbank ist
+        is_new_species = False
+        try:
+            conn = sqlite3.connect(DB_FILE)
+            c = conn.cursor()
+            c.execute("SELECT 1 FROM detections WHERE species = ? LIMIT 1", (species,))
+            if c.fetchone() is None:
+                is_new_species = True
+            conn.close()
+        except Exception:
+            pass
+
+        # 1. In Datenbank (birds_audio_stats.db) eintragen
+        save_detection(species, confidence, snr, timestamp, geo_prob)
+
+        # 2. Soundfile in latest, archive (FIFO) und highscore ablegen
+        latest_fp = store_audio_in_latest_and_archive(
+            wav_source_path=wav_path,
+            species=species,
+            ts_file=ts_file,
+            confidence=confidence,
+            calculated_snr=snr,
+            settings=settings,
+            is_new_species=is_new_species,
+            force_archive=True
+        )
+
+        # 3. An BirdWeather nachliefern (nutzt latest_fp, damit wav_path im Wartebereich sofort gelöscht werden kann)
+        bw_wav_source = latest_fp if (latest_fp and os.path.exists(latest_fp)) else None
+        if bw_wav_source and eng_species and scientific_name:
+            threading.Thread(
+                target=send_or_queue_birdweather,
+                args=(bw_wav_source, eng_species, scientific_name, confidence, lat, lon, iso_time),
+                daemon=True
+            ).start()
+
+        # 4. Aus dem Wartebereich entfernen
+        if os.path.exists(wav_path):
+            os.remove(wav_path)
+        if os.path.exists(json_path):
+            os.remove(json_path)
+
+        update_log(f"Wartebereich: {species} ({confidence*100:.0f}%, {snr:.1f}dB) akzeptiert -> DB, Archiv & BirdWeather")
+        return jsonify({
+            "success": True,
+            "msg": f"Aufnahme für '{species}' wurde akzeptiert, in die Datenbank & das Archiv übernommen und an BirdWeather übermittelt."
+        })
+    except Exception as e:
+        return jsonify({"success": False, "msg": str(e)}), 500
 
 @app.route('/yearly')
 def yearly_page():

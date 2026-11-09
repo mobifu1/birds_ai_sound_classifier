@@ -44,7 +44,7 @@ from birdnetlib import Recording
 START_TIME = time.time()
 
 # --- KONFIGURATION ---
-APP_VERSION = "V1.4.1-RC3"
+APP_VERSION = "V1.4.1-RC4"
 COUNTERAPI_URL = "https://api.counterapi.dev/v2/birds_ai_sound_classifier/birds_ai_sound_classifier"
 COUNTERAPI_TOKEN = "ut_lzriKTlSuUcOse5rqmKUp23OoXKwpbA0rYiMDHQm"
 VERSION_YEAR = "2026"
@@ -1964,7 +1964,20 @@ def generate_weekly_heatmap_html(year_str=None):
                     "status": data.get("status", "")
                 }
 
+        raw_barchart_max = settings.get("barchart_max_calls_weekly", 3000)
+        barchart_is_auto = isinstance(raw_barchart_max, str) and raw_barchart_max.strip().lower() == "auto"
+        if not barchart_is_auto:
+            try:
+                fixed_barchart_max = max(int(raw_barchart_max), 1)
+            except (ValueError, TypeError):
+                fixed_barchart_max = 3000
+
         for species, row in pivot_pct.iterrows():
+            if barchart_is_auto:
+                species_max = int(pivot_counts.loc[species].max()) if species in pivot_counts.index else 0
+                barchart_max = max(species_max, 1)
+            else:
+                barchart_max = fixed_barchart_max
             img_src = url_for('static', filename=get_bird_icon(species))
             if 'Unbekannt.png' in img_src:
                 img_tag = '<div class="bird-icon-placeholder">?</div>'
@@ -2049,7 +2062,6 @@ def generate_weekly_heatmap_html(year_str=None):
                     tooltip = "0%"
                     
                 import math
-                barchart_max = settings.get("barchart_max_calls_weekly", 3000)
                 inner_html = ""
                 if absolute_count > 0:
                     step = math.ceil((absolute_count / barchart_max) * 10)
@@ -2198,6 +2210,17 @@ def weekly_page():
     dictionary = get_bird_dictionary()
     sorted_dict = sorted(dictionary.items(), key=lambda x: x[1].lower() if isinstance(x[1], str) else str(x[1]).lower())
 
+    settings = load_settings()
+    raw_barchart_max = settings.get("barchart_max_calls_weekly", 3000)
+    barchart_is_auto = isinstance(raw_barchart_max, str) and raw_barchart_max.strip().lower() == "auto"
+    if barchart_is_auto:
+        barchart_max_calls = "auto"
+    else:
+        try:
+            barchart_max_calls = max(int(raw_barchart_max), 1)
+        except (ValueError, TypeError):
+            barchart_max_calls = 3000
+
     return render_template('weekly.html', 
         table_content=generate_weekly_heatmap_html(year_str),
         weekly_chart=weekly_chart,
@@ -2206,7 +2229,9 @@ def weekly_page():
         next_year=year+1,
         is_current_year=(year == today.year),
         current_year=today.year,
-        dictionary=sorted_dict
+        dictionary=sorted_dict,
+        barchart_is_auto=barchart_is_auto,
+        barchart_max_calls=barchart_max_calls
     )
 
 def create_species_polar_chart(species, hourly_counts, time_mode='relative_sunrise'):
@@ -4727,7 +4752,15 @@ def api_save_settings():
     save_setting("radar_time_range", data.get("radar_time_range", 24))
     save_setting("radar_snr_max", data.get("radar_snr_max", 20.0))
     save_setting("radar_snr_min", data.get("radar_snr_min", 5.0))
-    save_setting("barchart_max_calls_weekly", int(data.get("barchart_max_calls_weekly", 3000)))
+    raw_barchart_max = data.get("barchart_max_calls_weekly", 3000)
+    if isinstance(raw_barchart_max, str) and raw_barchart_max.strip().lower() == "auto":
+        save_setting("barchart_max_calls_weekly", "auto")
+    else:
+        try:
+            val_int = int(raw_barchart_max)
+            save_setting("barchart_max_calls_weekly", val_int if val_int > 0 else 3000)
+        except (ValueError, TypeError):
+            save_setting("barchart_max_calls_weekly", 3000)
     if "device_hostname" in data:
         save_setting("device_hostname", data.get("device_hostname", "bird-ai-sound-classifier"))
     if "station_name" in data:

@@ -178,6 +178,13 @@
 
         <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 15px; margin-bottom: 15px; flex-wrap: wrap; gap: 15px;">
             <input type="text" id="speciesSearchInput" placeholder="🔍 Vogelart suchen..." onkeyup="filterHeatmap()" style="width: 100%; max-width: 400px; padding: 10px; border-radius: 4px; border: 1px solid #37474f; background: #263238; color: #fff;">
+            <div style="background: #263238; border: 1px solid #37474f; border-radius: 4px; padding: 8px 14px; font-size: 0.9em; color: #eceff1; display: flex; align-items: center; gap: 8px;">
+                {% if barchart_is_auto %}
+                <span>📊 <strong>Barchart:</strong> <span style="color: #ffb74d; font-weight: bold;">relativ (Auto)</span> – <small style="color: #b0bec5;">Skalierung je Vogelart am eigenen Wochen-Maximum (Arten untereinander nicht absolut vergleichbar)</small></span>
+                {% else %}
+                <span>📊 <strong>Barchart:</strong> <span style="color: #81c784; font-weight: bold;">absolut (Max: {{ barchart_max_calls }} Rufe)</span> – <small style="color: #b0bec5;">Einheitlicher Maßstab für alle Vogelarten (direkt vergleichbar)</small></span>
+                {% endif %}
+            </div>
         </div>
 
         {{ table_content|safe }}

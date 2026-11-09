@@ -207,8 +207,13 @@
             <div class="card" style="background: #2c2c2c; padding: 20px; border-radius: 10px; flex: 1 1 100%; box-shadow: 0 4px 6px rgba(0,0,0,0.3); min-height: 610px; position: relative;">
 
                 <div id="radar-container" style="position: relative; width: 100%; height: 570px; margin-top: 0px; overflow: visible;">
-                    <div style="position: absolute; top: 10px; left: 10px; z-index: 20; display: flex; flex-direction: column; gap: 10px;">
-                        <img id="night-icon" src="{{ url_for('static', filename='bird_icons/Nacht.png') }}" style="width: 48px; height: 48px; display: none;" alt="Nachtmodus">
+                    <div style="position: absolute; top: 10px; left: 10px; z-index: 20; display: flex; flex-direction: column; gap: 10px; align-items: flex-start;">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <img id="night-icon" src="{{ url_for('static', filename='bird_icons/Nacht.png') }}" style="width: 48px; height: 48px; display: none;" alt="Nachtmodus">
+                            <a id="waiting-bell-icon" href="/species?species=Wartebereich" title="Kandidat(en) im Wartebereich zur Prüfung vorhanden ({{ waiting_count | default(0) }})" style="display: {% if waiting_count and waiting_count > 0 %}inline-flex{% else %}none{% endif %}; align-items: center; justify-content: center; width: 32px; height: 32px; background: rgba(255, 193, 7, 0.15); border: 1px solid rgba(255, 193, 7, 0.5); border-radius: 50%; text-decoration: none; font-size: 16px; box-shadow: 0 2px 8px rgba(255, 193, 7, 0.25); backdrop-filter: blur(4px); transition: transform 0.2s ease, background 0.2s ease;">
+                                <span style="filter: drop-shadow(0 0 3px rgba(255, 193, 7, 0.6)); line-height: 1;">🔔</span>
+                            </a>
+                        </div>
                         <div id="radar-new-record" style="background: rgba(255, 215, 0, 0.15); border: 1px solid rgba(255,215,0,0.5); color: #ffd700; padding: 6px 12px; border-radius: 8px; font-family: 'Inter', sans-serif; display: none; box-shadow: 0 4px 12px rgba(255, 215, 0, 0.15); align-items: center; gap: 8px; backdrop-filter: blur(4px);">
                             <span style="font-size: 24px; filter: drop-shadow(0 0 4px rgba(255,215,0,0.5));">🏆</span>
                             <div>
@@ -834,6 +839,17 @@
                         document.getElementById('radar-unique-species').innerHTML = `Arten: ${data.unique_species_count}<br><span style="font-size: 12px; color: ${callsColor};">Rufe: ${callsCount}/h</span><br><span style="font-size: 12px; color: #81d4fa;">Filter: {{ s.get('radar_time_range', 24) }}h</span>`;
                     }
                     
+                    const waitingBell = document.getElementById('waiting-bell-icon');
+                    if (waitingBell) {
+                        const wCount = data.waiting_count || 0;
+                        if (wCount > 0) {
+                            waitingBell.style.display = 'inline-flex';
+                            waitingBell.title = `Kandidat(en) im Wartebereich zur Prüfung vorhanden (${wCount})`;
+                        } else {
+                            waitingBell.style.display = 'none';
+                        }
+                    }
+
                     const recordDiv = document.getElementById('radar-new-record');
                     if (data.new_record_species) {
                         document.getElementById('radar-record-species').innerText = data.new_record_species;

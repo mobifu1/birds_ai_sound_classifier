@@ -44,7 +44,7 @@ from birdnetlib import Recording
 START_TIME = time.time()
 
 # --- KONFIGURATION ---
-APP_VERSION = "V1.4.1-RC4"
+APP_VERSION = "V1.4.1-RC5"
 COUNTERAPI_URL = "https://api.counterapi.dev/v2/birds_ai_sound_classifier/birds_ai_sound_classifier"
 COUNTERAPI_TOKEN = "ut_lzriKTlSuUcOse5rqmKUp23OoXKwpbA0rYiMDHQm"
 VERSION_YEAR = "2026"
@@ -1374,7 +1374,8 @@ def index():
     s = load_settings()
     icon_dir = os.path.join(app.root_path, 'static', 'bird_icons')
     available_icons = [f for f in os.listdir(icon_dir) if os.path.isfile(os.path.join(icon_dir, f))] if os.path.exists(icon_dir) else []
-    return render_template('index.html', s=s, available_icons=available_icons)
+    waiting_count = len(get_waiting_files_list())
+    return render_template('index.html', s=s, available_icons=available_icons, waiting_count=waiting_count)
 
 @app.route('/manual_pdf')
 def manual_pdf():
@@ -3023,6 +3024,9 @@ def get_waiting_files_list():
     items = []
     if not os.path.exists(WAITING_DIR):
         return items
+    wav_filenames = [f for f in os.listdir(WAITING_DIR) if f.endswith(".wav")]
+    if not wav_filenames:
+        return items
     full_bird_dict = load_dictionary()
     de_to_eng = {}
     for eng_k, val in full_bird_dict.items():
@@ -3036,9 +3040,7 @@ def get_waiting_files_list():
             de_to_eng[tr] = eng_k
             de_to_eng[tr.replace(" ", "_").replace("/", "_")] = eng_k
 
-    for fname in os.listdir(WAITING_DIR):
-        if not fname.endswith(".wav"):
-            continue
+    for fname in wav_filenames:
         fpath = os.path.join(WAITING_DIR, fname)
         if not os.path.isfile(fpath):
             continue
@@ -6184,7 +6186,8 @@ def api_top_species():
         "seconds_since_latest": seconds_since_latest,
         "new_record_species": new_record_species,
         "today_total_count": today_total_count,
-        "radar_time_range": radar_time_range
+        "radar_time_range": radar_time_range,
+        "waiting_count": len(get_waiting_files_list())
     })
 
 # --- DATENBANK MANAGEMENT ROUTEN ---

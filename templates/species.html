@@ -123,7 +123,7 @@
                 <h3 style="margin-top: 0; color: #81d4fa;">Wartebereich &ndash; Manuelle Überprüfung</h3>
                 <p style="color: #aaa; margin-bottom: 15px;">
                     Hier befinden sich Aufnahmen von Vogelarten, die auf der Blockliste gelandet sind und in der <code>dictionary.json</code> als deutscher Vogel angelegt sind.
-                    Sie können jede Aufnahme über das Frequenz-/Phasen-/Amplitudenspektrum sowie per Gehör prüfen und anschließend ablehnen, akzeptieren (Übernahme in Datenbank, Archiv &amp; BirdWeather) oder herunterladen.
+                    Sie können jede Aufnahme über das Frequenzspektrum, die Fourier Analyse und das Amplitudenspektrum sowie per Gehör prüfen und anschließend ablehnen, akzeptieren (Übernahme in Datenbank, Archiv &amp; BirdWeather) oder herunterladen.
                 </p>
 
                 <div style="font-size: 1.2em; font-weight: bold; margin: 10px 0 15px 0; color: #81d4fa;">
@@ -145,7 +145,7 @@
 
                     <div style="margin-bottom: 15px; display: flex; justify-content: center; gap: 10px;">
                         <button id="btn-freq" onclick="switchWaitingSpectrum('freq')" style="padding: 6px 12px; background: #4caf50; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; transition: background 0.2s;">Frequenzspektrum</button>
-                        <button id="btn-phase" onclick="switchWaitingSpectrum('phase')" style="padding: 6px 12px; background: #37474f; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; transition: background 0.2s;">Phasenstabilität</button>
+                        <button id="btn-fourier" onclick="switchWaitingSpectrum('fourier')" style="padding: 6px 12px; background: #37474f; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; transition: background 0.2s;">Fourier Analyse</button>
                     </div>
 
                     <div id="loading-text" style="color: #aaa; margin-bottom: 10px; font-style: italic;">Spektrum wird generiert (kann einige Sekunden dauern)...</div>
@@ -210,10 +210,10 @@
                     function switchWaitingSpectrum(mode) {
                         currentWaitingSpectrumMode = mode;
                         document.getElementById('btn-freq').style.background = (mode === 'freq') ? '#4caf50' : '#37474f';
-                        document.getElementById('btn-phase').style.background = (mode === 'phase') ? '#4caf50' : '#37474f';
+                        document.getElementById('btn-fourier').style.background = (mode === 'fourier') ? '#4caf50' : '#37474f';
 
                         if (currentSelectedWaitingWav) {
-                            let url = (mode === 'freq') ? "/api/waiting/spectrogram/" : "/api/waiting/phase_spectrogram/";
+                            let url = (mode === 'freq') ? "/api/waiting/spectrogram/" : "/api/waiting/fourier/";
                             fetchWaitingSpectrogram(url + encodeURIComponent(currentSelectedWaitingWav));
                         }
                     }
@@ -233,7 +233,7 @@
                         loadingTextWaveform.style.display = 'block';
                         waveformImg.src = "/api/waiting/waveform/" + encodeURIComponent(filename);
 
-                        let url = (currentWaitingSpectrumMode === 'freq') ? "/api/waiting/spectrogram/" : "/api/waiting/phase_spectrogram/";
+                        let url = (currentWaitingSpectrumMode === 'freq') ? "/api/waiting/spectrogram/" : "/api/waiting/fourier/";
                         fetchWaitingSpectrogram(url + encodeURIComponent(filename));
 
                         let audioUrl = "/api/waiting/audio/" + encodeURIComponent(filename);
@@ -330,6 +330,9 @@
                     }
 
                     document.getElementById('spectrogram-img').addEventListener('click', function(e) {
+                        if (currentWaitingSpectrumMode !== 'freq') {
+                            return;
+                        }
                         if (clickState === 2) {
                             resetMarkers();
                             return;
@@ -556,7 +559,7 @@
                     
                     <div style="margin-bottom: 15px; display: flex; justify-content: center; gap: 10px;">
                         <button id="btn-freq" onclick="switchSpectrum('freq')" style="padding: 6px 12px; background: #4caf50; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; transition: background 0.2s;">Frequenzspektrum</button>
-                        <button id="btn-phase" onclick="switchSpectrum('phase')" style="padding: 6px 12px; background: #37474f; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; transition: background 0.2s;">Phasenstabilität</button>
+                        <button id="btn-fourier" onclick="switchSpectrum('fourier')" style="padding: 6px 12px; background: #37474f; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; transition: background 0.2s;">Fourier Analyse</button>
                     </div>
 
                     <div id="loading-text" style="color: #aaa; margin-bottom: 10px; font-style: italic;">Spektrum wird generiert (kann einige Sekunden dauern)...</div>
@@ -622,10 +625,10 @@
                 function switchSpectrum(mode) {
                     currentSpectrumMode = mode;
                     document.getElementById('btn-freq').style.background = (mode === 'freq') ? '#4caf50' : '#37474f';
-                    document.getElementById('btn-phase').style.background = (mode === 'phase') ? '#4caf50' : '#37474f';
+                    document.getElementById('btn-fourier').style.background = (mode === 'fourier') ? '#4caf50' : '#37474f';
                     
                     if (currentSelectedWav) {
-                        let url = (mode === 'freq') ? "/api/archive/spectrogram/" : "/api/archive/phase_spectrogram/";
+                        let url = (mode === 'freq') ? "/api/archive/spectrogram/" : "/api/archive/fourier/";
                         fetchSpectrogram(url + encodeURIComponent(currentSelectedWav));
                     }
                 }
@@ -645,7 +648,7 @@
                     loadingTextWaveform.style.display = 'block';
                     waveformImg.src = "/api/archive/waveform/" + encodeURIComponent(filename);
                     
-                    let url = (currentSpectrumMode === 'freq') ? "/api/archive/spectrogram/" : "/api/archive/phase_spectrogram/";
+                    let url = (currentSpectrumMode === 'freq') ? "/api/archive/spectrogram/" : "/api/archive/fourier/";
                     fetchSpectrogram(url + encodeURIComponent(filename));
                     
                     let audioUrl = "/api/archive/audio/" + encodeURIComponent(filename);
@@ -744,6 +747,9 @@
                 }
 
                 document.getElementById('spectrogram-img').addEventListener('click', function(e) {
+                    if (currentSpectrumMode !== 'freq') {
+                        return;
+                    }
                     if (clickState === 2) {
                         resetMarkers();
                         return;

@@ -44,7 +44,7 @@ from birdnetlib import Recording
 START_TIME = time.time()
 
 # --- KONFIGURATION ---
-APP_VERSION = "V1.4.1-RC5"
+APP_VERSION = "V1.4.1-RC6"
 COUNTERAPI_URL = "https://api.counterapi.dev/v2/birds_ai_sound_classifier/birds_ai_sound_classifier"
 COUNTERAPI_TOKEN = "ut_lzriKTlSuUcOse5rqmKUp23OoXKwpbA0rYiMDHQm"
 VERSION_YEAR = "2026"
@@ -2886,73 +2886,136 @@ def serve_archive_spectrogram(filename):
         print(f"Error generating spectrogram: {e}")
         abort(500)
 
-@app.route('/api/archive/phase_spectrogram/<path:filename>')
-def serve_archive_phase_spectrogram(filename):
+def _generate_fourier_analysis_response(file_path, display_name):
+    y, sr = librosa.load(file_path, sr=None)
+    duration = len(y) / sr if sr else 0.0
+
+    y_centered = y - np.mean(y) if len(y) > 0 else np.zeros(1024)
+    if len(y_centered) < 16:
+        y_centered = np.pad(y_centered, (0, 16 - len(y_centered)))
+
+    window = np.hanning(len(y_centered))
+    fft_vals = np.fft.rfft(y_centered * window)
+    freqs = np.fft.rfftfreq(len(y_centered), d=1.0 / sr)
+    magnitudes = np.abs(fft_vals)
+
+    nyquist = sr / 2.0
+    fmax_limit = min(20000.0, nyquist)
+    valid_mask = (freqs >= 80.0) & (freqs <= fmax_limit)
+    if not np.any(valid_mask):
+        valid_mask = freqs <= fmax_limit
+
+    max_mag = float(np.max(magnitudes[valid_mask])) if np.any(valid_mask) else 0.0
+    if max_mag > 0:
+        norm_mag = (magnitudes / max_mag) * 100.0
+    else:
+        norm_mag = np.zeros_like(magnitudes)
+
+    # 5 stärkste Frequenzen ermitteln (Mindestabstand 100 Hz für echte Teil-Peaks)
+    from scipy.signal import find_peaks
+    df = float(freqs[1] - freqs[0]) if len(freqs) > 1 else 1.0
+    min_dist_bins = max(1, int(round(100.0 / df)))
+
+    search_mag = np.where(valid_mask, norm_mag, 0.0)
+    peaks, _ = find_peaks(search_mag, distance=min_dist_bins)
+    top_peaks = sorted(peaks, key=lambda idx: search_mag[idx], reverse=True)[:5]
+
+    if len(top_peaks) < 5:
+        sorted_all = np.argsort(search_mag)[::-1]
+        for idx in sorted_all:
+            if search_mag[idx] <= 0:
+                break
+            if all(abs(int(idx) - int(p)) >= min_dist_bins for p in top_peaks):
+                top_peaks.append(int(idx))
+                if len(top_peaks) == 5:
+                    break
+
+    max_peak_freq = max((float(freqs[p]) for p in top_peaks), default=8000.0)
+    plot_fmax = min(fmax_limit, max(10000.0, np.ceil((max_peak_freq + 1000.0) / 1000.0) * 1000.0))
+    plot_mask = freqs <= plot_fmax
+    freqs_plot = freqs[plot_mask]
+    mag_plot = norm_mag[plot_mask]
+
+    fig = plt.figure(figsize=(8, 4))
+    ax = fig.add_axes([0.12, 0.15, 0.75, 0.75])
+
+    ax.plot(freqs_plot, mag_plot, color='#1565c0', linewidth=0.9, alpha=0.85, zorder=2)
+    ax.fill_between(freqs_plot, mag_plot, color='#42a5f5', alpha=0.25, zorder=1)
+
+    marker_colors = ['#d32f2f', '#f57c00', '#388e3c', '#7b1fa2', '#00796b']
+    for rank, p_idx in enumerate(top_peaks, start=1):
+        pfreq = float(freqs[p_idx])
+        pval = float(norm_mag[p_idx])
+        color = marker_colors[(rank - 1) % len(marker_colors)]
+
+        ax.vlines(pfreq, 0, pval, color=color, linestyle='--', linewidth=0.9, alpha=0.75, zorder=3)
+        ax.plot(
+            pfreq, pval,
+            marker='o', color=color, markersize=6,
+            markeredgecolor='white', markeredgewidth=1.0, zorder=5,
+            label=f"#{rank}: {pfreq:.1f} Hz ({pval:.1f}%)"
+        )
+        y_offset = 4.0 if (rank % 2 == 1) else 9.0
+        ax.annotate(
+            f"#{rank}: {pfreq:.0f} Hz",
+            xy=(pfreq, pval),
+            xytext=(pfreq, min(113.0, pval + y_offset)),
+            ha='center', va='bottom',
+            fontsize=8, fontweight='bold', color=color,
+            bbox=dict(boxstyle='round,pad=0.2', facecolor='white', edgecolor=color, alpha=0.85),
+            arrowprops=dict(arrowstyle='->', color=color, lw=0.8),
+            zorder=6
+        )
+
+    ax.set_xlim(0, plot_fmax)
+    ax.set_ylim(0, 118)
+    ax.set_title(f"Fourier Analyse: {display_name}")
+    ax.set_xlabel("Frequenz (Hz)")
+    ax.set_ylabel("Signalstärke (%)")
+    ax.grid(True, linestyle='--', alpha=0.4)
+    if top_peaks:
+        ax.legend(loc='upper right', fontsize=8, framealpha=0.9, title="Top 5 Frequenzen", title_fontsize=8)
+
+    # Unsichtbare Platzhalter-Colorbar für konsistente Bildbreite mit Spektrogramm & Amplitudenspektrum
+    from matplotlib.colors import ListedColormap
+    transparent_cmap = ListedColormap([(0, 0, 0, 0)])
+    sm = plt.cm.ScalarMappable(cmap=transparent_cmap)
+    sm.set_array([])
+    cax = fig.add_axes([0.88, 0.15, 0.02, 0.75])
+    cbar = fig.colorbar(sm, cax=cax, format='%+2.0f dB')
+    cbar.ax.tick_params(color='none', labelcolor='none')
+    cbar.outline.set_visible(False)
+
+    fig.canvas.draw()
+    pos = ax.get_position()
+
+    buf = io.BytesIO()
+    fig.savefig(buf, format='png')
+    buf.seek(0)
+    plt.close(fig)
+
+    from flask import make_response
+    response = make_response(send_file(buf, mimetype='image/png'))
+    response.headers['X-Plot-Left'] = str(pos.x0)
+    response.headers['X-Plot-Bottom'] = str(pos.y0)
+    response.headers['X-Plot-Width'] = str(pos.width)
+    response.headers['X-Plot-Height'] = str(pos.height)
+    response.headers['X-Audio-Duration'] = str(duration)
+    response.headers['X-Plot-YMap'] = json.dumps([])
+    response.headers['Access-Control-Expose-Headers'] = 'X-Plot-Left, X-Plot-Bottom, X-Plot-Width, X-Plot-Height, X-Audio-Duration, X-Plot-YMap'
+    return response
+
+@app.route('/api/archive/fourier/<path:filename>')
+def serve_archive_fourier(filename):
     archive_path = os.path.join(AUDIO_DIR, "archive")
     file_path = os.path.join(archive_path, filename)
     if not os.path.exists(file_path):
         abort(404)
-    
+
     try:
-        y, sr = librosa.load(file_path, sr=None)
-        D = librosa.stft(y)
-        phase = np.angle(D)
-        
-        # Berechne die zeitliche Ableitung der Phase (Momentanfrequenz / Phase Stability)
-        unwrapped_phase = np.unwrap(phase, axis=1)
-        inst_freq = np.gradient(unwrapped_phase, axis=1)
-        
-        from scipy.interpolate import interp1d
-        
-        # Interpoliere auf die Mel-Skala, um exakt die gleiche y-Achse wie beim Frequenzspektrum zu erhalten
-        mel_frequencies = librosa.mel_frequencies(n_mels=128, fmin=0.0, fmax=20000)
-        linear_frequencies = librosa.fft_frequencies(sr=sr, n_fft=2048)
-        
-        f = interp1d(linear_frequencies, inst_freq, axis=0, bounds_error=False, fill_value='extrapolate')
-        inst_freq_mel = f(mel_frequencies)
-        
-        # Auf -180° bis +180° wrappen und in Grad umwandeln
-        inst_freq_deg = np.angle(np.exp(1j * inst_freq_mel), deg=True)
-        
-        fig = plt.figure(figsize=(8, 4))
-        ax = fig.add_axes([0.12, 0.15, 0.75, 0.75])
-        cmap = plt.get_cmap('twilight').copy()
-        
-        # Zeige die Momentanfrequenz fuer die gesamte Flaeche an (ohne Maskierung) auf der Mel-Skala
-        img = librosa.display.specshow(inst_freq_deg, x_axis='time', y_axis='mel', sr=sr, fmax=20000, ax=ax, cmap=cmap, vmin=-180, vmax=180)
-        
-        # Exakte X-Achsen-Limits wie beim Spektrogramm erzwingen
-        duration = len(y) / sr
-        ax.set_xlim(0, duration)
-        
-        ax.set_title(f"Phasenstabilität: {filename}")
-        
-        cax = fig.add_axes([0.88, 0.15, 0.02, 0.75])
-        cbar = fig.colorbar(img, cax=cax, format='%+2.0f\u00b0')
-        
-        fig.canvas.draw()
-        pos = ax.get_position()
-        
-        buf = io.BytesIO()
-        fig.savefig(buf, format='png')
-        buf.seek(0)
-        plt.close(fig)
-        
-        from flask import make_response
-        response = make_response(send_file(buf, mimetype='image/png'))
-        trans = (ax.transScale + ax.transLimits).inverted()
-        import json
-        ymap = [round(float(trans.transform((0.5, yr))[1]), 1) for yr in np.linspace(0, 1, 101)]
-        response.headers['X-Plot-Left'] = str(pos.x0)
-        response.headers['X-Plot-Bottom'] = str(pos.y0)
-        response.headers['X-Plot-Width'] = str(pos.width)
-        response.headers['X-Plot-Height'] = str(pos.height)
-        response.headers['X-Audio-Duration'] = str(duration)
-        response.headers['X-Plot-YMap'] = json.dumps(ymap)
-        response.headers['Access-Control-Expose-Headers'] = 'X-Plot-Left, X-Plot-Bottom, X-Plot-Width, X-Plot-Height, X-Audio-Duration, X-Plot-YMap'
-        return response
+        return _generate_fourier_analysis_response(file_path, filename)
     except Exception as e:
-        print(f"Error generating phase spectrogram: {e}")
+        print(f"Error generating fourier analysis: {e}")
         abort(500)
 
 @app.route('/api/archive/waveform/<path:filename>')
@@ -3171,61 +3234,16 @@ def serve_waiting_spectrogram(filename):
         print(f"Error generating waiting spectrogram: {e}")
         abort(500)
 
-@app.route('/api/waiting/phase_spectrogram/<path:filename>')
-def serve_waiting_phase_spectrogram(filename):
+@app.route('/api/waiting/fourier/<path:filename>')
+def serve_waiting_fourier(filename):
     safe_name = os.path.basename(filename)
     file_path = os.path.join(WAITING_DIR, safe_name)
     if not os.path.exists(file_path):
         abort(404)
     try:
-        y, sr = librosa.load(file_path, sr=None)
-        D = librosa.stft(y)
-        phase = np.angle(D)
-        unwrapped_phase = np.unwrap(phase, axis=1)
-        inst_freq = np.gradient(unwrapped_phase, axis=1)
-
-        from scipy.interpolate import interp1d
-        mel_frequencies = librosa.mel_frequencies(n_mels=128, fmin=0.0, fmax=20000)
-        linear_frequencies = librosa.fft_frequencies(sr=sr, n_fft=2048)
-
-        f = interp1d(linear_frequencies, inst_freq, axis=0, bounds_error=False, fill_value='extrapolate')
-        inst_freq_mel = f(mel_frequencies)
-        inst_freq_deg = np.angle(np.exp(1j * inst_freq_mel), deg=True)
-
-        fig = plt.figure(figsize=(8, 4))
-        ax = fig.add_axes([0.12, 0.15, 0.75, 0.75])
-        cmap = plt.get_cmap('twilight').copy()
-        img = librosa.display.specshow(inst_freq_deg, x_axis='time', y_axis='mel', sr=sr, fmax=20000, ax=ax, cmap=cmap, vmin=-180, vmax=180)
-
-        duration = len(y) / sr
-        ax.set_xlim(0, duration)
-        ax.set_title(f"Phasenstabilität: {safe_name}")
-
-        cax = fig.add_axes([0.88, 0.15, 0.02, 0.75])
-        fig.colorbar(img, cax=cax, format='%+2.0f\u00b0')
-
-        fig.canvas.draw()
-        pos = ax.get_position()
-
-        buf = io.BytesIO()
-        fig.savefig(buf, format='png')
-        buf.seek(0)
-        plt.close(fig)
-
-        from flask import make_response
-        response = make_response(send_file(buf, mimetype='image/png'))
-        trans = (ax.transScale + ax.transLimits).inverted()
-        ymap = [round(float(trans.transform((0.5, yr))[1]), 1) for yr in np.linspace(0, 1, 101)]
-        response.headers['X-Plot-Left'] = str(pos.x0)
-        response.headers['X-Plot-Bottom'] = str(pos.y0)
-        response.headers['X-Plot-Width'] = str(pos.width)
-        response.headers['X-Plot-Height'] = str(pos.height)
-        response.headers['X-Audio-Duration'] = str(duration)
-        response.headers['X-Plot-YMap'] = json.dumps(ymap)
-        response.headers['Access-Control-Expose-Headers'] = 'X-Plot-Left, X-Plot-Bottom, X-Plot-Width, X-Plot-Height, X-Audio-Duration, X-Plot-YMap'
-        return response
+        return _generate_fourier_analysis_response(file_path, safe_name)
     except Exception as e:
-        print(f"Error generating waiting phase spectrogram: {e}")
+        print(f"Error generating waiting fourier analysis: {e}")
         abort(500)
 
 @app.route('/api/waiting/waveform/<path:filename>')

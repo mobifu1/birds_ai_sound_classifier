@@ -44,7 +44,7 @@ from birdnetlib import Recording
 START_TIME = time.time()
 
 # --- KONFIGURATION ---
-APP_VERSION = "V1.4.1-RC6"
+APP_VERSION = "V1.4.1-RC7"
 COUNTERAPI_URL = "https://api.counterapi.dev/v2/birds_ai_sound_classifier/birds_ai_sound_classifier"
 COUNTERAPI_TOKEN = "ut_lzriKTlSuUcOse5rqmKUp23OoXKwpbA0rYiMDHQm"
 VERSION_YEAR = "2026"
@@ -1710,14 +1710,29 @@ def get_daily_pie_data(date_str):
     if not status_counts:
         return None
         
-    labels = list(status_counts.keys())
-    sizes = list(status_counts.values())
+    status_order = ["Standvogel", "Teilzieher", "Zugvogel", "Wintergast", "Durchzieher"]
+    status_colors = {
+        "Standvogel": "#8dd3c7",
+        "Teilzieher": "#ccebc5",
+        "Zugvogel": "#fdb462",
+        "Wintergast": "#80b1d3",
+        "Durchzieher": "#bebada",
+        "Unbekannt": "#d9d9d9",
+    }
+
+    ordered_labels = [s for s in status_order if s in status_counts]
+    for s in status_counts:
+        if s not in ordered_labels:
+            ordered_labels.append(s)
+
+    labels = ordered_labels
+    sizes = [status_counts[s] for s in labels]
     
-    import matplotlib.colors as mcolors
-    colors_rgba = plt.cm.Set3(np.linspace(0, 1, len(labels)))
-    colors_hex = [mcolors.to_hex(c) for c in colors_rgba]
+
+
+    colors_hex = [status_colors.get(s, "#d9d9d9") for s in labels]
     
-    species_lists = [", ".join(status_species[status]) for status in labels]
+    species_lists = [", ".join(status_species[s]) for s in labels]
     
     return {
         "labels": labels,

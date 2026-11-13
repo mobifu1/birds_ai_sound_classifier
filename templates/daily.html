@@ -200,7 +200,7 @@
         {% if daily_pie %}
         <div style="margin-top: 30px; text-align: center;">
             <h2 style="text-align: left; margin-bottom: 15px;">🥧 Arten nach Status</h2>
-            <div style="max-width: 600px; margin: 0 auto; width: 100%;">
+            <div style="max-width: 480px; margin: 0 auto; width: 100%;">
                 <canvas id="dailyPieChart"></canvas>
             </div>
             <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -210,7 +210,7 @@
                     const ctx = document.getElementById('dailyPieChart').getContext('2d');
                     
                     new Chart(ctx, {
-                        type: 'pie',
+                        type: 'doughnut',
                         data: {
                             labels: pieData.labels,
                             datasets: [{

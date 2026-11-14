@@ -44,7 +44,7 @@ from birdnetlib import Recording
 START_TIME = time.time()
 
 # --- KONFIGURATION ---
-APP_VERSION = "V1.4.1-RC7"
+APP_VERSION = "V1.4.1-RC8"
 COUNTERAPI_URL = "https://api.counterapi.dev/v2/birds_ai_sound_classifier/birds_ai_sound_classifier"
 COUNTERAPI_TOKEN = "ut_lzriKTlSuUcOse5rqmKUp23OoXKwpbA0rYiMDHQm"
 VERSION_YEAR = "2026"
@@ -549,6 +549,11 @@ def store_audio_in_latest_and_archive(wav_source_path, species, ts_file, confide
 def save_waiting_detection(de_species, eng_species, scientific_name, confidence, calculated_snr, geo_prob_val, lat, lon, now_dt=None, wav_source_path=None):
     try:
         import shutil
+        if eng_species:
+            full_bird_dict = load_dictionary()
+            if eng_species in full_bird_dict and isinstance(full_bird_dict[eng_species], dict):
+                if bool(full_bird_dict[eng_species].get("blocklist", False)):
+                    return
         os.makedirs(WAITING_DIR, exist_ok=True)
         if now_dt is None:
             now_dt = datetime.datetime.now()
@@ -1182,8 +1187,13 @@ class AudioMonitor:
                                                 with open("blocklist-log.txt", "a", encoding="utf-8") as f:
                                                     ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                                                     f.write(f"{ts} > Low probability for your area,LAT:{lat},LON:{lon},K:{raw_d.confidence*100:.0f}%,P:{geo_prob_val*100:.2f}%,SNR:{calculated_snr:.1f}dB,Species:{species} > erkannt\n")
+                                                is_dict_blocked = (
+                                                    eng_species in full_bird_dict
+                                                    and isinstance(full_bird_dict[eng_species], dict)
+                                                    and bool(full_bird_dict[eng_species].get("blocklist", False))
+                                                )
                                                 has_de, de_name = has_german_translation_in_dict(eng_species, full_bird_dict)
-                                                if has_de:
+                                                if has_de and not is_dict_blocked:
                                                     raw_sci = getattr(raw_d, 'scientific_name', '') or (raw_d.label.split('_')[0] if hasattr(raw_d, 'label') and '_' in str(raw_d.label) else '')
                                                     save_waiting_detection(
                                                         de_species=de_name,
@@ -1196,7 +1206,6 @@ class AudioMonitor:
                                                         lon=lon
                                                     )
                                                 if settings.get("log_blocklist_pushover", False) and eng_species in full_bird_dict:
-                                                    is_dict_blocked = isinstance(full_bird_dict[eng_species], dict) and full_bird_dict[eng_species].get("blocklist", False)
                                                     if not is_dict_blocked:
                                                         threading.Thread(
                                                             target=check_and_send_blocklist_pushover,
@@ -1262,18 +1271,6 @@ class AudioMonitor:
                                             with open("blocklist-log.txt", "a", encoding="utf-8") as f:
                                                 ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                                                 f.write(f"{ts}, {species}, {confidence*100:.0f}%, {calculated_snr:.1f} dB, Geo-Prob: {geo_prob_val*100:.2f}%, {lat}, {lon}\n")
-                                            has_de, de_name = has_german_translation_in_dict(eng_species, full_bird_dict)
-                                            if has_de:
-                                                save_waiting_detection(
-                                                    de_species=de_name,
-                                                    eng_species=eng_species,
-                                                    scientific_name=best.get('scientific_name', ''),
-                                                    confidence=confidence,
-                                                    calculated_snr=calculated_snr,
-                                                    geo_prob_val=geo_prob_val,
-                                                    lat=lat,
-                                                    lon=lon
-                                                )
                                 except Exception as e:
                                     pass
                                 update_log(f"Ignoriert (Blocklist): {species}")

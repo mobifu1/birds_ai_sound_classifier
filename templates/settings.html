@@ -332,6 +332,55 @@
             <div style="margin-top: 15px; padding: 10px; background: #2a2a2a; border-radius: 5px; font-size: 0.9em; color: #ccc;">
                 <strong>Offline-Warteschlange:</strong> {{ queue_size|default(0) }} / 500 Aufnahmen
                 <br><small>Hier warten Aufnahmen auf den Versand, falls die Internetverbindung unterbrochen war.</small>
+            <div style="margin-top: 20px; border-top: 1px solid #444; padding-top: 15px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 10px;">
+                    <div>
+                        <strong style="color: #4CAF50; font-size: 1.05rem;">🌍 BirdWeather Gebietsabfrage (Zugvögel &amp; seltene Arten)</strong>
+                        <br><small style="color: #bbb;">Definiere mindestens 4 Gebietsobjekte (Bounding Box mit SW und NE Koordinaten sowie kommaseparierter Liste von Vogelarten), um auf der Webseite „Birdweather Stationen“ seltene Vogelarten und Zugvögel auf Abruf zu zählen.</small>
+                    </div>
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        <button type="button" class="btn btn-blue" id="btn-test-bw-regions" onclick="testBirdWeatherRegions()" style="width: auto; padding: 8px 16px; margin: 0;">API-Test</button>
+                        <a href="/birdweather_stations" class="btn btn-green" style="width: auto; padding: 8px 16px; margin: 0; text-decoration: none;">🌍 Birdweather Stationen</a>
+                    </div>
+                </div>
+                {% set bw_regions = s.get('birdweather_regions', [
+                    {'name': 'Deutschland', 'sw': '47.2, 5.8', 'ne': '55.1, 15.1', 'species': 'Wiedehopf, Bienenfresser', 'confidence': 70},
+                    {'name': '', 'sw': '', 'ne': '', 'species': '', 'confidence': 70},
+                    {'name': '', 'sw': '', 'ne': '', 'species': '', 'confidence': 70},
+                    {'name': '', 'sw': '', 'ne': '', 'species': '', 'confidence': 70}
+                ]) %}
+                <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 10px;">
+                    {% for idx in range(4) %}
+                    {% set reg = bw_regions[idx] if idx < bw_regions|length else {'name': '', 'sw': '', 'ne': '', 'species': '', 'confidence': 70} %}
+                    <div class="bw-region-row" style="background: #252525; padding: 12px; border-radius: 6px; border: 1px solid #3d3d3d;">
+                        <div style="font-size: 0.85rem; font-weight: bold; color: #81c784; margin-bottom: 8px;">Gebietsobjekt {{ idx + 1 }}</div>
+                        <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end;">
+                            <div style="flex: 1.1 1 150px;">
+                                <label style="font-size: 0.8rem; color: #bbb; margin-bottom: 3px;">Gebietsname:</label>
+                                <input type="text" class="bw-reg-name" value="{{ reg.get('name', '') }}" placeholder="z.B. Norddeutschland">
+                            </div>
+                            <div style="flex: 1 1 135px;">
+                                <label style="font-size: 0.8rem; color: #bbb; margin-bottom: 3px;" title="Süd-West Koordinate (Breitengrad, Längengrad)">Gebiet SW (Lat, Lon):</label>
+                                <input type="text" class="bw-reg-sw" value="{{ reg.get('sw', '') }}" placeholder="z.B. 47.2, 5.8">
+                            </div>
+                            <div style="flex: 1 1 135px;">
+                                <label style="font-size: 0.8rem; color: #bbb; margin-bottom: 3px;" title="Nord-Ost Koordinate (Breitengrad, Längengrad)">Gebiet NE (Lat, Lon):</label>
+                                <input type="text" class="bw-reg-ne" value="{{ reg.get('ne', '') }}" placeholder="z.B. 55.1, 15.1">
+                            </div>
+                            <div style="flex: 2 1 240px;">
+                                <label style="font-size: 0.8rem; color: #bbb; margin-bottom: 3px;">Vogelarten (kommasepariert):</label>
+                                <input type="text" class="bw-reg-species" value="{{ reg.get('species', '') }}" placeholder="z.B. Wiedehopf, Bienenfresser">
+                            </div>
+                            <div style="flex: 0 0 110px;">
+                                <label style="font-size: 0.8rem; color: #bbb; margin-bottom: 3px;">Konfidenz (%):</label>
+                                <input type="number" class="bw-reg-conf" value="{{ reg.get('confidence', 70) }}" min="0" max="100">
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                <div id="bw-regions-test-result" style="display: none; margin-top: 12px; padding: 10px 12px; border-radius: 5px; font-size: 0.88rem; white-space: pre-line;"></div>
+            </div>
             </div>
         </div>
 
@@ -624,7 +673,7 @@
                 });
         }
 
-        // Beim Laden der Einstellungen abrufen
+                // Beim Laden der Einstellungen abrufen
         loadCommunityVersions();
 
         let latestGithubReleaseTag = '';
@@ -1393,6 +1442,7 @@
                 nr_quality: document.getElementById('nr_quality').value,
                 birdweather_active: document.getElementById('birdweather_active').checked,
                 birdweather_id: document.getElementById('birdweather_id').value,
+                birdweather_regions: collectBirdWeatherRegions(),
                 pushover_active: document.getElementById('pushover_active').checked,
                 pushover_user_key: document.getElementById('pushover_user_key').value,
                 pushover_api_token: document.getElementById('pushover_api_token').value,
@@ -1470,6 +1520,69 @@
             .catch(e => alert("Netzwerkfehler: " + e));
         }
 
+
+        function collectBirdWeatherRegions() {
+            const regions = [];
+            document.querySelectorAll('.bw-region-row').forEach(row => {
+                const nameEl = row.querySelector('.bw-reg-name');
+                const swEl = row.querySelector('.bw-reg-sw');
+                const neEl = row.querySelector('.bw-reg-ne');
+                const spEl = row.querySelector('.bw-reg-species');
+                const confEl = row.querySelector('.bw-reg-conf');
+                let confVal = parseInt(confEl ? confEl.value : '70', 10);
+                if (isNaN(confVal)) confVal = 70;
+                confVal = Math.max(0, Math.min(100, confVal));
+                regions.push({
+                    name: nameEl ? nameEl.value.trim() : '',
+                    sw: swEl ? swEl.value.trim() : '',
+                    ne: neEl ? neEl.value.trim() : '',
+                    species: spEl ? spEl.value.trim() : '',
+                    confidence: confVal
+                });
+            });
+            return regions;
+        }
+
+        function testBirdWeatherRegions() {
+            const btn = document.getElementById('btn-test-bw-regions');
+            const resDiv = document.getElementById('bw-regions-test-result');
+            const origText = btn ? btn.innerText : 'API-Test';
+            if (btn) {
+                btn.disabled = true;
+                btn.innerText = 'Prüfe API...';
+            }
+            if (resDiv) {
+                resDiv.style.display = 'none';
+            }
+            fetch('/api/birdweather/regions_test', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ birdweather_regions: collectBirdWeatherRegions() })
+            })
+            .then(r => r.json())
+            .then(d => {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerText = origText;
+                }
+                if (resDiv) {
+                    resDiv.style.display = 'block';
+                    resDiv.style.background = d.success ? '#1e3320' : '#4a2618';
+                    resDiv.style.borderLeft = d.success ? '4px solid #4CAF50' : '4px solid #F44336';
+                    resDiv.style.color = '#fff';
+                    resDiv.innerText = d.msg || (d.success ? 'API-Test erfolgreich!' : 'API-Test fehlgeschlagen.');
+                } else {
+                    alert(d.msg);
+                }
+            })
+            .catch(e => {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerText = origText;
+                }
+                alert('Netzwerkfehler beim API-Test: ' + e);
+            });
+        }
 
         function testBirdWeather() {
             const token = document.getElementById('birdweather_id').value.trim();

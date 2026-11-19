@@ -44,7 +44,7 @@ from birdnetlib import Recording
 START_TIME = time.time()
 
 # --- KONFIGURATION ---
-APP_VERSION = "V1.4.1"
+APP_VERSION = "V1.4.2-RC1"
 COUNTERAPI_URL = "https://api.counterapi.dev/v2/birds_ai_sound_classifier/birds_ai_sound_classifier"
 COUNTERAPI_TOKEN = "ut_lzriKTlSuUcOse5rqmKUp23OoXKwpbA0rYiMDHQm"
 VERSION_YEAR = "2026"
@@ -207,22 +207,76 @@ def update_log(msg):
     else:
         log_messages.appendleft(formatted)
 
+DEFAULT_BIRDWEATHER_REGIONS = [
+    {
+        "name": "Deutschland",
+        "sw": "47.2, 5.8",
+        "ne": "55.1, 15.1",
+        "species": "Wiedehopf, Bienenfresser",
+        "confidence": 70
+    },
+    {"name": "", "sw": "", "ne": "", "species": "", "confidence": 70},
+    {"name": "", "sw": "", "ne": "", "species": "", "confidence": 70},
+    {"name": "", "sw": "", "ne": "", "species": "", "confidence": 70}
+]
+
+def normalize_birdweather_regions(regions):
+    res = []
+    if isinstance(regions, list):
+        for r in regions[:10]:
+            if isinstance(r, dict):
+                try:
+                    conf_val = int(float(r.get("confidence", 70)))
+                except Exception:
+                    conf_val = 70
+                conf_val = max(0, min(100, conf_val))
+                res.append({
+                    "name": str(r.get("name", "")).strip(),
+                    "sw": str(r.get("sw", "")).strip(),
+                    "ne": str(r.get("ne", "")).strip(),
+                    "species": str(r.get("species", "")).strip(),
+                    "confidence": conf_val
+                })
+    while len(res) < 4:
+        if len(res) == 0:
+            res.append(dict(DEFAULT_BIRDWEATHER_REGIONS[0]))
+        else:
+            res.append({"name": "", "sw": "", "ne": "", "species": "", "confidence": 70})
+    return res
+
 def load_settings():
     if os.path.exists(SETTINGS_FILE):
         try:
-            with open(SETTINGS_FILE, 'r') as f:
+            with open(SETTINGS_FILE, 'r', encoding='utf-8') as f:
                 data = json.load(f)
+            changed = False
             if "auto_app_update" not in data:
                 data["auto_app_update"] = True
+                changed = True
+            if "birdweather_regions" not in data or not isinstance(data.get("birdweather_regions"), list) or len(data.get("birdweather_regions", [])) < 4:
+                data["birdweather_regions"] = normalize_birdweather_regions(data.get("birdweather_regions"))
+                changed = True
+            if "birdweather_query_period" not in data:
+                data["birdweather_query_period"] = "1_day"
+                changed = True
+            if "birdweather_query_station_type" not in data:
+                data["birdweather_query_station_type"] = "all"
+                changed = True
+            if changed:
                 try:
-                    with open(SETTINGS_FILE, 'w') as fw:
+                    with open(SETTINGS_FILE, 'w', encoding='utf-8') as fw:
                         json.dump(data, fw)
                 except:
                     pass
             return data
         except:
             pass
-    return {"auto_app_update": True}
+    return {
+        "auto_app_update": True,
+        "birdweather_regions": normalize_birdweather_regions(None),
+        "birdweather_query_period": "1_day",
+        "birdweather_query_station_type": "all"
+    }
 
 def get_effective_occurrence_threshold():
     settings = load_settings()
@@ -4831,6 +4885,12 @@ def api_save_settings():
         save_setting("spectrogram_enabled", bool(data.get("spectrogram_enabled", True)))
     if "settings_password" in data:
         save_setting("settings_password", str(data.get("settings_password", "")))
+    if "birdweather_regions" in data:
+        save_setting("birdweather_regions", normalize_birdweather_regions(data.get("birdweather_regions")))
+    if "birdweather_query_period" in data:
+        save_setting("birdweather_query_period", str(data.get("birdweather_query_period", "1_day")))
+    if "birdweather_query_station_type" in data:
+        save_setting("birdweather_query_station_type", str(data.get("birdweather_query_station_type", "all")))
     if "bird_dictionary" in data:
         save_dictionary(data.get("bird_dictionary", {}))
     return jsonify({"msg": "Einstellungen gespeichert!"})
@@ -4857,6 +4917,503 @@ def api_birdweather_test():
             return jsonify({"success": False, "msg": f"Zugriff verweigert oder ungültiger Token. Meldung: {resp_data.get('message', 'Unbekannt')}"})
     except Exception as e:
         return jsonify({"success": False, "msg": f"Fehler bei der Verbindung: {e}"})
+
+BIRDWEATHER_GRAPHQL_URL = "https://app.birdweather.com/graphql"
+_bw_species_id_cache = {}
+
+def parse_lat_lon_pair(coord_str):
+    if not coord_str or not str(coord_str).strip():
+        return None, "Keine Koordinaten angegeben"
+    raw = str(coord_str).strip()
+    # Falls jemand 'sw: 47.2, 5.8' eingibt, Prefix entfernen
+    if ":" in raw:
+        raw = raw.split(":", 1)[1].strip()
+    parts = [p.strip() for p in raw.replace(";", ",").split(",") if p.strip()]
+    if len(parts) != 2:
+        return None, f"Ungültiges Format '{coord_str}' (erwartet: 'Lat, Lon', z.B. '47.2, 5.8')"
+    try:
+        lat = float(parts[0])
+        lon = float(parts[1])
+        if not (-90.0 <= lat <= 90.0) or not (-180.0 <= lon <= 180.0):
+            return None, f"Koordinaten außerhalb des gültigen Bereichs: {lat}, {lon}"
+        return {"lat": lat, "lon": lon}, None
+    except ValueError:
+        return None, f"Koordinaten sind keine gültigen Zahlen: '{coord_str}'"
+
+def resolve_birdweather_species(species_input_name):
+    sp_clean = str(species_input_name or "").strip()
+    if not sp_clean:
+        return None
+    cache_key = sp_clean.lower()
+    if cache_key in _bw_species_id_cache:
+        return _bw_species_id_cache[cache_key]
+
+    eng_name, sci_name = resolve_eng_and_sci_name(sp_clean)
+    # Auch deutsche Übersetzung ermitteln, falls der Nutzer direkt Englisch/Wissenschaftlich eingegeben hat
+    de_name = sp_clean
+    full_dict = load_dictionary()
+    if eng_name in full_dict:
+        entry = full_dict[eng_name]
+        trans = entry.get("translation", "") if isinstance(entry, dict) else str(entry)
+        if str(trans).strip():
+            de_name = str(trans).strip()
+
+    search_terms = []
+    if sci_name:
+        search_terms.append(sci_name)
+    if eng_name and eng_name not in search_terms:
+        search_terms.append(eng_name)
+    if sp_clean not in search_terms:
+        search_terms.append(sp_clean)
+
+    gql_query = """
+    query SearchSpecies($query: String, $first: Int) {
+      searchSpecies(query: $query, first: $first) {
+        nodes {
+          id
+          commonName
+          scientificName
+        }
+      }
+    }
+    """
+
+    for term in search_terms:
+        try:
+            resp = requests.post(
+                BIRDWEATHER_GRAPHQL_URL,
+                json={"query": gql_query, "variables": {"query": term, "first": 10}},
+                headers={"Content-Type": "application/json"},
+                timeout=10
+            )
+            if resp.status_code == 200:
+                rdata = resp.json()
+                nodes = ((rdata.get("data") or {}).get("searchSpecies") or {}).get("nodes") or []
+                if nodes:
+                    best_node = None
+                    # 1. Exakter wissenschaftlicher Treffer
+                    if sci_name:
+                        for n in nodes:
+                            if str(n.get("scientificName") or "").strip().lower() == sci_name.lower():
+                                best_node = n
+                                break
+                    # 2. Exakter englischer Treffer
+                    if not best_node and eng_name:
+                        for n in nodes:
+                            if str(n.get("commonName") or "").strip().lower() == eng_name.lower():
+                                best_node = n
+                                break
+                    # 3. Erster Knoten
+                    if not best_node:
+                        best_node = nodes[0]
+
+                    icon_name = f"{de_name}.png"
+                    icon_exists = os.path.exists(os.path.join(os.path.dirname(os.path.abspath(__file__)), "static", "bird_icons", icon_name))
+                    res_obj = {
+                        "id": str(best_node["id"]),
+                        "input_name": sp_clean,
+                        "de_name": de_name,
+                        "common_name": best_node.get("commonName") or eng_name,
+                        "scientific_name": best_node.get("scientificName") or sci_name,
+                        "icon": f"/static/bird_icons/{icon_name}" if icon_exists else "/static/feather.png"
+                    }
+                    _bw_species_id_cache[cache_key] = res_obj
+                    return res_obj
+        except Exception:
+            pass
+    return None
+
+def parse_period_selection(period_key):
+    mapping = {
+        "24_hours": {"count": 24, "unit": "hour", "label": "Letzte 24 Stunden"},
+        "1_day": {"count": 1, "unit": "day", "label": "Letzte 24 Stunden (1 Tag)"},
+        "3_days": {"count": 3, "unit": "day", "label": "Letzte 3 Tage"},
+        "7_days": {"count": 7, "unit": "day", "label": "Letzte 7 Tage"},
+        "14_days": {"count": 14, "unit": "day", "label": "Letzte 14 Tage"},
+        "30_days": {"count": 30, "unit": "day", "label": "Letzte 30 Tage"}
+    }
+    p = mapping.get(str(period_key), mapping["1_day"])
+    return {"count": p["count"], "unit": p["unit"]}, p["label"]
+
+def parse_station_type_selection(st_key):
+    st_clean = str(st_key or "all").strip().lower()
+    mapping = {
+        "all": (None, "Alle Stationstypen"),
+        "puc": (["puc"], "BirdWeather PUC"),
+        "birdnet_pi": (["birdnet_pi"], "BirdNET-Pi / Stationär"),
+        "mobile": (["mobile"], "Mobile (BirdWeather App)"),
+        "stream_audio": (["stream_audio"], "Audio-Stream"),
+        "stream_youtube": (["stream_youtube"], "YouTube-Stream")
+    }
+    return mapping.get(st_clean, (None, "Alle Stationstypen"))
+
+@app.route('/api/birdweather/regions_test', methods=['POST'])
+def api_birdweather_regions_test():
+    data = request.json or {}
+    regions = normalize_birdweather_regions(data.get("birdweather_regions"))
+    active_regions = [r for r in regions if r.get("name") or r.get("sw") or r.get("ne") or r.get("species")]
+    if not active_regions:
+        return jsonify({"success": False, "msg": "Bitte definiere mindestens ein Gebietsobjekt für den API-Test."})
+
+    # 1. Basis-Erreichbarkeit der BirdWeather GraphQL API prüfen
+    try:
+        ping_q = 'query { counts(period: {count: 1, unit: "day"}) { detections stations } }'
+        r_ping = requests.post(BIRDWEATHER_GRAPHQL_URL, json={"query": ping_q}, timeout=10)
+        if r_ping.status_code != 200:
+            return jsonify({"success": False, "msg": f"BirdWeather GraphQL API antwortet mit HTTP {r_ping.status_code}."})
+    except Exception as e:
+        return jsonify({"success": False, "msg": f"BirdWeather API nicht erreichbar: {e}"})
+
+    # 2. Alle aktiven Gebietsobjekte validieren (Koordinaten & Vogelarten-Auflösung)
+    report_lines = []
+    has_errors = False
+    valid_count = 0
+
+    for idx, reg in enumerate(regions, start=1):
+        name = reg.get("name", "").strip()
+        sw_str = reg.get("sw", "").strip()
+        ne_str = reg.get("ne", "").strip()
+        sp_str = reg.get("species", "").strip()
+
+        if not (name or sw_str or ne_str or sp_str):
+            continue
+
+        label = f"Gebiet {idx} ({name or 'Unbenannt'})"
+        if not name:
+            report_lines.append(f"❌ {label}: Gebietsname fehlt.")
+            has_errors = True
+            continue
+
+        sw_coord, sw_err = parse_lat_lon_pair(sw_str)
+        if sw_err:
+            report_lines.append(f"❌ {label} (SW): {sw_err}")
+            has_errors = True
+            continue
+
+        ne_coord, ne_err = parse_lat_lon_pair(ne_str)
+        if ne_err:
+            report_lines.append(f"❌ {label} (NE): {ne_err}")
+            has_errors = True
+            continue
+
+        species_list = [s.strip() for s in sp_str.split(",") if s.strip()]
+        if not species_list:
+            report_lines.append(f"❌ {label}: Keine Vogelarten angegeben.")
+            has_errors = True
+            continue
+
+        resolved_names = []
+        unresolved_names = []
+        for sp in species_list:
+            sp_info = resolve_birdweather_species(sp)
+            if sp_info:
+                resolved_names.append(f"{sp_info['de_name']} ({sp_info['scientific_name']}, ID {sp_info['id']})")
+            else:
+                unresolved_names.append(sp)
+
+        if unresolved_names:
+            report_lines.append(f"⚠️ {label}: Art(en) nicht in BirdWeather gefunden: {', '.join(unresolved_names)}")
+            has_errors = True
+        else:
+            valid_count += 1
+            report_lines.append(
+                f"✅ {label}: SW({sw_coord['lat']}, {sw_coord['lon']}) | NE({ne_coord['lat']}, {ne_coord['lon']}) | "
+                f"Konfidenz >= {reg.get('confidence', 70)}% | Arten: {', '.join(resolved_names)}"
+            )
+
+    summary_msg = "BirdWeather GraphQL API ist erreichbar!\n\n" + "\n".join(report_lines)
+    return jsonify({
+        "success": not has_errors and valid_count > 0,
+        "msg": summary_msg,
+        "details": report_lines
+    })
+
+@app.route('/birdweather_stations')
+def birdweather_stations_page():
+    s = load_settings()
+    regions = normalize_birdweather_regions(s.get("birdweather_regions"))
+    period = s.get("birdweather_query_period", "1_day")
+    station_type = s.get("birdweather_query_station_type", "all")
+    return render_template(
+        'birdweather_stations.html',
+        s=s,
+        regions=regions,
+        selected_period=period,
+        selected_station_type=station_type,
+        version=APP_VERSION,
+        year=VERSION_YEAR
+    )
+
+@app.route('/api/birdweather/query_regions', methods=['POST'])
+def api_birdweather_query_regions():
+    data = request.json or {}
+    s = load_settings()
+    period_key = data.get("period") or s.get("birdweather_query_period", "1_day")
+    station_type_key = data.get("station_type") or s.get("birdweather_query_station_type", "all")
+
+    # Auswahl persistent in settings.json speichern
+    save_setting("birdweather_query_period", str(period_key))
+    save_setting("birdweather_query_station_type", str(station_type_key))
+
+    period_obj, period_label = parse_period_selection(period_key)
+    station_types_arr, station_type_label = parse_station_type_selection(station_type_key)
+
+    regions = normalize_birdweather_regions(s.get("birdweather_regions"))
+
+    gql_detections_query = """
+    query GetRegionDetections(
+      $period: InputDuration,
+      $ne: InputLocation,
+      $sw: InputLocation,
+      $speciesIds: [ID!],
+      $confidenceGt: Float,
+      $stationTypes: [String!],
+      $first: Int,
+      $after: String
+    ) {
+      detections(
+        period: $period,
+        ne: $ne,
+        sw: $sw,
+        speciesIds: $speciesIds,
+        confidenceGt: $confidenceGt,
+        stationTypes: $stationTypes,
+        first: $first,
+        after: $after
+      ) {
+        totalCount
+        pageInfo {
+          hasNextPage
+          endCursor
+        }
+        nodes {
+          id
+          timestamp
+          confidence
+          speciesId
+          species {
+            id
+            commonName
+            scientificName
+          }
+          station {
+            id
+            name
+            type
+            coords {
+              lat
+              lon
+            }
+          }
+        }
+      }
+    }
+    """
+
+    region_results = []
+    for idx, reg in enumerate(regions, start=1):
+        name = reg.get("name", "").strip()
+        sw_str = reg.get("sw", "").strip()
+        ne_str = reg.get("ne", "").strip()
+        sp_str = reg.get("species", "").strip()
+        conf_pct = int(reg.get("confidence", 70))
+
+        # Überspringe komplett leere Gebietsobjekte
+        if not (name or sw_str or ne_str or sp_str):
+            continue
+
+        reg_entry = {
+            "index": idx,
+            "name": name or f"Gebiet {idx}",
+            "sw": sw_str,
+            "ne": ne_str,
+            "confidence": conf_pct,
+            "configured_species": sp_str,
+            "error": None,
+            "warnings": [],
+            "total_detections": 0,
+            "total_stations": 0,
+            "species_results": []
+        }
+
+        sw_coord, sw_err = parse_lat_lon_pair(sw_str)
+        ne_coord, ne_err = parse_lat_lon_pair(ne_str)
+        if sw_err or ne_err:
+            reg_entry["error"] = sw_err or ne_err
+            region_results.append(reg_entry)
+            continue
+
+        raw_species_list = [sp.strip() for sp in sp_str.split(",") if sp.strip()]
+        if not raw_species_list:
+            reg_entry["error"] = "Keine Vogelarten für dieses Gebiet konfiguriert."
+            region_results.append(reg_entry)
+            continue
+
+        resolved_map = {}
+        for sp_name in raw_species_list:
+            sp_info = resolve_birdweather_species(sp_name)
+            if sp_info:
+                resolved_map[sp_info["id"]] = sp_info
+            else:
+                reg_entry["warnings"].append(f"Vogelart '{sp_name}' konnte bei BirdWeather nicht aufgelöst werden.")
+
+        if not resolved_map:
+            reg_entry["error"] = "Keine der angegebenen Vogelarten konnte in der BirdWeather-Datenbank gefunden werden."
+            region_results.append(reg_entry)
+            continue
+
+        species_ids = list(resolved_map.keys())
+        conf_float = round(max(0.0, min(1.0, conf_pct / 100.0)), 4)
+
+        # Aggregationsstruktur pro Art vorbereiten
+        species_agg = {}
+        for sid, sinfo in resolved_map.items():
+            species_agg[sid] = {
+                "species_id": sid,
+                "de_name": sinfo["de_name"],
+                "common_name": sinfo["common_name"],
+                "scientific_name": sinfo["scientific_name"],
+                "icon": sinfo["icon"],
+                "detection_count": 0,
+                "stations_map": {}
+            }
+
+        # Paginierter Abruf der Detections (bis zu 5 Seiten à 100 = 500 Detections pro Gebiet)
+        after_cursor = None
+        max_pages = 5
+        api_total_count = 0
+        all_stations_set = set()
+
+        try:
+            for page_i in range(max_pages):
+                variables = {
+                    "period": period_obj,
+                    "ne": ne_coord,
+                    "sw": sw_coord,
+                    "speciesIds": species_ids,
+                    "confidenceGt": conf_float,
+                    "first": 100,
+                    "after": after_cursor
+                }
+                if station_types_arr:
+                    variables["stationTypes"] = station_types_arr
+
+                resp = requests.post(
+                    BIRDWEATHER_GRAPHQL_URL,
+                    json={"query": gql_detections_query, "variables": variables},
+                    headers={"Content-Type": "application/json"},
+                    timeout=15
+                )
+                if resp.status_code != 200:
+                    reg_entry["error"] = f"BirdWeather API HTTP-Fehler {resp.status_code}"
+                    break
+
+                payload = resp.json()
+                if payload.get("errors"):
+                    err_msgs = "; ".join([str(e.get("message", "")) for e in payload["errors"]])
+                    reg_entry["error"] = f"GraphQL Fehler: {err_msgs}"
+                    break
+
+                det_conn = (payload.get("data") or {}).get("detections") or {}
+                if page_i == 0:
+                    api_total_count = int(det_conn.get("totalCount") or 0)
+
+                nodes = det_conn.get("nodes") or []
+                for node in nodes:
+                    sp_node = node.get("species") or {}
+                    sid = str(node.get("speciesId") or sp_node.get("id") or "")
+                    if sid not in species_agg:
+                        # Fallback falls ID als String abweicht
+                        de_fallback = sp_node.get("commonName") or "Unbekannt"
+                        species_agg[sid] = {
+                            "species_id": sid,
+                            "de_name": de_fallback,
+                            "common_name": sp_node.get("commonName") or "",
+                            "scientific_name": sp_node.get("scientificName") or "",
+                            "icon": "/static/feather.png",
+                            "detection_count": 0,
+                            "stations_map": {}
+                        }
+
+                    sp_bucket = species_agg[sid]
+                    sp_bucket["detection_count"] += 1
+
+                    st_node = node.get("station") or {}
+                    st_id = str(st_node.get("id") or "").strip()
+                    st_name = str(st_node.get("name") or f"Station {st_id}").strip()
+                    st_type = str(st_node.get("type") or "").strip()
+                    coords = st_node.get("coords") or {}
+                    det_conf = float(node.get("confidence") or 0.0)
+                    det_ts = str(node.get("timestamp") or "")
+
+                    if st_id:
+                        all_stations_set.add(st_id)
+                    st_key = st_id or st_name
+                    if st_key not in sp_bucket["stations_map"]:
+                        sp_bucket["stations_map"][st_key] = {
+                            "station_id": st_id,
+                            "station_name": st_name,
+                            "station_type": st_type,
+                            "lat": coords.get("lat"),
+                            "lon": coords.get("lon"),
+                            "url": f"https://app.birdweather.com/stations/{st_id}" if st_id else None,
+                            "count": 0,
+                            "max_confidence": 0,
+                            "latest_timestamp": ""
+                        }
+                    st_entry = sp_bucket["stations_map"][st_key]
+                    st_entry["count"] += 1
+                    conf_pct_node = int(round(det_conf * 100))
+                    if conf_pct_node > st_entry["max_confidence"]:
+                        st_entry["max_confidence"] = conf_pct_node
+                    if det_ts and (not st_entry["latest_timestamp"] or det_ts > st_entry["latest_timestamp"]):
+                        st_entry["latest_timestamp"] = det_ts
+
+                page_info = det_conn.get("pageInfo") or {}
+                if page_info.get("hasNextPage") and page_info.get("endCursor"):
+                    after_cursor = page_info.get("endCursor")
+                else:
+                    break
+        except Exception as e:
+            reg_entry["error"] = f"Abfragefehler: {e}"
+
+        # Ergebnisse pro Vogelart aufbereiten
+        total_counted = 0
+        for sid, sp_bucket in species_agg.items():
+            stations_list = sorted(
+                sp_bucket["stations_map"].values(),
+                key=lambda x: (x["count"], x["latest_timestamp"]),
+                reverse=True
+            )
+            total_counted += sp_bucket["detection_count"]
+            reg_entry["species_results"].append({
+                "species_id": sp_bucket["species_id"],
+                "de_name": sp_bucket["de_name"],
+                "common_name": sp_bucket["common_name"],
+                "scientific_name": sp_bucket["scientific_name"],
+                "icon": sp_bucket["icon"],
+                "detection_count": sp_bucket["detection_count"],
+                "station_count": len(stations_list),
+                "stations": stations_list
+            })
+
+        reg_entry["total_detections"] = max(api_total_count, total_counted)
+        reg_entry["total_stations"] = len(all_stations_set)
+        if api_total_count > total_counted:
+            reg_entry["warnings"].append(
+                f"Hinweis: Insgesamt {api_total_count} Erkennungen im Gebiet vorhanden; es wurden die neuesten {total_counted} Detail-Erkennungen ausgewertet."
+            )
+        region_results.append(reg_entry)
+
+    return jsonify({
+        "success": True,
+        "queried_at": datetime.datetime.now().strftime("%d.%m.%Y %H:%M:%S"),
+        "period_key": period_key,
+        "period_label": period_label,
+        "station_type_key": station_type_key,
+        "station_type_label": station_type_label,
+        "regions": region_results
+    })
 
 def send_pushover_message(app_token, user_key, message, title=None):
     if not app_token or not user_key:

@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Birdweather Stationen</title>
+    <link rel="icon" href="{{ url_for('static', filename='feather.ico') }}" type="image/x-icon">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        .bw-controls {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 15px;
+            margin: 20px 0;
+            flex-wrap: wrap;
+            background: #263238;
+            padding: 15px 20px;
+            border-radius: 8px;
+            border: 1px solid #37474f;
+        }
+        .bw-select {
+            padding: 9px 12px;
+            font-size: 0.95rem;
+            border-radius: 5px;
+            border: 1px solid #546e7a;
+            background-color: #1e272c;
+            color: #fff;
+            min-width: 190px;
+        }
+        .bw-btn-query {
+            padding: 10px 20px;
+            background: #0288d1;
+            color: #fff;
+            border: none;
+            border-radius: 5px;
+            font-weight: bold;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .bw-btn-query:hover {
+            background: #0277bd;
+        }
+        .bw-btn-query:disabled {
+            background: #546e7a;
+            cursor: not-allowed;
+        }
+        .region-card {
+            background: #263238;
+            border: 1px solid #37474f;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 25px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+        }
+        .region-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+            border-bottom: 2px solid #37474f;
+            padding-bottom: 12px;
+            margin-bottom: 15px;
+        }
+        .region-title {
+            font-size: 1.3rem;
+            font-weight: bold;
+            color: #4fc3f7;
+            margin: 0;
+        }
+        .region-meta {
+            font-size: 0.88rem;
+            color: #b0bec5;
+        }
+        .species-box {
+            background: #1e272c;
+            border: 1px solid #37474f;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 15px;
+        }
+        .species-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+        .species-info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .species-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            object-fit: cover;
+            background: #455a64;
+            border: 2px solid #4CAF50;
+        }
+        .badge-count {
+            display: inline-block;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-weight: bold;
+            font-size: 0.95rem;
+        }
+        .badge-positive {
+            background: rgba(76, 175, 80, 0.2);
+            color: #81c784;
+            border: 1px solid #4CAF50;
+        }
+        .badge-zero {
+            background: rgba(158, 158, 158, 0.15);
+            color: #9e9e9e;
+            border: 1px solid #616161;
+        }
+        .stations-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 12px;
+            font-size: 0.9rem;
+        }
+        .stations-table th {
+            background: #263238;
+            color: #81d4fa;
+            text-align: left;
+            padding: 8px 10px;
+            border-bottom: 1px solid #455a64;
+        }
+        .stations-table td {
+            padding: 8px 10px;
+            border-bottom: 1px solid #2c3940;
+            color: #eceff1;
+        }
+        .station-link {
+            display: inline-block;
+            padding: 4px 10px;
+            background: #0288d1;
+            color: #fff;
+            text-decoration: none;
+            border-radius: 4px;
+            font-size: 0.82rem;
+            font-weight: bold;
+        }
+        .station-link:hover {
+            background: #039be5;
+        }
+        .overview-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9rem;
+            margin-top: 10px;
+        }
+        .overview-table th, .overview-table td {
+            padding: 8px 10px;
+            border-bottom: 1px solid #37474f;
+            text-align: left;
+        }
+        .overview-table th {
+            color: #81c784;
+            background: #1e272c;
+        }
+    </style>
+</head>
+<body>
+    <div class="container" style="max-width: 1100px; margin: 20px auto; padding: 0 15px;">
+        <div class="header-container">
+            <h1>🌍 Birdweather Stationen</h1>
+            <p style="color: #b0bec5; margin-top: 5px;">
+                Manueller Datenabruf zur Früherkennung seltener Vogelarten und Zugvögel über das globale BirdWeather-Stationsnetzwerk
+            </p>
+            <div style="margin-top: 12px;">
+                <a href="/" class="button-link" style="background:#546e7a;">&laquo; Zurück zum Dashboard</a>
+                <a href="/species" class="button-link" style="background:#8e24aa; margin-left: 8px;">🦉 Spezies-Statistik</a>
+                <a href="/settings" class="button-link" style="background:#c2185b; margin-left: 8px;">⚙️ Gebiete in Einstellungen konfigurieren</a>
+            </div>
+        </div>
+
+        <!-- Konfigurierte Gebietsobjekte (Vorschau) -->
+        <div class="region-card" style="padding: 15px 20px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                <strong style="color: #81c784; font-size: 1.05rem;">📋 Konfigurierte Gebietsobjekte (aus settings.json)</strong>
+                <a href="/settings" style="color: #81d4fa; font-size: 0.88rem; text-decoration: none;">✏️ In Einstellungen bearbeiten &raquo;</a>
+            </div>
+            <div style="overflow-x: auto;">
+                <table class="overview-table">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Gebietsname</th>
+                            <th>SW (Lat, Lon)</th>
+                            <th>NE (Lat, Lon)</th>
+                            <th>Vogelarten</th>
+                            <th>Min. Konfidenz</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% set ns = namespace(active_count=0) %}
+                        {% for reg in regions %}
+                        {% if reg.get('name') or reg.get('sw') or reg.get('ne') or reg.get('species') %}
+                        {% set ns.active_count = ns.active_count + 1 %}
+                        <tr>
+                            <td><strong>Objekt {{ loop.index }}</strong></td>
+                            <td style="color: #4fc3f7; font-weight: bold;">{{ reg.get('name') or '-' }}</td>
+                            <td><code>{{ reg.get('sw') or '-' }}</code></td>
+                            <td><code>{{ reg.get('ne') or '-' }}</code></td>
+                            <td>{{ reg.get('species') or '-' }}</td>
+                            <td><strong>{{ reg.get('confidence', 70) }}%</strong></td>
+                        </tr>
+                        {% endif %}
+                        {% endfor %}
+                        {% if ns.active_count == 0 %}
+                        <tr>
+                            <td colspan="6" style="text-align: center; color: #ffb74d; padding: 15px;">
+                                Noch keine Gebietsobjekte definiert. Bitte konfiguriere mindestens ein Gebiet in den <a href="/settings" style="color: #4fc3f7;">Einstellungen</a>.
+                            </td>
+                        </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Steuerung: Abfragezeitraum, Stationstyp & Manueller Abruf -->
+        <div class="bw-controls">
+            <div>
+                <label for="bw-period" style="font-weight: bold; color: #eceff1; margin-right: 6px;">Abfragezeitraum:</label>
+                <select id="bw-period" class="bw-select">
+                    <option value="1_day" {% if selected_period == '1_day' %}selected{% endif %}>Letzte 24 Stunden (1 Tag)</option>
+                    <option value="3_days" {% if selected_period == '3_days' %}selected{% endif %}>Letzte 3 Tage</option>
+                    <option value="7_days" {% if selected_period == '7_days' %}selected{% endif %}>Letzte 7 Tage</option>
+                    <option value="14_days" {% if selected_period == '14_days' %}selected{% endif %}>Letzte 14 Tage</option>
+                    <option value="30_days" {% if selected_period == '30_days' %}selected{% endif %}>Letzte 30 Tage</option>
+                </select>
+            </div>
+
+            <div>
+                <label for="bw-station-type" style="font-weight: bold; color: #eceff1; margin-right: 6px;">Stationstyp:</label>
+                <select id="bw-station-type" class="bw-select">
+                    <option value="all" {% if selected_station_type == 'all' %}selected{% endif %}>Alle Stationstypen</option>
+                    <option value="puc" {% if selected_station_type == 'puc' %}selected{% endif %}>BirdWeather PUC</option>
+                    <option value="birdnet_pi" {% if selected_station_type == 'birdnet_pi' %}selected{% endif %}>BirdNET-Pi / Stationär</option>
+                    <option value="mobile" {% if selected_station_type == 'mobile' %}selected{% endif %}>Mobile (BirdWeather App)</option>
+                    <option value="stream_audio" {% if selected_station_type == 'stream_audio' %}selected{% endif %}>Audio-Stream</option>
+                    <option value="stream_youtube" {% if selected_station_type == 'stream_youtube' %}selected{% endif %}>YouTube-Stream</option>
+                </select>
+            </div>
+
+            <button type="button" id="btn-start-bw-query" class="bw-btn-query" onclick="runBirdWeatherQuery()">
+                🔍 BirdWeather Datenabruf starten
+            </button>
+        </div>
+
+        <div id="bw-status-banner" style="display: none; background: #263238; border: 1px solid #37474f; border-radius: 8px; padding: 12px 16px; margin-bottom: 20px; color: #b0bec5; font-size: 0.92rem;"></div>
+
+        <div id="bw-results-container">
+            <div style="background: #263238; border: 1px dashed #455a64; border-radius: 10px; padding: 35px 20px; text-align: center; color: #90a4ae;">
+                Wähle oben den gewünschten <strong>Abfragezeitraum</strong> und <strong>Stationstyp</strong> aus und klicke auf <strong>„🔍 BirdWeather Datenabruf starten“</strong>, um alle definierten Gebietsobjekte live bei BirdWeather abzufragen.
+            </div>
+        </div>
+
+        <div style="margin-top: 30px; font-size: 0.8em; color: #555; border-top: 1px solid #333; padding-top: 10px; text-align: center;">
+            {{ version }} | {{ year }}
+        </div>
+    </div>
+
+    <script>
+        function formatTimestamp(isoStr) {
+            if (!isoStr) return '-';
+            try {
+                const d = new Date(isoStr);
+                if (isNaN(d.getTime())) return isoStr;
+                return d.toLocaleString('de-DE', {
+                    day: '2-digit', month: '2-digit', year: 'numeric',
+                    hour: '2-digit', minute: '2-digit'
+                });
+            } catch (e) {
+                return isoStr;
+            }
+        }
+
+        function formatStationType(st) {
+            const map = {
+                'puc': 'BirdWeather PUC',
+                'birdnet_pi': 'BirdNET-Pi / Stationär',
+                'mobile': 'Mobile App',
+                'stream_audio': 'Audio-Stream',
+                'stream_youtube': 'YouTube-Stream'
+            };
+            return map[st] || st || 'Standard';
+        }
+
+        function runBirdWeatherQuery() {
+            const btn = document.getElementById('btn-start-bw-query');
+            const period = document.getElementById('bw-period').value;
+            const stationType = document.getElementById('bw-station-type').value;
+            const resultsDiv = document.getElementById('bw-results-container');
+            const bannerDiv = document.getElementById('bw-status-banner');
+
+            btn.disabled = true;
+            btn.innerText = '⏳ Abfrage läuft...';
+            bannerDiv.style.display = 'none';
+            resultsDiv.innerHTML = `
+                <div style="background: #263238; border: 1px solid #37474f; border-radius: 10px; padding: 35px 20px; text-align: center; color: #4fc3f7; font-size: 1.05rem;">
+                    ⏳ Kontaktiere BirdWeather API und werte Gebietsobjekte sowie Vogelarten aus... Bitte einen Moment Geduld.
+                </div>
+            `;
+
+            fetch('/api/birdweather/query_regions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    period: period,
+                    station_type: stationType
+                })
+            })
+            .then(r => r.json())
+            .then(data => {
+                btn.disabled = false;
+                btn.innerText = '🔍 BirdWeather Datenabruf starten';
+
+                if (!data.success) {
+                    resultsDiv.innerHTML = `
+                        <div style="background: #4a2618; border-left: 4px solid #F44336; padding: 15px; border-radius: 6px; color: #ffab91;">
+                            ❌ Fehler beim Datenabruf: ${data.msg || 'Unbekannter Fehler'}
+                        </div>
+                    `;
+                    return;
+                }
+
+                bannerDiv.style.display = 'block';
+                bannerDiv.innerHTML = `
+                    ✅ <strong>Abfrage abgeschlossen</strong> am <strong>${data.queried_at} Uhr</strong> &nbsp;|&nbsp;
+                    Zeitraum: <strong style="color: #81d4fa;">${data.period_label}</strong> &nbsp;|&nbsp;
+                    Stationstyp: <strong style="color: #81c784;">${data.station_type_label}</strong>
+                `;
+
+                const regions = data.regions || [];
+                if (regions.length === 0) {
+                    resultsDiv.innerHTML = `
+                        <div style="background: #3a2a1d; border-left: 4px solid #FF9800; padding: 15px; border-radius: 6px; color: #ffe0b2;">
+                            ⚠️ Es sind keine aktiven Gebietsobjekte konfiguriert. Bitte definiere mindestens ein Gebiet in den <a href="/settings" style="color: #4fc3f7;">Einstellungen</a>.
+                        </div>
+                    `;
+                    return;
+                }
+
+                let html = '';
+                regions.forEach(reg => {
+                    html += `<div class="region-card">`;
+                    html += `
+                        <div class="region-header">
+                            <div>
+                                <h2 class="region-title">📍 ${reg.name} <span style="font-size: 0.85rem; color: #90a4ae; font-weight: normal;">(Gebietsobjekt ${reg.index})</span></h2>
+                                <div class="region-meta" style="margin-top: 4px;">
+                                    Gebiet: <code>SW: ${reg.sw}</code> | <code>NE: ${reg.ne}</code> &nbsp;&bull;&nbsp;
+                                    Mindest-Konfidenz: <strong>${reg.confidence}%</strong>
+                                </div>
+                            </div>
+                            <div style="text-align: right;">
+                                <span class="badge-count ${reg.total_detections > 0 ? 'badge-positive' : 'badge-zero'}">
+                                    Gesamt: ${reg.total_detections} Erkennung(en) an ${reg.total_stations} Station(en)
+                                </span>
+                            </div>
+                        </div>
+                    `;
+
+                    if (reg.error) {
+                        html += `
+                            <div style="background: #4a2618; border-left: 4px solid #F44336; padding: 12px; border-radius: 5px; color: #ffab91; margin-bottom: 10px;">
+                                ❌ <strong>Fehler:</strong> ${reg.error}
+                            </div>
+                        `;
+                    }
+
+                    if (reg.warnings && reg.warnings.length > 0) {
+                        reg.warnings.forEach(w => {
+                            html += `
+                                <div style="background: #3a2a1d; border-left: 4px solid #FF9800; padding: 10px 12px; border-radius: 5px; color: #ffe0b2; margin-bottom: 10px; font-size: 0.88rem;">
+                                    ⚠️ ${w}
+                                </div>
+                            `;
+                        });
+                    }
+
+                    if (reg.species_results && reg.species_results.length > 0) {
+                        reg.species_results.forEach(sp => {
+                            const hasDet = sp.detection_count > 0;
+                            html += `
+                                <div class="species-box" style="border-left: 4px solid ${hasDet ? '#4CAF50' : '#546e7a'};">
+                                    <div class="species-header">
+                                        <div class="species-info">
+                                            <img src="${sp.icon}" alt="${sp.de_name}" class="species-icon" onerror="this.src='/static/feather.png'">
+                                            <div>
+                                                <div style="font-size: 1.15rem; font-weight: bold; color: #fff;">
+                                                    ${sp.de_name}
+                                                </div>
+                                                <div style="font-size: 0.85rem; color: #90a4ae;">
+                                                    <em>${sp.scientific_name}</em> &bull; ${sp.common_name} (BirdWeather-ID: ${sp.species_id})
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <span class="badge-count ${hasDet ? 'badge-positive' : 'badge-zero'}">
+                                                ${sp.detection_count} Erkennung(en) (${sp.station_count} Station${sp.station_count === 1 ? '' : 'en'})
+                                            </span>
+                                        </div>
+                                    </div>
+                            `;
+
+                            if (hasDet && sp.stations && sp.stations.length > 0) {
+                                html += `
+                                    <div style="overflow-x: auto; margin-top: 10px;">
+                                        <table class="stations-table">
+                                            <thead>
+                                                <tr>
+                                                    <th>BirdWeather Station</th>
+                                                    <th>Typ</th>
+                                                    <th>Koordinaten</th>
+                                                    <th style="text-align: center;">Anzahl Erkennungen</th>
+                                                    <th style="text-align: center;">Max. Konfidenz</th>
+                                                    <th>Letzte Erkennung</th>
+                                                    <th style="text-align: right;">Stations-Webseite</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                `;
+                                sp.stations.forEach(st => {
+                                    const coordText = (st.lat !== null && st.lat !== undefined && st.lon !== null && st.lon !== undefined)
+                                        ? `${Number(st.lat).toFixed(3)}, ${Number(st.lon).toFixed(3)}`
+                                        : '-';
+                                    const linkHtml = st.url
+                                        ? `<a href="${st.url}" target="_blank" rel="noopener noreferrer" class="station-link">🔗 Station #${st.station_id} öffnen &nearr;</a>`
+                                        : '-';
+                                    html += `
+                                        <tr>
+                                            <td><strong>${st.station_name}</strong></td>
+                                            <td><span style="color: #b0bec5; font-size: 0.85rem;">${formatStationType(st.station_type)}</span></td>
+                                            <td><code>${coordText}</code></td>
+                                            <td style="text-align: center; font-weight: bold; color: #81c784; font-size: 1rem;">${st.count}</td>
+                                            <td style="text-align: center;">${st.max_confidence}%</td>
+                                            <td>${formatTimestamp(st.latest_timestamp)}</td>
+                                            <td style="text-align: right;">${linkHtml}</td>
+                                        </tr>
+                                    `;
+                                });
+                                html += `
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                `;
+                            } else {
+                                html += `
+                                    <div style="margin-top: 10px; color: #90a4ae; font-size: 0.88rem;">
+                                        Keine Erkennungen mit Konfidenz &ge; ${reg.confidence}% im gewählten Zeitraum und Gebiet gemeldet.
+                                    </div>
+                                `;
+                            }
+
+                            html += `</div>`;
+                        });
+                    }
+
+                    html += `</div>`;
+                });
+
+                resultsDiv.innerHTML = html;
+            })
+            .catch(err => {
+                btn.disabled = false;
+                btn.innerText = '🔍 BirdWeather Datenabruf starten';
+                resultsDiv.innerHTML = `
+                    <div style="background: #4a2618; border-left: 4px solid #F44336; padding: 15px; border-radius: 6px; color: #ffab91;">
+                        ❌ Netzwerkfehler bei der Abfrage: ${err}
+                    </div>
+                `;
+            });
+        }
+    </script>
+</body>
+</html>

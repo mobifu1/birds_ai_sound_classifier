@@ -243,7 +243,7 @@
                 <select id="bw-station-type" class="bw-select">
                     <option value="all" {% if selected_station_type == 'all' %}selected{% endif %}>Alle Stationstypen</option>
                     <option value="puc" {% if selected_station_type == 'puc' %}selected{% endif %}>BirdWeather PUC</option>
-                    <option value="birdnet_pi" {% if selected_station_type == 'birdnet_pi' %}selected{% endif %}>BirdNET-Pi / Stationär</option>
+                    <option value="birdnetpi" {% if selected_station_type in ['birdnetpi', 'birdnet_pi'] %}selected{% endif %}>BirdNET-Pi / Stationär</option>
                     <option value="mobile" {% if selected_station_type == 'mobile' %}selected{% endif %}>Mobile (BirdWeather App)</option>
                     <option value="stream_audio" {% if selected_station_type == 'stream_audio' %}selected{% endif %}>Audio-Stream</option>
                     <option value="stream_youtube" {% if selected_station_type == 'stream_youtube' %}selected{% endif %}>YouTube-Stream</option>
@@ -286,8 +286,12 @@
         function formatStationType(st) {
             const map = {
                 'puc': 'BirdWeather PUC',
+                'puc:standard': 'BirdWeather PUC',
+                'puc:bat': 'BirdWeather PUC (Bat)',
+                'birdnetpi': 'BirdNET-Pi / Stationär',
                 'birdnet_pi': 'BirdNET-Pi / Stationär',
                 'mobile': 'Mobile App',
+                'app': 'Mobile App',
                 'stream_audio': 'Audio-Stream',
                 'stream_youtube': 'YouTube-Stream'
             };

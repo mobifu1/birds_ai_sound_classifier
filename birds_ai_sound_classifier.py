@@ -5040,7 +5040,8 @@ def parse_station_type_selection(st_key):
     mapping = {
         "all": (None, "Alle Stationstypen"),
         "puc": (["puc"], "BirdWeather PUC"),
-        "birdnet_pi": (["birdnet_pi"], "BirdNET-Pi / Stationär"),
+        "birdnetpi": (["birdnetpi"], "BirdNET-Pi / Stationär"),
+        "birdnet_pi": (["birdnetpi"], "BirdNET-Pi / Stationär"),
         "mobile": (["mobile"], "Mobile (BirdWeather App)"),
         "stream_audio": (["stream_audio"], "Audio-Stream"),
         "stream_youtube": (["stream_youtube"], "YouTube-Stream")

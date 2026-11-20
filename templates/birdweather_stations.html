@@ -190,12 +190,12 @@
                 <table class="overview-table">
                     <thead>
                         <tr>
-                            <th>#</th>
                             <th>Gebietsname</th>
                             <th>SW (Lat, Lon)</th>
                             <th>NE (Lat, Lon)</th>
                             <th>Vogelarten</th>
                             <th>Min. Konfidenz</th>
+                            <th style="text-align: right;">Abfrage</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -204,12 +204,16 @@
                         {% if reg.get('name') or reg.get('sw') or reg.get('ne') or reg.get('species') %}
                         {% set ns.active_count = ns.active_count + 1 %}
                         <tr>
-                            <td><strong>Objekt {{ loop.index }}</strong></td>
                             <td style="color: #4fc3f7; font-weight: bold;">{{ reg.get('name') or '-' }}</td>
                             <td><code>{{ reg.get('sw') or '-' }}</code></td>
                             <td><code>{{ reg.get('ne') or '-' }}</code></td>
                             <td>{{ reg.get('species') or '-' }}</td>
                             <td><strong>{{ reg.get('confidence', 70) }}%</strong></td>
+                            <td style="text-align: right;">
+                                <button type="button" class="bw-btn-query bw-region-query-btn" id="btn-bw-query-{{ loop.index }}" onclick="runBirdWeatherQuery({{ loop.index }}, this)" style="padding: 6px 14px; font-size: 0.88rem;">
+                                    🔍 Abfragen
+                                </button>
+                            </td>
                         </tr>
                         {% endif %}
                         {% endfor %}
@@ -225,7 +229,7 @@
             </div>
         </div>
 
-        <!-- Steuerung: Abfragezeitraum, Stationstyp & Manueller Abruf -->
+        <!-- Steuerung: Abfragezeitraum & Stationstyp -->
         <div class="bw-controls">
             <div>
                 <label for="bw-period" style="font-weight: bold; color: #eceff1; margin-right: 6px;">Abfragezeitraum:</label>
@@ -249,17 +253,13 @@
                     <option value="stream_youtube" {% if selected_station_type == 'stream_youtube' %}selected{% endif %}>YouTube-Stream</option>
                 </select>
             </div>
-
-            <button type="button" id="btn-start-bw-query" class="bw-btn-query" onclick="runBirdWeatherQuery()">
-                🔍 BirdWeather Datenabruf starten
-            </button>
         </div>
 
         <div id="bw-status-banner" style="display: none; background: #263238; border: 1px solid #37474f; border-radius: 8px; padding: 12px 16px; margin-bottom: 20px; color: #b0bec5; font-size: 0.92rem;"></div>
 
         <div id="bw-results-container">
             <div style="background: #263238; border: 1px dashed #455a64; border-radius: 10px; padding: 35px 20px; text-align: center; color: #90a4ae;">
-                Wähle oben den gewünschten <strong>Abfragezeitraum</strong> und <strong>Stationstyp</strong> aus und klicke auf <strong>„🔍 BirdWeather Datenabruf starten“</strong>, um alle definierten Gebietsobjekte live bei BirdWeather abzufragen.
+                Wähle den gewünschten <strong>Abfragezeitraum</strong> und <strong>Stationstyp</strong> aus und klicke oben beim jeweiligen Gebiet auf <strong>„🔍 Abfragen“</strong>, um das Gebiet einzeln live bei BirdWeather abzufragen.
             </div>
         </div>
 
@@ -298,19 +298,21 @@
             return map[st] || st || 'Standard';
         }
 
-        function runBirdWeatherQuery() {
-            const btn = document.getElementById('btn-start-bw-query');
+        function runBirdWeatherQuery(regionIndex, clickedBtn) {
+            const allBtns = document.querySelectorAll('.bw-region-query-btn');
             const period = document.getElementById('bw-period').value;
             const stationType = document.getElementById('bw-station-type').value;
             const resultsDiv = document.getElementById('bw-results-container');
             const bannerDiv = document.getElementById('bw-status-banner');
 
-            btn.disabled = true;
-            btn.innerText = '⏳ Abfrage läuft...';
+            allBtns.forEach(b => { b.disabled = true; });
+            if (clickedBtn) {
+                clickedBtn.innerText = '⏳ Läuft...';
+            }
             bannerDiv.style.display = 'none';
             resultsDiv.innerHTML = `
                 <div style="background: #263238; border: 1px solid #37474f; border-radius: 10px; padding: 35px 20px; text-align: center; color: #4fc3f7; font-size: 1.05rem;">
-                    ⏳ Kontaktiere BirdWeather API und werte Gebietsobjekte sowie Vogelarten aus... Bitte einen Moment Geduld.
+                    ⏳ Kontaktiere BirdWeather API und werte das gewählte Gebiet sowie Vogelarten aus... Bitte einen Moment Geduld.
                 </div>
             `;
 
@@ -319,13 +321,16 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     period: period,
-                    station_type: stationType
+                    station_type: stationType,
+                    region_index: regionIndex
                 })
             })
             .then(r => r.json())
             .then(data => {
-                btn.disabled = false;
-                btn.innerText = '🔍 BirdWeather Datenabruf starten';
+                allBtns.forEach(b => {
+                    b.disabled = false;
+                    b.innerText = '🔍 Abfragen';
+                });
 
                 if (!data.success) {
                     resultsDiv.innerHTML = `
@@ -347,7 +352,7 @@
                 if (regions.length === 0) {
                     resultsDiv.innerHTML = `
                         <div style="background: #3a2a1d; border-left: 4px solid #FF9800; padding: 15px; border-radius: 6px; color: #ffe0b2;">
-                            ⚠️ Es sind keine aktiven Gebietsobjekte konfiguriert. Bitte definiere mindestens ein Gebiet in den <a href="/settings" style="color: #4fc3f7;">Einstellungen</a>.
+                            ⚠️ Das gewählte Gebiet ist nicht aktiv oder es sind keine Gebiete konfiguriert. Bitte prüfe die <a href="/settings" style="color: #4fc3f7;">Einstellungen</a>.
                         </div>
                     `;
                     return;
@@ -359,7 +364,7 @@
                     html += `
                         <div class="region-header">
                             <div>
-                                <h2 class="region-title">📍 ${reg.name} <span style="font-size: 0.85rem; color: #90a4ae; font-weight: normal;">(Gebietsobjekt ${reg.index})</span></h2>
+                                <h2 class="region-title">📍 ${reg.name}</h2>
                                 <div class="region-meta" style="margin-top: 4px;">
                                     Gebiet: <code>SW: ${reg.sw}</code> | <code>NE: ${reg.ne}</code> &nbsp;&bull;&nbsp;
                                     Mindest-Konfidenz: <strong>${reg.confidence}%</strong>
@@ -475,8 +480,10 @@
                 resultsDiv.innerHTML = html;
             })
             .catch(err => {
-                btn.disabled = false;
-                btn.innerText = '🔍 BirdWeather Datenabruf starten';
+                allBtns.forEach(b => {
+                    b.disabled = false;
+                    b.innerText = '🔍 Abfragen';
+                });
                 resultsDiv.innerHTML = `
                     <div style="background: #4a2618; border-left: 4px solid #F44336; padding: 15px; border-radius: 6px; color: #ffab91;">
                         ❌ Netzwerkfehler bei der Abfrage: ${err}

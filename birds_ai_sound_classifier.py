@@ -44,7 +44,7 @@ from birdnetlib import Recording
 START_TIME = time.time()
 
 # --- KONFIGURATION ---
-APP_VERSION = "V1.4.2-RC1"
+APP_VERSION = "V1.4.2-RC2"
 COUNTERAPI_URL = "https://api.counterapi.dev/v2/birds_ai_sound_classifier/birds_ai_sound_classifier"
 COUNTERAPI_TOKEN = "ut_lzriKTlSuUcOse5rqmKUp23OoXKwpbA0rYiMDHQm"
 VERSION_YEAR = "2026"
@@ -5151,6 +5151,13 @@ def api_birdweather_query_regions():
     s = load_settings()
     period_key = data.get("period") or s.get("birdweather_query_period", "1_day")
     station_type_key = data.get("station_type") or s.get("birdweather_query_station_type", "all")
+    raw_region_index = data.get("region_index")
+    target_region_index = None
+    if raw_region_index is not None and str(raw_region_index).strip() != "":
+        try:
+            target_region_index = int(raw_region_index)
+        except (ValueError, TypeError):
+            return jsonify({"success": False, "msg": "Ungültiger Gebiets-Index übergeben."})
 
     # Auswahl persistent in settings.json speichern
     save_setting("birdweather_query_period", str(period_key))
@@ -5213,6 +5220,8 @@ def api_birdweather_query_regions():
 
     region_results = []
     for idx, reg in enumerate(regions, start=1):
+        if target_region_index is not None and idx != target_region_index:
+            continue
         name = reg.get("name", "").strip()
         sw_str = reg.get("sw", "").strip()
         ne_str = reg.get("ne", "").strip()

@@ -44,7 +44,7 @@ from birdnetlib import Recording
 START_TIME = time.time()
 
 # --- KONFIGURATION ---
-APP_VERSION = "V1.4.2-RC3"
+APP_VERSION = "V1.4.2-RC4"
 COUNTERAPI_URL = "https://api.counterapi.dev/v2/birds_ai_sound_classifier/birds_ai_sound_classifier"
 COUNTERAPI_TOKEN = "ut_lzriKTlSuUcOse5rqmKUp23OoXKwpbA0rYiMDHQm"
 VERSION_YEAR = "2026"
@@ -5252,6 +5252,9 @@ def api_birdweather_query_regions():
             reg_entry["error"] = sw_err or ne_err
             region_results.append(reg_entry)
             continue
+
+        reg_entry["sw_coords"] = sw_coord
+        reg_entry["ne_coords"] = ne_coord
 
         raw_species_list = [sp.strip() for sp in sp_str.split(",") if sp.strip()]
         if not raw_species_list:

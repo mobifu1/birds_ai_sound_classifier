@@ -6,6 +6,8 @@
     <title>Birdweather Stationen</title>
     <link rel="icon" href="{{ url_for('static', filename='feather.ico') }}" type="image/x-icon">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <style>
         .bw-controls {
             display: flex;
@@ -203,6 +205,137 @@
             color: #81c784;
             background: #1e272c;
         }
+        .bw-map-section {
+            margin-top: 20px;
+            background: #1e272c;
+            border: 1px solid #37474f;
+            border-radius: 8px;
+            padding: 16px;
+        }
+        .bw-map-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 12px;
+            border-bottom: 1px solid #37474f;
+            padding-bottom: 10px;
+        }
+        .bw-map-title {
+            font-size: 1.08rem;
+            font-weight: bold;
+            color: #4fc3f7;
+            margin: 0;
+        }
+        .bw-map-scale-badges {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            font-size: 0.84rem;
+        }
+        .bw-scale-badge {
+            background: #263238;
+            border: 1px solid #455a64;
+            color: #cfd8dc;
+            padding: 4px 10px;
+            border-radius: 5px;
+        }
+        .bw-map-frame-outer {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            width: 100%;
+            margin: 10px 0 14px 0;
+        }
+        .bw-map-box {
+            width: 100%;
+            border: 3px solid #4fc3f7;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 0 14px rgba(79, 195, 247, 0.25);
+            position: relative;
+            background: #141c20;
+        }
+        .bw-legend-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 18px;
+            justify-content: space-between;
+            align-items: flex-start;
+            background: #263238;
+            border: 1px solid #37474f;
+            border-radius: 6px;
+            padding: 12px 15px;
+            font-size: 0.86rem;
+            color: #eceff1;
+        }
+        .bw-legend-block {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .bw-legend-title {
+            font-weight: bold;
+            color: #81d4fa;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+        }
+        .bw-legend-items {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            align-items: center;
+        }
+        .bw-legend-item {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: #1e272c;
+            padding: 4px 10px;
+            border-radius: 15px;
+            border: 1px solid #37474f;
+        }
+        .bw-color-dot {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            border: 1.5px solid #fff;
+            flex-shrink: 0;
+        }
+        .bw-size-dot {
+            display: inline-block;
+            border-radius: 50%;
+            background: #4fc3f7;
+            border: 1.5px solid #fff;
+            flex-shrink: 0;
+        }
+        .leaflet-tooltip.bw-station-tooltip {
+            background: rgba(24, 33, 38, 0.96);
+            border: 1px solid #4fc3f7;
+            color: #eceff1;
+            border-radius: 6px;
+            padding: 8px 11px;
+            font-size: 0.86rem;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+            line-height: 1.45;
+        }
+        .leaflet-tooltip-top.bw-station-tooltip::before {
+            border-top-color: #4fc3f7;
+        }
+        .bw-marker-dot {
+            border-radius: 50%;
+            border: 1.5px solid #ffffff;
+            box-sizing: border-box;
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
+            cursor: pointer;
+        }
+        .bw-marker-dot:hover {
+            transform: scale(1.22);
+            z-index: 9999 !important;
+        }
     </style>
 </head>
 <body>
@@ -308,6 +441,435 @@
     </div>
 
     <script>
+        const SPECIES_COLOR_PALETTE = [
+            '#FF5252', // Korallenrot
+            '#00E676', // Smaragdgrün
+            '#40C4FF', // Himmelblau
+            '#FFD740', // Sonnengelb
+            '#E040FB', // Magenta / Violett
+            '#FF6E40', // Tief-Orange
+            '#18FFFF', // Türkis / Cyan
+            '#B2FF59', // Limettengrün
+            '#FF4081', // Pink
+            '#7C4DFF', // Indigo
+            '#64FFDA', // Aquamarin
+            '#FFAB40'  // Bernstein
+        ];
+
+        let activeLeafletMaps = [];
+
+        function destroyActiveMaps() {
+            activeLeafletMaps.forEach(m => {
+                try { m.remove(); } catch (e) {}
+            });
+            activeLeafletMaps = [];
+        }
+
+        function parseCoordFallback(str) {
+            if (!str) return null;
+            let raw = String(str).trim();
+            if (raw.includes(':')) raw = raw.split(':')[1].trim();
+            const parts = raw.replace(';', ',').split(',').map(s => s.trim()).filter(Boolean);
+            if (parts.length !== 2) return null;
+            const lat = parseFloat(parts[0]);
+            const lon = parseFloat(parts[1]);
+            if (isNaN(lat) || isNaN(lon)) return null;
+            return { lat, lon };
+        }
+
+        function calcHaversineKm(lat1, lon1, lat2, lon2) {
+            const R = 6371.0;
+            const toRad = deg => deg * Math.PI / 180.0;
+            const dLat = toRad(lat2 - lat1);
+            const dLon = toRad(lon2 - lon1);
+            const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                      Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+                      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            return R * c;
+        }
+
+        function calcLogPointSize(count, maxRef) {
+            const minSize = 6;
+            const maxSize = 24;
+            const c = Math.max(1, Number(count) || 1);
+            if (c <= 1) return minSize;
+            const ref = Math.max(c, Number(maxRef) || 50, 10);
+            const ratio = Math.min(1.0, Math.log(c) / Math.log(ref));
+            return Math.round((minSize + (maxSize - minSize) * ratio) * 10) / 10;
+        }
+
+        function computeRegionMapGeometry(reg) {
+            const sw = reg.sw_coords || parseCoordFallback(reg.sw);
+            const ne = reg.ne_coords || parseCoordFallback(reg.ne);
+            if (!sw || !ne) return null;
+
+            const south = Math.min(sw.lat, ne.lat);
+            const north = Math.max(sw.lat, ne.lat);
+            const west = Math.min(sw.lon, ne.lon);
+            const east = Math.max(sw.lon, ne.lon);
+            const midLat = (south + north) / 2.0;
+            const midLon = (west + east) / 2.0;
+
+            const widthKm = Math.max(0.1, calcHaversineKm(midLat, west, midLat, east));
+            const heightKm = Math.max(0.1, calcHaversineKm(south, midLon, north, midLon));
+            const rawAspect = widthKm / heightKm;
+            const clampedAspect = Math.max(1.0 / 3.0, Math.min(3.0, rawAspect));
+            const isAspectClamped = Math.abs(rawAspect - clampedAspect) > 0.02;
+
+            return {
+                south, north, west, east,
+                midLat, midLon,
+                widthKm, heightKm,
+                rawAspect, clampedAspect, isAspectClamped
+            };
+        }
+
+        function buildRegionMapSectionHtml(reg, geom) {
+            if (!geom) return '';
+            const mapId = `bw-osm-map-${reg.index}`;
+            const speciesList = reg.species_results || [];
+
+            // Maximalwert der Einzelerkennungen pro Station für logarithmische Skalierung bestimmen
+            let maxStationCount = 1;
+            speciesList.forEach(sp => {
+                (sp.stations || []).forEach(st => {
+                    if ((st.count || 0) > maxStationCount) {
+                        maxStationCount = st.count;
+                    }
+                });
+            });
+            const scaleRefMax = Math.max(maxStationCount, 50);
+
+            // Farblegende (Vogelart = Farbe)
+            let speciesLegendHtml = '';
+            speciesList.forEach((sp, idx) => {
+                const color = SPECIES_COLOR_PALETTE[idx % SPECIES_COLOR_PALETTE.length];
+                speciesLegendHtml += `
+                    <span class="bw-legend-item">
+                        <span class="bw-color-dot" style="background: ${color}; box-shadow: 0 0 6px ${color};"></span>
+                        <strong>${sp.de_name}</strong>
+                        <span style="color: #90a4ae; font-size: 0.8rem;">(${sp.detection_count})</span>
+                    </span>
+                `;
+            });
+
+            // Größenlegende (Anzahl = Punktgröße, logarithmisch 6px bis 24px)
+            const sampleCounts = [1];
+            const mid1 = Math.max(2, Math.round(Math.pow(scaleRefMax, 0.35)));
+            const mid2 = Math.max(mid1 + 1, Math.round(Math.pow(scaleRefMax, 0.7)));
+            const topVal = Math.max(mid2 + 1, scaleRefMax);
+            [mid1, mid2, topVal].forEach(v => {
+                if (!sampleCounts.includes(v)) sampleCounts.push(v);
+            });
+
+            let sizeLegendHtml = '';
+            sampleCounts.forEach(cnt => {
+                const px = calcLogPointSize(cnt, scaleRefMax);
+                sizeLegendHtml += `
+                    <span class="bw-legend-item" title="Logarithmische Punktgröße: ${px}px bei ${cnt} Erkennung(en)">
+                        <span class="bw-size-dot" style="width: ${px}px; height: ${px}px;"></span>
+                        <span>${cnt}&times; <small style="color:#90a4ae;">(${Math.round(px)}px)</small></span>
+                    </span>
+                `;
+            });
+
+            const aspectLabel = geom.isAspectClamped
+                ? `Seitenverhältnis Box: ${geom.clampedAspect.toFixed(2)}:1 (begrenzt aus ${geom.rawAspect.toFixed(2)}:1 auf 1:3 / 3:1)`
+                : `Seitenverhältnis Box: ${geom.clampedAspect.toFixed(2)}:1`;
+
+            return `
+                <div class="bw-map-section">
+                    <div class="bw-map-header">
+                        <div>
+                            <h3 class="bw-map-title">🗺️ OSM-Gebietskarte & Stationsverteilung (${reg.name})</h3>
+                            <div style="font-size: 0.82rem; color: #90a4ae; margin-top: 2px;">
+                                Box-Rahmen: <code>SW (${geom.south.toFixed(3)}, ${geom.west.toFixed(3)})</code> bis <code>NE (${geom.north.toFixed(3)}, ${geom.east.toFixed(3)})</code> &bull; ${aspectLabel}
+                            </div>
+                        </div>
+                        <div class="bw-map-scale-badges">
+                            <span class="bw-scale-badge" id="${mapId}-scale-h" title="Horizontale Ausdehnung der definierten Bounding-Box (West ↔ Ost)">
+                                ↔ Horizontal (Box W–O): <strong>${geom.widthKm.toFixed(1)} km</strong>
+                            </span>
+                            <span class="bw-scale-badge" id="${mapId}-scale-v" title="Vertikale Ausdehnung der definierten Bounding-Box (Süd ↕ Nord)">
+                                ↕ Vertikal (Box S–N): <strong>${geom.heightKm.toFixed(1)} km</strong>
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="bw-map-frame-outer">
+                        <div id="${mapId}" class="bw-map-box" data-aspect="${geom.clampedAspect.toFixed(4)}"></div>
+                    </div>
+
+                    <div class="bw-legend-container">
+                        <div class="bw-legend-block" style="flex: 1 1 320px;">
+                            <span class="bw-legend-title">🎨 Legende: Vogelart = Farbe</span>
+                            <div class="bw-legend-items">
+                                ${speciesLegendHtml || '<span style="color:#90a4ae;">Keine Vogelarten</span>'}
+                            </div>
+                        </div>
+                        <div class="bw-legend-block" style="flex: 1 1 280px;">
+                            <span class="bw-legend-title">📏 Legende: Anzahl = Punktgröße (Logarithmisch 6px – 24px)</span>
+                            <div class="bw-legend-items">
+                                ${sizeLegendHtml}
+                            </div>
+                        </div>
+                        <div class="bw-legend-block" style="flex: 1 1 220px;">
+                            <span class="bw-legend-title">💡 Hinweise zur Karte</span>
+                            <div style="font-size: 0.81rem; color: #b0bec5; line-height: 1.4;">
+                                &bull; <strong>Mouseover auf Punkt:</strong> Vogelart, Anzahl, Stationsname<br>
+                                &bull; <strong>Mehrere Arten je Station:</strong> Blüten-Versatz (Cluster) um reale Stationsposition<br>
+                                &bull; <strong>Türkiser Rahmen:</strong> Definierte Geo-Box (SW &ndash; NE)
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function initRegionLeafletMap(reg, geom) {
+            if (!geom || typeof L === 'undefined') return;
+            const mapId = `bw-osm-map-${reg.index}`;
+            const mapEl = document.getElementById(mapId);
+            if (!mapEl) return;
+
+            // Seitenverhältnis der Box (begrenzt auf 1:3 bis 3:1) auf den Rahmen anwenden
+            const containerWidth = mapEl.parentElement ? mapEl.parentElement.clientWidth : 960;
+            const aspect = geom.clampedAspect;
+            let boxWidth = containerWidth;
+            let boxHeight = Math.round(boxWidth / aspect);
+
+            // Falls die Box extrem hoch wird (z. B. 1:3), maximale Höhe sinnvoll begrenzen und Breite passend zum Aspect Ratio skalieren
+            const maxBoxHeight = 680;
+            const minBoxHeight = 260;
+            if (boxHeight > maxBoxHeight) {
+                boxHeight = maxBoxHeight;
+                boxWidth = Math.round(boxHeight * aspect);
+            } else if (boxHeight < minBoxHeight) {
+                boxHeight = minBoxHeight;
+                boxWidth = Math.min(containerWidth, Math.round(boxHeight * aspect));
+            }
+
+            mapEl.style.width = `${boxWidth}px`;
+            mapEl.style.height = `${boxHeight}px`;
+
+            const map = L.map(mapId, {
+                zoomSnap: 0.25,
+                zoomDelta: 0.5,
+                scrollWheelZoom: true
+            });
+            activeLeafletMaps.push(map);
+
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                maxZoom: 18,
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a>'
+            }).addTo(map);
+
+            // Metrische Maßstabsleiste unten links hinzufügen
+            L.control.scale({ metric: true, imperial: false, maxWidth: 160 }).addTo(map);
+
+            const bboxBounds = L.latLngBounds(
+                [geom.south, geom.west],
+                [geom.north, geom.east]
+            );
+
+            // Definierte Bounding-Box als sichtbarer Rahmen auf der Karte einzeichnen
+            L.rectangle(bboxBounds, {
+                color: '#4fc3f7',
+                weight: 2.5,
+                opacity: 0.95,
+                fillColor: '#4fc3f7',
+                fillOpacity: 0.04,
+                dashArray: '6, 4',
+                interactive: false
+            }).addTo(map);
+
+            map.fitBounds(bboxBounds, { padding: [14, 14] });
+
+            // Dynamische Maßstabsangabe des aktuellen Kartenausschnitts (horizontal & vertikal) aktualisieren
+            function updateViewportScaleBadges() {
+                try {
+                    const b = map.getBounds();
+                    const vSouth = b.getSouth();
+                    const vNorth = b.getNorth();
+                    const vWest = b.getWest();
+                    const vEast = b.getEast();
+                    const vMidLat = (vSouth + vNorth) / 2.0;
+                    const vMidLon = (vWest + vEast) / 2.0;
+                    const viewWidthKm = calcHaversineKm(vMidLat, vWest, vMidLat, vEast);
+                    const viewHeightKm = calcHaversineKm(vSouth, vMidLon, vNorth, vMidLon);
+
+                    const hBadge = document.getElementById(`${mapId}-scale-h`);
+                    const vBadge = document.getElementById(`${mapId}-scale-v`);
+                    if (hBadge) {
+                        hBadge.innerHTML = `↔ Maßstab Horizontal: <strong>Box ${geom.widthKm.toFixed(1)} km</strong> <span style="color:#90a4ae;">(Ausschnitt: ${viewWidthKm.toFixed(1)} km)</span>`;
+                    }
+                    if (vBadge) {
+                        vBadge.innerHTML = `↕ Maßstab Vertikal: <strong>Box ${geom.heightKm.toFixed(1)} km</strong> <span style="color:#90a4ae;">(Ausschnitt: ${viewHeightKm.toFixed(1)} km)</span>`;
+                    }
+                } catch (e) {}
+            }
+
+            map.on('moveend zoomend', updateViewportScaleBadges);
+            updateViewportScaleBadges();
+
+            // Maximalwert der Erkennungen für die logarithmische Punktgröße bestimmen
+            const speciesList = reg.species_results || [];
+            let maxStationCount = 1;
+            speciesList.forEach(sp => {
+                (sp.stations || []).forEach(st => {
+                    if ((st.count || 0) > maxStationCount) {
+                        maxStationCount = st.count;
+                    }
+                });
+            });
+            const scaleRefMax = Math.max(maxStationCount, 50);
+
+            // Stationen gruppieren, um bei mehreren Vogelarten an derselben Station einen Blüten-Versatz (Cluster) zu berechnen
+            const stationGroups = new Map();
+            speciesList.forEach((sp, spIdx) => {
+                const color = SPECIES_COLOR_PALETTE[spIdx % SPECIES_COLOR_PALETTE.length];
+                (sp.stations || []).forEach(st => {
+                    if (st.lat === null || st.lat === undefined || st.lon === null || st.lon === undefined) return;
+                    const lat = Number(st.lat);
+                    const lon = Number(st.lon);
+                    if (isNaN(lat) || isNaN(lon)) return;
+
+                    // Gruppierungsschlüssel nach Station-ID oder gerundeten Koordinaten
+                    const groupKey = st.station_id
+                        ? `id_${st.station_id}`
+                        : `coord_${lat.toFixed(4)}_${lon.toFixed(4)}`;
+
+                    if (!stationGroups.has(groupKey)) {
+                        stationGroups.set(groupKey, {
+                            lat: lat,
+                            lon: lon,
+                            station_name: st.station_name || `Station ${st.station_id || ''}`,
+                            station_id: st.station_id,
+                            url: st.url,
+                            items: []
+                        });
+                    }
+                    stationGroups.get(groupKey).items.push({
+                        species_id: sp.species_id,
+                        de_name: sp.de_name,
+                        scientific_name: sp.scientific_name,
+                        common_name: sp.common_name,
+                        color: color,
+                        count: Number(st.count) || 1,
+                        max_confidence: st.max_confidence,
+                        latest_timestamp: st.latest_timestamp,
+                        station_name: st.station_name || `Station ${st.station_id || ''}`,
+                        station_type: st.station_type,
+                        url: st.url,
+                        lat: lat,
+                        lon: lon
+                    });
+                });
+            });
+
+            const markersLayer = L.layerGroup().addTo(map);
+
+            function renderStationMarkers() {
+                markersLayer.clearLayers();
+
+                stationGroups.forEach(group => {
+                    const items = group.items;
+                    const n = items.length;
+                    const centerLatLng = L.latLng(group.lat, group.lon);
+                    const centerPt = map.latLngToLayerPoint(centerLatLng);
+
+                    // Wenn mehrere Vogelarten an dieser Station erkannt wurden: kleiner Zentrumspunkt + Blüten-Versatz
+                    if (n > 1) {
+                        L.circleMarker(centerLatLng, {
+                            radius: 2.5,
+                            color: '#ffffff',
+                            weight: 1,
+                            fillColor: '#90a4ae',
+                            fillOpacity: 0.9,
+                            interactive: false
+                        }).addTo(markersLayer);
+                    }
+
+                    // Größter Punkt in der Gruppe bestimmt den Blütenradius, damit sich Punkte nicht überlappen
+                    let maxRadiusPx = 6;
+                    items.forEach(it => {
+                        const d = calcLogPointSize(it.count, scaleRefMax);
+                        if (d / 2 > maxRadiusPx) maxRadiusPx = d / 2;
+                    });
+                    const petalDistancePx = n > 1 ? Math.max(11, maxRadiusPx + 5) : 0;
+
+                    items.forEach((it, idx) => {
+                        const diameterPx = calcLogPointSize(it.count, scaleRefMax);
+                        let targetLatLng = centerLatLng;
+
+                        if (n > 1) {
+                            const angle = (2 * Math.PI * idx) / n - (Math.PI / 2);
+                            const offsetPt = L.point(
+                                centerPt.x + petalDistancePx * Math.cos(angle),
+                                centerPt.y + petalDistancePx * Math.sin(angle)
+                            );
+                            targetLatLng = map.layerPointToLatLng(offsetPt);
+
+                            // Feine Verbindungslinie zwischen realer Stationsposition und Blütenpunkt
+                            L.polyline([centerLatLng, targetLatLng], {
+                                color: it.color,
+                                weight: 1.5,
+                                opacity: 0.75,
+                                interactive: false
+                            }).addTo(markersLayer);
+                        }
+
+                        const icon = L.divIcon({
+                            className: '',
+                            html: `<div class="bw-marker-dot" style="width:${diameterPx}px;height:${diameterPx}px;background:${it.color};box-shadow:0 0 6px ${it.color};"></div>`,
+                            iconSize: [diameterPx, diameterPx],
+                            iconAnchor: [diameterPx / 2, diameterPx / 2]
+                        });
+
+                        const marker = L.marker(targetLatLng, { icon: icon });
+
+                        const tooltipHtml = `
+                            <div style="min-width: 175px;">
+                                <div style="display:flex;align-items:center;gap:6px;font-weight:bold;font-size:0.94rem;color:#fff;margin-bottom:3px;">
+                                    <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${it.color};border:1px solid #fff;"></span>
+                                    <span>${it.de_name}</span>
+                                </div>
+                                <div style="color:#81c784;font-weight:bold;">
+                                    Anzahl Erkennungen: ${it.count}
+                                </div>
+                                <div style="color:#81d4fa;margin-top:2px;">
+                                    Station: <strong>${it.station_name}</strong>
+                                </div>
+                                <div style="color:#b0bec5;font-size:0.78rem;margin-top:3px;">
+                                    Koord.: ${it.lat.toFixed(3)}, ${it.lon.toFixed(3)} &bull; Max. Konf.: ${it.max_confidence}%
+                                </div>
+                            </div>
+                        `;
+
+                        marker.bindTooltip(tooltipHtml, {
+                            direction: 'top',
+                            offset: [0, -Math.round(diameterPx / 2 + 2)],
+                            className: 'bw-station-tooltip',
+                            opacity: 1.0
+                        });
+
+                        if (it.url) {
+                            marker.on('click', () => {
+                                window.open(it.url, '_blank', 'noopener');
+                            });
+                        }
+
+                        marker.addTo(markersLayer);
+                    });
+                });
+            }
+
+            renderStationMarkers();
+            // Beim Zoomen Blüten-Versatz in Pixelkoordinaten neu berechnen, damit der Versatz in jeder Zoomstufe konstant bleibt
+            map.on('zoomend', renderStationMarkers);
+        }
+
         function formatTimestamp(isoStr) {
             if (!isoStr) return '-';
             try {
@@ -348,6 +910,7 @@
             if (clickedBtn) {
                 clickedBtn.innerText = '⏳ Läuft...';
             }
+            destroyActiveMaps();
             bannerDiv.style.display = 'none';
             resultsDiv.innerHTML = `
                 <div style="background: #263238; border: 1px solid #37474f; border-radius: 10px; padding: 35px 20px; text-align: center; color: #4fc3f7; font-size: 1.05rem;">
@@ -398,7 +961,9 @@
                 }
 
                 let html = '';
+                const mapsToInit = [];
                 regions.forEach(reg => {
+                    const geom = computeRegionMapGeometry(reg);
                     html += `<div class="region-card">`;
                     html += `
                         <div class="region-header">
@@ -436,16 +1001,18 @@
                     }
 
                     if (reg.species_results && reg.species_results.length > 0) {
-                        reg.species_results.forEach(sp => {
+                        reg.species_results.forEach((sp, spIdx) => {
                             const hasDet = sp.detection_count > 0;
+                            const spColor = SPECIES_COLOR_PALETTE[spIdx % SPECIES_COLOR_PALETTE.length];
                             html += `
-                                <div class="species-box" style="border-left: 4px solid ${hasDet ? '#4CAF50' : '#546e7a'};">
+                                <div class="species-box" style="border-left: 4px solid ${hasDet ? spColor : '#546e7a'};">
                                     <div class="species-header">
                                         <div class="species-info">
-                                            <img src="${sp.icon}" alt="${sp.de_name}" class="species-icon" onerror="this.src='/static/feather.png'">
+                                            <img src="${sp.icon}" alt="${sp.de_name}" class="species-icon" style="border-color: ${spColor};" onerror="this.src='/static/feather.png'">
                                             <div>
-                                                <div style="font-size: 1.15rem; font-weight: bold; color: #fff;">
-                                                    ${sp.de_name}
+                                                <div style="font-size: 1.15rem; font-weight: bold; color: #fff; display: flex; align-items: center; gap: 8px;">
+                                                    <span class="bw-color-dot" style="background: ${spColor}; box-shadow: 0 0 6px ${spColor};" title="Kartenfarbe für ${sp.de_name}"></span>
+                                                    <span>${sp.de_name}</span>
                                                 </div>
                                                 <div style="font-size: 0.85rem; color: #90a4ae;">
                                                     <em>${sp.scientific_name}</em> &bull; ${sp.common_name} (BirdWeather-ID: ${sp.species_id})
@@ -519,10 +1086,23 @@
                         });
                     }
 
+                    // Unterhalb der Auflistung aller erkannten Arten: OSM-Kartenausschnitt als Abschluss des Datenabrufs
+                    if (!reg.error && geom) {
+                        html += buildRegionMapSectionHtml(reg, geom);
+                        mapsToInit.push({ reg, geom });
+                    }
+
                     html += `</div>`;
                 });
 
                 resultsDiv.innerHTML = html;
+
+                // Nach dem DOM-Update die OSM-Karten initialisieren
+                setTimeout(() => {
+                    mapsToInit.forEach(item => {
+                        initRegionLeafletMap(item.reg, item.geom);
+                    });
+                }, 40);
             })
             .catch(err => {
                 allBtns.forEach(b => {

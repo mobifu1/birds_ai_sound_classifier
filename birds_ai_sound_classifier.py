@@ -378,6 +378,8 @@ def init_db():
     except sqlite3.OperationalError:
         pass # Spalte existiert bereits
     c.execute('CREATE INDEX IF NOT EXISTS idx_timestamp ON detections(timestamp)')
+    # Bestehende manuelle Einträge korrigieren, die versehentlich mit confidence=100.0 statt 1.0 gespeichert wurden
+    c.execute('UPDATE detections SET confidence = 1.0 WHERE confidence > 1.0')
     conn.commit()
     conn.close()
 
@@ -6712,6 +6714,9 @@ def api_top_species():
                 conf_val = 0.0
         elif conf_val is None:
             conf_val = 0.0
+        conf_val = float(conf_val)
+        if conf_val > 1.0:
+            conf_val = min(conf_val / 100.0, 1.0)
             
         geo_prob_val = r[5] if len(r) > 5 and r[5] is not None else 0.0
         if isinstance(geo_prob_val, bytes):
@@ -6934,7 +6939,7 @@ def api_detections_add():
         conn = sqlite3.connect(DB_FILE)
         c = conn.cursor()
         c.execute("INSERT INTO detections (species, timestamp, confidence) VALUES (?, ?, ?)", 
-                  (data['species'], data['timestamp'], 100.0))
+                  (data['species'], data['timestamp'], 1.0))
         conn.commit()
         conn.close()
         return jsonify({"success": True, "msg": "Eintrag manuell hinzugefügt."})
